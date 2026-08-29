@@ -1,0 +1,16 @@
+name: ci
+
+# ci-gate gates itself with its own binary and its own .lateregate.yaml. If the
+# config cannot express this repo's gates it will not express anyone else's.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: latere-ai/ci/.github/workflows/go-verify.yml@v1
