@@ -139,3 +139,40 @@ func TestExemptForMissesAnUnlistedPackage(t *testing.T) {
 		t.Error("internal/b is not exempt")
 	}
 }
+
+// Admitting a dependency is a decision, in the same way exempting a package
+// from the coverage floor is.
+func TestADepcheckAllowanceWithoutAReasonIsRejected(t *testing.T) {
+	dir := write(t, "depcheck:\n  packages:\n    example.com/m/server:\n      allow:\n        golang.org/x/text: \"\"\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("an allowance with no reason must fail the load")
+	}
+	for _, want := range []string{"example.com/m/server", "golang.org/x/text", "a decision"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+func TestDepcheckIsRead(t *testing.T) {
+	c, err := Load(write(t, `
+depcheck:
+  platforms: [linux/amd64, darwin/arm64]
+  packages:
+    example.com/m/server:
+      decision: 009-D14
+      allow:
+        golang.org/x/text: Unicode normalisation
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Depcheck.Platforms) != 2 {
+		t.Errorf("platforms = %v", c.Depcheck.Platforms)
+	}
+	g, ok := c.Depcheck.Packages["example.com/m/server"]
+	if !ok || g.Decision != "009-D14" || g.Allow["golang.org/x/text"] == "" {
+		t.Errorf("packages = %+v", c.Depcheck.Packages)
+	}
+}

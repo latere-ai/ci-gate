@@ -22,6 +22,7 @@ import (
 
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/cover"
+	"latere.ai/x/ci-gate/internal/depcheck"
 	"latere.ai/x/ci-gate/internal/gates"
 	"latere.ai/x/ci-gate/internal/speclint"
 )
@@ -37,6 +38,7 @@ Commands:
 	hermetic    run the test suite with only the toolchain on PATH
 	fmt-check   fail if any Go source is not gofmt-formatted
 	modernize   fail on code the standard library already covers
+	depcheck    fail when a build reaches a dependency nobody admitted
 
 Every command reads .lateregate.yaml from -C (default: the working
 directory). A missing file means defaults, so a repository can adopt the
@@ -74,7 +76,7 @@ func run(argv []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	exec := gates.OSExec(out)
+	exec := gates.OSExec(*root, out)
 
 	switch cmd {
 	case "cover":
@@ -87,6 +89,8 @@ func run(argv []string, out io.Writer) error {
 		return gates.FmtCheck(out, exec)
 	case "modernize":
 		return gates.Modernize(cfg.Modernize, *goBin, out, exec)
+	case "depcheck":
+		return depcheck.Run(cfg.Depcheck, out, depcheck.GoLister(*goBin, *root))
 	default:
 		fmt.Fprint(out, usage)
 		return fmt.Errorf("unknown command %q", cmd)

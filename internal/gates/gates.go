@@ -26,10 +26,15 @@ import (
 // the diff-capturing gates do not.
 type Exec func(env []string, stream bool, name string, args ...string) ([]byte, error)
 
-// OSExec runs commands for real.
-func OSExec(out io.Writer) Exec {
+// OSExec runs commands for real, in dir.
+//
+// The working directory is explicit because every gate is addressable with
+// -C: a check that reads its config from one repository and shells out in
+// another reports on the wrong tree.
+func OSExec(dir string, out io.Writer) Exec {
 	return func(env []string, stream bool, name string, args ...string) ([]byte, error) {
 		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
 		if env != nil {
 			cmd.Env = env
 		}

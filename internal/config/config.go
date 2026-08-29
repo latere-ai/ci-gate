@@ -40,6 +40,7 @@ type Config struct {
 	Spec      Spec      `yaml:"spec"`
 	Hermetic  Hermetic  `yaml:"hermetic"`
 	Modernize Modernize `yaml:"modernize"`
+	Depcheck  Depcheck  `yaml:"depcheck"`
 }
 
 // Cover configures the per-package coverage gate.
@@ -82,6 +83,29 @@ type Hermetic struct {
 	// legitimately need a system tool names the directory here, which makes
 	// the dependency visible instead of ambient.
 	Allow []string `yaml:"allow"`
+}
+
+// Depcheck configures the dependency-footprint gate.
+type Depcheck struct {
+	// Platforms are the GOOS/GOARCH pairs the build list is taken on. What a
+	// repository claims to build for is what has to be checked: a dependency
+	// reached only on darwin is invisible to a linux-only gate. Empty means
+	// the host's own platform.
+	Platforms []string `yaml:"platforms"`
+	// Packages maps an import path to what its build may reach.
+	Packages map[string]Gated `yaml:"packages"`
+}
+
+// Gated is one package's allowlist and the decision that owns it.
+type Gated struct {
+	// Decision names the record that argues for this list, so a failure sends
+	// a reader to the argument rather than to the config.
+	Decision string `yaml:"decision"`
+	// Allow maps an import-path prefix to why the build may reach it. A prefix
+	// rather than an exact package: a dependency's own internal subpackages
+	// are its business, and pinning each would make an upstream refactor a
+	// failure here without any new dependency.
+	Allow map[string]string `yaml:"allow"`
 }
 
 // Modernize configures the `go fix` gate.
@@ -135,6 +159,21 @@ func (c *Config) validate(path string) error {
 			"an exemption is a decision: write why the package does not have "+
 			"to clear the floor, or delete the entry",
 			path, strings.Join(bad, ", "))
+	}
+	var noReason []string
+	for pkg, g := range c.Depcheck.Packages {
+		for prefix, why := range g.Allow {
+			if strings.TrimSpace(why) == "" {
+				noReason = append(noReason, pkg+" -> "+prefix)
+			}
+		}
+	}
+	if len(noReason) > 0 {
+		sort.Strings(noReason)
+		return fmt.Errorf("%s: depcheck allowance without a reason: %s\n"+
+			"admitting a dependency is a decision: write why the build may reach "+
+			"it, or delete the entry",
+			path, strings.Join(noReason, ", "))
 	}
 	if t := c.Cover.Threshold; t < 0 || t > 100 {
 		return fmt.Errorf("%s: cover.threshold %.1f is not a percentage", path, t)
