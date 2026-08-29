@@ -62,8 +62,15 @@ func Run(cfg config.Spec, root string, out io.Writer) error {
 
 	var problems []string
 	problems = append(problems, CheckFrontmatter(cfg, specs)...)
+	problems = append(problems, CheckVocabulary(cfg, specs)...)
+	problems = append(problems, CheckStatusRequires(cfg, specs)...)
+	problems = append(problems, CheckSections(cfg, specs)...)
+	problems = append(problems, CheckScopedIDs(cfg, specs)...)
 	problems = append(problems, CheckDependencies(specs)...)
 	problems = append(problems, CheckAcyclic(specs)...)
+	if cfg.Tables {
+		problems = append(problems, CheckTables(specs)...)
+	}
 	if cfg.Wikilinks {
 		problems = append(problems, CheckWikilinks(specs)...)
 	}

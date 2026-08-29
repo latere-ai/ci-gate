@@ -74,6 +74,40 @@ type Spec struct {
 	Wikilinks bool `yaml:"wikilinks"`
 	// Exclude lists file names in Dir that are not specs.
 	Exclude []string `yaml:"exclude"`
+	// Vocabulary closes further frontmatter keys the way Status closes
+	// `status`: a key here must hold one of the listed values.
+	Vocabulary map[string][]string `yaml:"vocabulary"`
+	// StatusRequires ties a frontmatter key to a status. The key must be
+	// present when the spec has that status and absent otherwise, which makes
+	// the status carry information rather than decorate the file.
+	StatusRequires map[string]StatusRule `yaml:"status_requires"`
+	// RequireSection lists headings every spec must carry.
+	RequireSection []string `yaml:"require_section"`
+	// RequireSectionByStatus lists headings a spec must carry once it reaches
+	// a given status. A spec that claims to be built and does not say what
+	// happened leaves the claim unchecked.
+	RequireSectionByStatus map[string][]string `yaml:"require_section_by_status"`
+	// SectionExempt names files the section rules do not apply to.
+	SectionExempt []string `yaml:"section_exempt"`
+	// ScopedIDs matches identifiers that belong to the spec they appear in.
+	// A mismatched id means a record was copied between specs, which silently
+	// gives two different decisions one name.
+	ScopedIDs string `yaml:"scoped_ids"`
+	// Tables turns on the table well-formedness check.
+	Tables bool `yaml:"tables"`
+}
+
+// StatusRule is one status-to-frontmatter-key rule.
+type StatusRule struct {
+	// Field is the frontmatter key the status requires.
+	Field string `yaml:"field"`
+	// Match, when set, is a pattern the field's value must satisfy. It exists
+	// because a field can be filled in with something that is not a record
+	// anyone can act on.
+	Match string `yaml:"match"`
+	// Hint is added to the failure so a reader learns what a good value looks
+	// like rather than only that theirs was rejected.
+	Hint string `yaml:"hint"`
 }
 
 // Hermetic configures the PATH-stripped test run.
