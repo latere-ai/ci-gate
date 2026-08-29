@@ -327,3 +327,86 @@ func TestARowShorterThanTheStatusColumnIsReported(t *testing.T) {
 		t.Errorf("a truncated row must be reported:\n%s", out)
 	}
 }
+
+// A spec tree may document its own vocabulary in a legend table whose header
+// is `| status | means |` and whose rows cite one or two specs as examples.
+// Reading that as the index makes the real index invisible, so the candidate
+// linking the most specs wins.
+func TestALegendTableIsNotTheIndex(t *testing.T) {
+	body := "# Specs\n\n" +
+		"| status | means |\n|---|---|\n" +
+		"| `record` | not on the lifecycle: [000](000-a.md) and [001](001-b.md) |\n" +
+		"\n## The specs\n\n" +
+		"| spec | status | what it owns |\n|---|---|---|\n" +
+		"| [000](000-a.md) | record | the decisions |\n" +
+		"| [001](001-b.md) | complete | the server |\n" +
+		"| [002](002-c.md) | drafted | the next thing |\n"
+	c := cfg()
+	c.Status = []string{"record", "complete", "drafted"}
+	root := tree(t, map[string]string{
+		"000-a.md":  spec("record"),
+		"001-b.md":  spec("complete"),
+		"002-c.md":  spec("drafted"),
+		"README.md": body,
+	})
+	if out, err := run(t, c, root); err != nil {
+		t.Fatalf("the legend must not be read as the index: %v\n%s", err, out)
+	}
+}
+
+// The failure the scoring prevents: a legend row whose status cell happens to
+// disagree with the spec it cites must not be reported, because the legend is
+// not making a claim about that spec's status.
+func TestALegendRowDoesNotReportDrift(t *testing.T) {
+	body := "| status | means |\n|---|---|\n" +
+		"| `drafted` | written, not reviewed; see [001](001-b.md) |\n" +
+		"\n| spec | status |\n|---|---|\n" +
+		"| [000](000-a.md) | complete |\n" +
+		"| [001](001-b.md) | complete |\n"
+	c := cfg()
+	c.Status = []string{"drafted", "complete"}
+	root := tree(t, map[string]string{
+		"000-a.md":  spec("complete"),
+		"001-b.md":  spec("complete"),
+		"README.md": body,
+	})
+	if out, err := run(t, c, root); err != nil {
+		t.Fatalf("a legend row must not report drift: %v\n%s", err, out)
+	}
+}
+
+// A tree may split its index across several tables -- shipped, next, blocked.
+// All of them are index tables; column order is what separates them from a
+// legend, not which one is biggest.
+func TestAnIndexSplitAcrossTablesIsAllRead(t *testing.T) {
+	body := "## Shipped\n\n| spec | status |\n|---|---|\n| [000](000-a.md) | complete |\n" +
+		"\n## Next\n\n| spec | status | from |\n|---|---|---|\n| [001](001-b.md) | drafted | 000 |\n" +
+		"\n## Blocked\n\n| spec | status |\n|---|---|\n| [002](002-c.md) | blocked |\n"
+	c := cfg()
+	c.Status = []string{"complete", "drafted", "blocked"}
+	root := tree(t, map[string]string{
+		"000-a.md": spec("complete"), "001-b.md": spec("drafted"), "002-c.md": spec("blocked"),
+		"README.md": body,
+	})
+	if out, err := run(t, c, root); err != nil {
+		t.Fatalf("every index table should be read: %v\n%s", err, out)
+	}
+}
+
+// Drift in the third table is still drift.
+func TestDriftInASecondaryIndexTableIsReported(t *testing.T) {
+	body := "| spec | status |\n|---|---|\n| [000](000-a.md) | complete |\n" +
+		"\n| spec | status |\n|---|---|\n| [001](001-b.md) | complete |\n"
+	c := cfg()
+	c.Status = []string{"complete", "drafted"}
+	root := tree(t, map[string]string{
+		"000-a.md": spec("complete"), "001-b.md": spec("drafted"), "README.md": body,
+	})
+	out, err := run(t, c, root)
+	if err == nil {
+		t.Fatal("drift in a later table must still fail")
+	}
+	if !strings.Contains(out, `row says 001-b.md is "complete"; the spec says "drafted"`) {
+		t.Errorf("report:\n%s", out)
+	}
+}

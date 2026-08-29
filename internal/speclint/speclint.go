@@ -274,11 +274,17 @@ var linkRe = regexp.MustCompile(`\[[^\]]*\]\(([^)]+\.md)\)`)
 // CheckIndex reports rows of the index that disagree with the specs they link
 // to, and specs the index never lists.
 //
-// The index is found by its header rather than by matching any row that holds
-// a link: a spec document also cites other specs from prose tables, and
-// treating those as index rows reports drift that is not there. A table
-// counts as the index when its header has a Status column, and the status is
-// read from that column's position.
+// Finding the index rows is the whole difficulty, and two shapes make a naive
+// match wrong. A spec cites other specs from prose tables, so "any table row
+// with a link" reports drift that is not there. And a spec tree may document
+// its own vocabulary in a legend table -- `| status | means |`, with rows that
+// cite a spec or two as examples -- so "any table with a Status column" reads
+// the legend's rows as claims about those specs.
+//
+// The rule that separates them is column order. An index row names the spec
+// and then gives its status, so the link comes before the Status column. A
+// legend row is about the status itself and mentions a spec afterwards. That
+// also allows a tree to split its index across several tables, which tgo does.
 func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
 	path := filepath.Join(root, cfg.Index)
 	data, err := os.ReadFile(path)
@@ -293,8 +299,8 @@ func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
 	var out []string
 	listed := map[string]bool{}
 	rows := 0
-	// statusCol is the index of the Status column in the table being read,
-	// or -1 when the current table is not an index table.
+	// statusCol is the Status column of the table being read, or -1 when the
+	// current table has none.
 	statusCol := -1
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	for i, line := range lines {
@@ -309,22 +315,21 @@ func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
 		if statusCol < 0 || isSeparator(line) {
 			continue
 		}
-		m := linkRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
+		cells := rowCells(line)
+		linkCol, target := linkCell(cells)
+		if linkCol < 0 || linkCol >= statusCol {
+			continue // prose citation, or a legend row about the status itself
 		}
 		rows++
-		target := filepath.Base(m[1])
 		spec, ok := byName[target]
 		if !ok {
-			out = append(out, fmt.Sprintf("%s: row links to %s, which is not a spec in the tree", cfg.Index, m[1]))
+			out = append(out, fmt.Sprintf("%s: row links to %s, which is not a spec in the tree", cfg.Index, target))
 			continue
 		}
 		listed[target] = true
 		if len(cfg.Status) == 0 {
 			continue
 		}
-		cells := rowCells(line)
 		if statusCol >= len(cells) {
 			out = append(out, fmt.Sprintf("%s: the row for %s has no status cell", cfg.Index, target))
 			continue
@@ -344,6 +349,17 @@ func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// linkCell returns the index of the first cell holding a link to a .md file,
+// and the file's base name.
+func linkCell(cells []string) (int, string) {
+	for i, c := range cells {
+		if m := linkRe.FindStringSubmatch(c); m != nil {
+			return i, filepath.Base(m[1])
+		}
+	}
+	return -1, ""
 }
 
 func isTableRow(line string) bool {
