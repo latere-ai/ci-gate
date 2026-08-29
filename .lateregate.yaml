@@ -1,0 +1,21 @@
+# The gate configuration for this repository. Every consumer repo carries one
+# of these; this is the tool gating itself with it, which is the only way the
+# schema stays honest.
+cover:
+  threshold: 90.0
+  trim_prefix: latere.ai/x/ci-gate/
+  exempt:
+    # The value is the reason. lateregate rejects an empty one.
+    cmd/lateregate: >-
+      main() is flag parsing and os.Exit around run(), which is tested
+      directly; every command it dispatches to is covered in its own package
+
+hermetic:
+  # The suite shells out to gofmt and go, both of which live in the toolchain
+  # directory. Nothing else, which is the setting every repo should aim at.
+  allow: []
+
+modernize:
+  # No fixer is disabled here. An entry would need a reason in the commit that
+  # adds it.
+  disable: []
