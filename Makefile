@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: build test cover test-hermetic test-race fmt fmt-check lint-modernize spec-lint
+.PHONY: build test cover test-hermetic test-race fmt fmt-check lint-modernize
 
 build:
 	$(GO) build ./...
@@ -36,8 +36,7 @@ fmt-check:
 lint-modernize:
 	@$(GO) run ./cmd/lateregate modernize
 
-# This repository has no spec tree of its own yet; the design lives in
-# ci/specs/go-verify-pipeline.md. The target exists so the contract is
-# complete and turns on by adding a spec section to .lateregate.yaml.
-spec-lint:
-	@$(GO) run ./cmd/lateregate spec-lint
+# No spec-lint target: this repository has no spec tree of its own yet (the
+# design lives in ci/specs/go-verify-pipeline.md), and a target that asserts
+# nothing while reporting green is the shape `cover` refuses. The probe skips
+# the job until there is something to check.
