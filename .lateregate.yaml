@@ -10,6 +10,15 @@ cover:
       main() is flag parsing and os.Exit around run(), which is tested
       directly; every command it dispatches to is covered in its own package
 
+spec:
+  # This repository lints its own spec tree with its own binary. A gate whose
+  # only consumer is a repo that does not run it is a gate nobody checks.
+  dir: specs
+  status: [draft, partial, complete]
+  require: [title, status]
+  index: specs/README.md
+  wikilinks: true
+
 hermetic:
   # The suite shells out to gofmt and go, both of which live in the toolchain
   # directory. Nothing else, which is the setting every repo should aim at.

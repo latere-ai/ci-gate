@@ -143,6 +143,13 @@ jobs:
 
 See `ci/README.md` for the full contract.
 
+## Contributing
+
+`specs/` records why this repository is built the way it is: start with
+`specs/000-bootstrap.md`, then `specs/001-gate-principles.md` for the four
+decisions every gate here has to hold. The tree is linted by this repo's own
+`spec-lint`, which is the point.
+
 ## Configuration reference
 
 Every section is optional; a repository that only wants `fmt-check`, `test`

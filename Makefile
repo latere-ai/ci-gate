@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: build test cover test-hermetic test-race fmt fmt-check lint-modernize
+.PHONY: build test cover test-hermetic test-race fmt fmt-check lint-modernize spec-lint
 
 build:
 	$(GO) build ./...
@@ -36,7 +36,7 @@ fmt-check:
 lint-modernize:
 	@$(GO) run ./cmd/lateregate modernize
 
-# No spec-lint target: this repository has no spec tree of its own yet (the
-# design lives in ci/specs/go-verify-pipeline.md), and a target that asserts
-# nothing while reporting green is the shape `cover` refuses. The probe skips
-# the job until there is something to check.
+# The spec tree checks: frontmatter, the closed status vocabulary, the index
+# rows, dependency edges and wikilinks. Conventions live in .lateregate.yaml.
+spec-lint:
+	@$(GO) run ./cmd/lateregate spec-lint
