@@ -84,7 +84,7 @@ func TestAnExemptionWithoutAReasonIsRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("an exemption with no reason must fail the load")
 	}
-	for _, want := range []string{"internal/other", "internal/thing", "decision"} {
+	for _, want := range []string{"internal/other", "internal/thing", "a decision"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}

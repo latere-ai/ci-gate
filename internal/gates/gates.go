@@ -115,7 +115,7 @@ func FmtCheck(out io.Writer, run Exec) error {
 	for _, f := range files {
 		fmt.Fprintln(out, "  "+f)
 	}
-	return fmt.Errorf("%d file(s) are not gofmt-formatted; run gofmt -w .", len(files))
+	return fmt.Errorf("%d file(s) are not gofmt-formatted; run gofmt -w . to fix", len(files))
 }
 
 // Modernize fails on code a standard library call already covers.

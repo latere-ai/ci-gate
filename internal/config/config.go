@@ -132,8 +132,8 @@ func (c *Config) validate(path string) error {
 	if len(bad) > 0 {
 		sort.Strings(bad)
 		return fmt.Errorf("%s: exempt without a reason: %s\n"+
-			"An exemption is a decision. Write why the package does not have "+
-			"to clear the floor, or delete the entry.",
+			"an exemption is a decision: write why the package does not have "+
+			"to clear the floor, or delete the entry",
 			path, strings.Join(bad, ", "))
 	}
 	if t := c.Cover.Threshold; t < 0 || t > 100 {
