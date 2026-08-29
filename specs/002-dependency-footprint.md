@@ -1,6 +1,6 @@
 ---
 title: Gate this repository's own dependency graph
-status: draft
+status: complete
 depends_on:
   - 001-gate-principles.md
 affects:
@@ -82,6 +82,36 @@ The value is the reason, per D3.
   (`goccy/go-yaml` plus the standard library) passes.
 - **AC4** A package that does not build is reported as a build error, not
   as a violation.
+
+## Outcome
+
+Shipped in `v0.4.0` as `lateregate depcheck`, ported from tgo's
+`internal/depcheck`, which is now deleted.
+
+All four criteria hold. The allowlist and the GOOS/GOARCH set are config, the
+value of an allowance is its reason and an empty one fails the load, a stale
+allowance fails as loudly as an unadmitted dependency, and a package that does
+not build is reported as a build error rather than a violation.
+
+Two things the port settled:
+
+- **The open question about whose graph is gated resolved to the package.**
+  tgo gates two packages for two different reasons, and a module-level gate
+  could not have expressed that `tokenizer` may reach `x/text` while saying
+  nothing about the rest of the module. The config is a map of package to
+  allowlist, and each carries the decision that owns it.
+- **The second consumer arrived immediately.** llmops gates its CLI, which
+  reaches two modules. So the argument that this gate earns its place with one
+  consumer did not have to be made.
+
+Verified against tgo's real build across ten platforms: the same two gated
+packages and the same result as the program it replaced, and removing one
+allowance fails.
+
+This repository does not yet gate its own graph, which is what the spec
+originally asked for. `goccy/go-yaml` plus the standard library is still the
+whole of it, and the gate that would hold it there is one config block away.
+That is the remaining work.
 
 ## Out of scope
 
