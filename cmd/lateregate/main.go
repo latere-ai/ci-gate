@@ -1,5 +1,5 @@
 // Copyright 2026 Latere AI.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the MIT License.
 
 // Command lateregate runs the per-push quality gates every Latere Go
 // repository shares.

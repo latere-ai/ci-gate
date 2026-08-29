@@ -1,5 +1,5 @@
 // Copyright 2026 Latere AI.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the MIT License.
 
 // Package config reads .lateregate.yaml, the one file a consumer repo uses
 // to configure every gate.

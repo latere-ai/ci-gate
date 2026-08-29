@@ -1,5 +1,5 @@
 // Copyright 2026 Latere AI.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the MIT License.
 
 // Package gates holds the checks that drive the Go toolchain.
 //
