@@ -249,6 +249,46 @@ fixer you named, the flag would be refused and the check would report green
 over a gate that never ran. `lateregate` verifies each fixer still exists
 before trusting the flag, and fails loudly if one is gone.
 
+### `otel-client` keeps a distributed trace connected
+
+Two shapes of outbound call lose the trace, both silently:
+
+```go
+c := &http.Client{Timeout: 5 * time.Second} // no Transport
+http.DefaultClient.Do(req)
+```
+
+Either one calls out on the stdlib transport, so no client span is recorded
+and no `traceparent` header is sent. The service on the other end opens a
+fresh trace rather than joining the caller's, and the hop between them is
+gone. Nothing fails, no error is logged, and the gap only shows up later as a
+trace that stops at a boundary.
+
+Instrument the client instead, and the downstream spans join the caller's
+trace:
+
+```go
+c := &http.Client{Timeout: 5 * time.Second, Transport: otel.Transport(nil)}
+c := otel.HTTPClient()
+```
+
+The scan parses each file rather than matching text, which matters more than
+it sounds. A `Transport` field several lines below the opening brace still
+counts, a comment explaining this rule does not trip the gate, and
+`Timeout: cfg.Transport.Timeout` does not pass for a `Transport` field the way
+a substring test would. Test files are excluded: a test dialling an httptest
+server has no trace to continue.
+
+A build-tagged harness that deliberately uses the stdlib can be named:
+
+```yaml
+otel_client:
+  skip: [cellae2e]
+```
+
+Keep that list short. A directory skipped here is one whose outbound calls
+nobody is asserting anything about.
+
 ## Running the gates in CI
 
 Use the reusable workflow in `latere-ai/ci`, which orders these across an OS
