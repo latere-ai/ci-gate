@@ -79,6 +79,37 @@ An exemption with an empty reason fails the load. So does a profile that
 covers no packages, and one where *every* package is exempt: a gate that
 passes because it measured nothing keeps reporting green as the tree fills up.
 
+A package with **no test file at all** is the version of that hole the floor
+cannot see on its own. It produces no records, so it is absent from the
+profile, and a rule that reads only the profile clears it by never measuring
+it. The gate lists the module's packages and fails on the ones the profiles
+never mention:
+
+```
+MISS internal/notify                                 -  no coverage data
+lateregate: 1 package(s) produced no coverage data, so the floor never
+applied to them: internal/notify
+```
+
+A package that declares no function with a body is left out of that list. The
+tool instruments statements, so such a package produces no data however it is
+tested, and a finding no test can clear is one people learn to skip. A package
+that genuinely has no tests is exempted the same way as any other, with the
+reason attached.
+
+Repeat `-profile` for a repository whose coverage is split across test tiers.
+The tiers merge as a union rather than a sum: with `-coverpkg` the same block
+appears in every tier that built it, so a service whose logic sits behind a
+database boundary gates on the combined figure instead of on whichever tier
+ran last.
+
+```make
+cover:
+	go test ./... -covermode=atomic -coverpkg=./... -coverprofile=out/unit.out
+	go test ./... -covermode=atomic -coverpkg=./... -coverprofile=out/integration.out -tags=integration
+	@go tool lateregate cover -profile=out/unit.out -profile=out/integration.out
+```
+
 ### `hermetic` catches tests that depend on the machine
 
 Three CI failures in one day came from tests that depended on what happened to

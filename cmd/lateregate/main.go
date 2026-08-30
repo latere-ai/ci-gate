@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/cover"
@@ -56,6 +57,21 @@ tempdir takes the command to watch after --, which overrides tempdir.command:
 	lateregate tempdir -- go test -tags corpus ./...
 `
 
+// profileList collects a repeatable -profile flag, so a repository whose
+// coverage is split across test tiers gates on the merged figure rather than
+// on whichever tier ran last.
+type profileList []string
+
+func (p *profileList) String() string { return strings.Join(*p, ",") }
+
+func (p *profileList) Set(v string) error {
+	if v == "" {
+		return fmt.Errorf("a profile path cannot be empty")
+	}
+	*p = append(*p, v)
+	return nil
+}
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "lateregate:", err)
@@ -78,9 +94,14 @@ func run(argv []string, out io.Writer) error {
 	fs.SetOutput(out)
 	root := fs.String("C", ".", "repository root holding "+config.Name)
 	goBin := fs.String("go", "go", "Go toolchain to run")
-	profile := fs.String("profile", "coverage.out", "coverage profile to read (cover)")
+	var profiles profileList
+	fs.Var(&profiles, "profile",
+		"coverage profile to read (cover); repeat the flag for each test tier")
 	if err := fs.Parse(argv); err != nil {
 		return err
+	}
+	if len(profiles) == 0 {
+		profiles = profileList{"coverage.out"}
 	}
 
 	cfg, err := config.Load(*root)
@@ -91,7 +112,7 @@ func run(argv []string, out io.Writer) error {
 
 	switch cmd {
 	case "cover":
-		return cover.Run(cfg.Cover, *profile, out)
+		return cover.Run(cfg.Cover, profiles, out, cover.GoLister(*goBin, *root))
 	case "spec-lint":
 		return speclint.Run(cfg.Spec, *root, out)
 	case "hermetic":

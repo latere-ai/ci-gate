@@ -411,6 +411,9 @@ func TestDriftInASecondaryIndexTableIsReported(t *testing.T) {
 	}
 }
 
+// A tree that archives specs keeps linking them from the index. Those files
+// are outside the linted set, so the index cannot be asked to agree with them,
+// which is the rule a depends_on edge into another repository already gets.
 func TestAnIndexRowIntoASubdirectoryIsLeftAlone(t *testing.T) {
 	root := tree(t, map[string]string{
 		"001-a.md": spec("draft"),
