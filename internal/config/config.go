@@ -45,6 +45,8 @@ type Config struct {
 	CgoFree   CgoFree   `yaml:"cgo_free"`
 	TempDir   TempDir   `yaml:"tempdir"`
 	License   License   `yaml:"license"`
+
+	OtelClient OtelClient `yaml:"otel_client"`
 }
 
 // License configures the per-file licence notice gate.
@@ -318,6 +320,15 @@ type CgoFree struct {
 	// Skip names directories the scan does not enter, besides .git and
 	// testdata. Keep it short: a directory skipped here is one the promise
 	// does not cover.
+	Skip []string `yaml:"skip"`
+}
+
+// OtelClient configures the outbound-client instrumentation gate.
+type OtelClient struct {
+	// Skip names directories the scan does not enter, besides .git,
+	// .claude, testdata and node_modules. A directory skipped here is one whose
+	// outbound calls nobody is asserting anything about, so keep it short.
+	// Prefer skipping a build-tagged harness over a directory of real code.
 	Skip []string `yaml:"skip"`
 }
 

@@ -42,6 +42,7 @@ Commands:
 	modernize   fail on code the standard library already covers
 	depcheck    fail when a build reaches a dependency nobody admitted
 	cgo-free    fail on any Go file that imports \"C\"
+	otel-client fail on an outbound HTTP client with no tracing transport
 	license     fail on a source file without the declared SPDX notice
 	golangci    render the shared .golangci.yml (generated, gitignored)
 	tempdir     run the suite against an empty TMPDIR and fail on what survives
@@ -103,6 +104,8 @@ func run(argv []string, out io.Writer) error {
 		return license.Run(cfg.License, *root, out)
 	case "cgo-free":
 		return gates.CgoFree(*root, out, cfg.CgoFree.Skip)
+	case "otel-client":
+		return gates.OtelClient(*root, out, cfg.OtelClient.Skip)
 	case "tempdir":
 		return gates.TempDir(cfg.TempDir, fs.Args(), out, exec)
 	case "golangci":
