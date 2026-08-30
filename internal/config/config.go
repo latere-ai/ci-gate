@@ -42,6 +42,7 @@ type Config struct {
 	Modernize Modernize `yaml:"modernize"`
 	Depcheck  Depcheck  `yaml:"depcheck"`
 	CgoFree   CgoFree   `yaml:"cgo_free"`
+	TempDir   TempDir   `yaml:"tempdir"`
 }
 
 // Cover configures the per-package coverage gate.
@@ -198,6 +199,48 @@ type CgoFree struct {
 	Skip []string `yaml:"skip"`
 }
 
+// TempDir configures the temporary-directory leak gate.
+type TempDir struct {
+	// Command is the test run the gate watches. Empty means `go test ./...`.
+	//
+	// It is configurable because the property has nothing to do with Go: a
+	// process that makes a directory under TMPDIR and exits without removing
+	// it has leaked it, whatever language it was written in. A repo whose
+	// suite is pytest or cargo names its own runner here.
+	//
+	// Name the run that exercises the most code. A leak the gate never
+	// executes is a leak it reports as absent, and the slow suites are
+	// exactly the ones that build caches worth gigabytes.
+	Command []string `yaml:"command"`
+
+	// Allow maps the prefix of a surviving entry to why it may survive.
+	//
+	// The value is the reason, as in cover.exempt, and Load rejects an empty
+	// one. Almost nothing belongs here: a directory that outlives the run is
+	// a directory nobody will ever delete. The honest entry is a run that
+	// deliberately keeps its work, such as a `go build -work` under test.
+	Allow map[string]string `yaml:"allow"`
+}
+
+// AllowedFor reports whether a surviving entry was admitted, and why.
+// Matching is by prefix because a temporary name carries a random suffix.
+func (t TempDir) AllowedFor(name string) (string, bool) {
+	for prefix, why := range t.Allow {
+		if strings.HasPrefix(name, prefix) {
+			return why, true
+		}
+	}
+	return "", false
+}
+
+// Argv is the command the gate runs, with the default applied.
+func (t TempDir) Argv() []string {
+	if len(t.Command) == 0 {
+		return []string{"go", "test", "./..."}
+	}
+	return t.Command
+}
+
 // Modernize configures the `go fix` gate.
 type Modernize struct {
 	// Disable names fixers to turn off. A repo that disables a fixer is
@@ -264,6 +307,19 @@ func (c *Config) validate(path string) error {
 			"admitting a dependency is a decision: write why the build may reach "+
 			"it, or delete the entry",
 			path, strings.Join(noReason, ", "))
+	}
+	var unowned []string
+	for prefix, why := range c.TempDir.Allow {
+		if strings.TrimSpace(why) == "" {
+			unowned = append(unowned, prefix)
+		}
+	}
+	if len(unowned) > 0 {
+		sort.Strings(unowned)
+		return fmt.Errorf("%s: tempdir allowance without a reason: %s\n"+
+			"a directory that outlives the test run is one nobody will delete: "+
+			"write why this one may, or delete the entry",
+			path, strings.Join(unowned, ", "))
 	}
 	if t := c.Cover.Threshold; t < 0 || t > 100 {
 		return fmt.Errorf("%s: cover.threshold %.1f is not a percentage", path, t)

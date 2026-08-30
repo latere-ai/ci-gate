@@ -176,3 +176,40 @@ depcheck:
 		t.Errorf("packages = %+v", c.Depcheck.Packages)
 	}
 }
+
+// An entry here says a directory may outlive the test run. Nearly nothing
+// should, so the entry has to carry the argument for itself.
+func TestATempDirAllowanceWithoutAReasonIsRejected(t *testing.T) {
+	dir := write(t, "tempdir:\n  allow:\n    go-build: \"\"\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("an allowance with no reason must fail the load")
+	}
+	for _, want := range []string{"go-build", "nobody will delete"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+func TestTempDirIsRead(t *testing.T) {
+	c, err := Load(write(t, `
+tempdir:
+  command: [make, test-all]
+  allow:
+    go-build: the toolchain cache a -work run keeps on purpose
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(c.TempDir.Argv(), " "); got != "make test-all" {
+		t.Errorf("Argv = %q, want the configured command", got)
+	}
+	// Prefix matching, because a temporary name carries a random suffix.
+	if why, ok := c.TempDir.AllowedFor("go-build4413"); !ok || why == "" {
+		t.Errorf("AllowedFor(go-build4413) = %q, %v; want the reason", why, ok)
+	}
+	if _, ok := c.TempDir.AllowedFor("nanogo-corpus77"); ok {
+		t.Error("an unlisted prefix must not be admitted")
+	}
+}
