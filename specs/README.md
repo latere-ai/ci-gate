@@ -12,6 +12,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 001 | [What makes something a gate here](001-gate-principles.md) | complete | Runs locally, config in the consumer, reasons are mandatory, nothing passes vacuously |
 | 002 | [Gate this repository's own dependency graph](002-dependency-footprint.md) | complete | A `depcheck` subcommand, so the argument for this repo's existence stays true |
 | 003 | [Gate the temporary directories a test run leaves behind](003-tempdir-leaks.md) | complete | A `tempdir` subcommand: run the suite against an empty TMPDIR, fail on survivors |
+| 004 | [Gate the licence notice every source file carries](004-license-headers.md) | draft | A `license` subcommand: every source file carries the SPDX notice the repo declared |
 
 ## Conventions
 
