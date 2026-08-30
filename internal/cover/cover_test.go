@@ -65,7 +65,7 @@ func TestEveryPackageClearingTheFloorPasses(t *testing.T) {
 	}
 }
 
-// The behaviour learned the hard way: with -coverpkg=./... a block appears
+// The behavior learned the hard way: with -coverpkg=./... a block appears
 // once per test binary that executed it. Counting each appearance inflates
 // the totals, so a block is counted once and covered if any run covered it.
 func TestARepeatedBlockIsCountedOnce(t *testing.T) {

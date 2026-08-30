@@ -10,6 +10,7 @@
 package gates
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -33,7 +34,7 @@ type Exec func(env []string, stream bool, name string, args ...string) ([]byte, 
 // another reports on the wrong tree.
 func OSExec(dir string, out io.Writer) Exec {
 	return func(env []string, stream bool, name string, args ...string) ([]byte, error) {
-		cmd := exec.Command(name, args...)
+		cmd := exec.CommandContext(context.Background(), name, args...)
 		cmd.Dir = dir
 		if env != nil {
 			cmd.Env = env
@@ -156,6 +157,7 @@ func Modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec) erro
 		// An empty patch with a non-zero exit is a build error, and the build
 		// is another gate's job.
 		_, _ = fmt.Fprintln(out, "no modernization found (go fix reported no patch)")
+		//nolint:nilerr // the exit code is a build error, not this gate's to report
 		return nil
 	}
 	_, _ = fmt.Fprintln(out, "no modernization found")

@@ -239,13 +239,12 @@ func TestSloglintIsRenderedWithItsScope(t *testing.T) {
 	if got := linters["settings"].(map[string]any)["sloglint"].(map[string]any)["context"]; got != "all" {
 		t.Errorf("context = %v, want all", got)
 	}
-	rules := linters["exclusions"].(map[string]any)["rules"].([]any)
-	first := rules[0].(map[string]any)
-	if first["path-except"] != "internal/(handler|server)/" {
-		t.Errorf("scope = %v", first["path-except"])
+	scope := ruleWith(t, linters, "path-except")
+	if scope["path-except"] != "internal/(handler|server)/" {
+		t.Errorf("scope = %v", scope["path-except"])
 	}
-	if !slices.Contains(anyStrings(first["linters"]), "sloglint") {
-		t.Errorf("the exclusion must name sloglint: %v", first["linters"])
+	if !slices.Contains(anyStrings(scope["linters"]), "sloglint") {
+		t.Errorf("the exclusion must name sloglint: %v", scope["linters"])
 	}
 }
 
@@ -258,12 +257,15 @@ func TestSloglintCarriesFurtherExemptPaths(t *testing.T) {
 		Exempt:       []string{`internal/http/api/(runs_sweeper|runs_store)\.go`},
 	}))
 	linters := doc["linters"].(map[string]any)
-	rules := linters["exclusions"].(map[string]any)["rules"].([]any)
-	if len(rules) != 2 {
-		t.Fatalf("want two rules, got %d", len(rules))
+	var exempt any
+	for _, r := range linters["exclusions"].(map[string]any)["rules"].([]any) {
+		m := r.(map[string]any)
+		if slices.Contains(anyStrings(m["linters"]), "sloglint") && m["path"] != nil {
+			exempt = m["path"]
+		}
 	}
-	if got := rules[1].(map[string]any)["path"]; got != `internal/http/api/(runs_sweeper|runs_store)\.go` {
-		t.Errorf("exempt path = %v", got)
+	if exempt != `internal/http/api/(runs_sweeper|runs_store)\.go` {
+		t.Errorf("exempt path = %v", exempt)
 	}
 	if got := linters["settings"].(map[string]any)["sloglint"].(map[string]any)["context"]; got != "scope" {
 		t.Errorf("context = %v, want scope", got)
@@ -318,13 +320,50 @@ func anyStrings(v any) []string {
 	return out
 }
 
-// A repository that does not serve requests gets no sloglint and no empty
-// exclusions block, which golangci-lint would reject.
-func TestNoSloglintMeansNoExclusionsBlock(t *testing.T) {
-	got := mustRender(t, "m", nil, nil)
-	for _, unwanted := range []string{"sloglint", "exclusions:", "path-except:"} {
-		if strings.Contains(got, unwanted) {
-			t.Errorf("unconfigured sloglint should emit no %q:\n%s", unwanted, got)
+// A repository that does not serve requests gets no sloglint, and no rule
+// mentioning it -- the shared test-file exclusion stays, because that one is
+// not about sloglint at all.
+func TestNoSloglintMeansNoSloglintRule(t *testing.T) {
+	doc := parseRendered(t, mustRender(t, "m", nil, nil))
+	linters := doc["linters"].(map[string]any)
+	if slices.Contains(anyStrings(linters["enable"]), "sloglint") {
+		t.Error("sloglint enabled without configuration")
+	}
+	if _, ok := linters["settings"].(map[string]any)["sloglint"]; ok {
+		t.Error("sloglint settings emitted without configuration")
+	}
+	for _, r := range linters["exclusions"].(map[string]any)["rules"].([]any) {
+		if slices.Contains(anyStrings(r.(map[string]any)["linters"]), "sloglint") {
+			t.Errorf("a sloglint exclusion was emitted without configuration: %v", r)
+		}
+	}
+}
+
+// ruleWith returns the first exclusion rule carrying a key, so the tests do not
+// depend on the order rules happen to be emitted in.
+func ruleWith(t *testing.T, linters map[string]any, key string) map[string]any {
+	t.Helper()
+	for _, r := range linters["exclusions"].(map[string]any)["rules"].([]any) {
+		m := r.(map[string]any)
+		if _, ok := m[key]; ok {
+			return m
+		}
+	}
+	t.Fatalf("no exclusion rule with %q", key)
+	return nil
+}
+
+// Tests are excluded from the linters that fire on deliberate error paths and
+// constructed fixture paths, for every repository rather than one.
+func TestTestFilesAreExcludedFromTheDeliberateErrorLinters(t *testing.T) {
+	linters := parseRendered(t, mustRender(t, "m", nil, nil))["linters"].(map[string]any)
+	rule := ruleWith(t, linters, "path")
+	if rule["path"] != `_test\.go` {
+		t.Errorf("path = %v", rule["path"])
+	}
+	for _, want := range []string{"errcheck", "noctx", "errchkjson"} {
+		if !slices.Contains(anyStrings(rule["linters"]), want) {
+			t.Errorf("%s should be excluded in tests: %v", want, rule["linters"])
 		}
 	}
 }

@@ -4,6 +4,7 @@
 package depcheck
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,7 +22,7 @@ func GoLister(goBin, dir string) Lister {
 		if err != nil {
 			return nil, err
 		}
-		cmd := exec.Command(goBin, "list", "-deps",
+		cmd := exec.CommandContext(context.Background(), goBin, "list", "-deps",
 			"-f", "{{if .Module}}{{.ImportPath}} {{.Module.Path}}{{end}}", pkg)
 		cmd.Dir = dir
 		cmd.Env = os.Environ()
@@ -51,7 +52,7 @@ func GoLister(goBin, dir string) Lister {
 }
 
 func mainModule(goBin, dir string) (string, error) {
-	cmd := exec.Command(goBin, "list", "-m")
+	cmd := exec.CommandContext(context.Background(), goBin, "list", "-m")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {

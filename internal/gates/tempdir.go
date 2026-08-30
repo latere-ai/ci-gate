@@ -165,6 +165,7 @@ func treeSize(path string) int64 {
 	// The callback never returns an error -- an unreadable entry is skipped,
 	// because a size is best-effort -- so WalkDir's own error is always nil.
 	_ = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
+		//nolint:nilerr // an unreadable entry is skipped: a size is best-effort
 		if err != nil || d.IsDir() {
 			return nil
 		}
