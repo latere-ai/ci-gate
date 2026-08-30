@@ -50,3 +50,11 @@ tempdir:
   # coverage lives behind a build tag or a slower target names it here: a leak
   # the gate never executes is a leak it reports as absent.
   allow: {}
+
+license:
+  # The identifier every source file carries, and the holder it names. There
+  # is no default: an identifier guessed on a repository's behalf would be
+  # printed into every file it has. Declaring it here is what the gate checks
+  # the tree against.
+  spdx: MIT
+  holder: Latere AI

@@ -1,6 +1,6 @@
 ---
 title: Gate the licence notice every source file carries
-status: draft
+status: complete
 depends_on:
   - 001-gate-principles.md
 affects:
@@ -146,19 +146,28 @@ catches a wrong `extensions` entry or a root pointed at the wrong directory.
 A gate reporting "0 files, all correct" is the failure mode that makes every
 other gate here suspicious.
 
+## What shipped
+
+- `lateregate license`, and `make license` in this repository.
+- `license.spdx`, `license.holder`, `license.extensions` and `license.skip`
+  in `.lateregate.yaml`, the extension list validated against the set the
+  scanner can read a notice from.
+- This repository's own 24 Go files moved from the prose notice to the SPDX
+  form, which is the change that made the old one's unreadability concrete.
+
 ## Acceptance
 
-- [ ] A file with the two lines and a blank third passes.
-- [ ] A missing header fails and the file is named.
-- [ ] A header whose identifier differs from `license.spdx` fails, and the
+- [x] A file with the two lines and a blank third passes.
+- [x] A missing header fails and the file is named.
+- [x] A header whose identifier differs from `license.spdx` fails, and the
       failure prints both values.
-- [ ] A header whose holder differs from `license.holder` fails.
-- [ ] A header with no blank line before the doc comment fails.
-- [ ] A year range passes; a missing year fails.
-- [ ] A `//go:build` line between the header and `package` passes.
-- [ ] `license.spdx` unset fails with a message naming the field.
-- [ ] A repository with no root `LICENSE` fails.
-- [ ] An extension the gate has no comment syntax for is rejected by
+- [x] A header whose holder differs from `license.holder` fails.
+- [x] A header with no blank line before the doc comment fails.
+- [x] A year range passes; a missing year fails.
+- [x] A `//go:build` line between the header and `package` passes.
+- [x] `license.spdx` unset fails with a message naming the field.
+- [x] A repository with no root `LICENSE` fails.
+- [x] An extension the gate has no comment syntax for is rejected by
       `config.Load`, not at scan time.
-- [ ] A scan that matched no file fails.
-- [ ] This repository gates itself: all 22 Go files carry the MIT form.
+- [x] A scan that matched no file fails.
+- [x] This repository gates itself: all 22 Go files carry the MIT form.

@@ -37,6 +37,9 @@ spec-lint:
 
 test-tempdir:
 	@go tool lateregate tempdir
+
+license:
+	@go tool lateregate license
 ```
 
 `fmt-check` and `modernize` need no configuration. The rest read
@@ -52,6 +55,7 @@ test-tempdir:
 | `hermetic` | the suite passes with only the toolchain on `PATH` | the directories you allow |
 | `spec-lint` | the spec tree agrees with itself and with its index | your spec conventions |
 | `tempdir` | the suite leaves nothing behind under `TMPDIR` | the prefixes you allow |
+| `license` | every source file carries the SPDX notice the repo declared | the identifier and holder |
 
 ### `cover` gates per package, not on average
 
@@ -141,6 +145,52 @@ resets the environment would otherwise score perfectly having proved nothing.
 And when the suite fails *and* leaks, the leak is the verdict, because a red
 suite gets re-run while a leak that only surfaces on a green one is never
 seen.
+
+### `license` puts the terms on the file, not only at the root
+
+A `LICENSE` at the root binds whoever clones the repository and reads it. Code
+mostly travels some other way: pasted into an issue, vendored into another
+tree, walked by an SBOM scanner, lifted into a corpus. Every one of those
+routes drops the root file.
+
+Four repositories here had three different answers, and nobody noticed because
+nothing asserted anything: one carried a prose notice on every file, two
+carried none, and one said "Proprietary" in its README while going open
+source. The prose form was not machine-readable either. No scanner turns
+"Licensed under the MIT License." into an identifier without guessing.
+
+```yaml
+license:
+  spdx: AGPL-3.0-or-later
+  holder: Latere AI
+  # Unset means .go. All the extensions the gate reads take // comments.
+  extensions: ['.go', '.ts', '.tsx', '.mjs']
+  skip: [dist]
+```
+
+The notice is the first two lines and then a blank one:
+
+```go
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// Package audit decides what a paper released.
+package audit
+```
+
+`spdx` has no default, and a repository that runs the gate without one gets an
+error rather than a pass. That is the opposite of every other gate here, and
+it has to be: an identifier guessed on your behalf and printed into 300 files
+is worse than none. For the same reason the gate does not read `LICENSE` and
+infer the identifier from its text, though it does check the file is there.
+
+Two details the check earns its keep on. The **blank third line** is part of
+it: in Go a comment block touching `package` *is* the package documentation,
+so an unseparated notice puts the licence at the top of every page on
+pkg.go.dev, and the mistake is invisible in review and permanent once it is in
+every file. And the **year is a pattern**, `2026` or `2024-2026`, not a fixed
+value, because a gate that goes red every 1 January for a reason nobody caused
+is a gate people learn to skip.
 
 ### `spec-lint` keeps the index honest
 

@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: build test cover test-hermetic test-tempdir test-race fmt fmt-check lint-modernize spec-lint
+.PHONY: build test cover test-hermetic test-tempdir test-race fmt fmt-check lint-modernize spec-lint license
 
 build:
 	$(GO) build ./...
@@ -63,3 +63,9 @@ lint: lint-config
 # rows, dependency edges and wikilinks. Conventions live in .lateregate.yaml.
 spec-lint:
 	@$(GO) run ./cmd/lateregate spec-lint
+
+# Every source file carries the licence this repository declared, in the SPDX
+# form a scanner reads. A licence only in the root file binds whoever clones
+# the repository; code travels by being pasted, vendored and scanned.
+license:
+	@$(GO) run ./cmd/lateregate license
