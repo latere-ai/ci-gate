@@ -40,10 +40,15 @@ Commands:
 	modernize   fail on code the standard library already covers
 	depcheck    fail when a build reaches a dependency nobody admitted
 	cgo-free    fail on any Go file that imports \"C\"
+	tempdir     run the suite against an empty TMPDIR and fail on what survives
 
 Every command reads .lateregate.yaml from -C (default: the working
 directory). A missing file means defaults, so a repository can adopt the
 required gates without writing config.
+
+tempdir takes the command to watch after --, which overrides tempdir.command:
+
+	lateregate tempdir -- go test -tags corpus ./...
 `
 
 func main() {
@@ -92,6 +97,8 @@ func run(argv []string, out io.Writer) error {
 		return gates.Modernize(cfg.Modernize, *goBin, out, exec)
 	case "cgo-free":
 		return gates.CgoFree(*root, out, cfg.CgoFree.Skip)
+	case "tempdir":
+		return gates.TempDir(cfg.TempDir, fs.Args(), out, exec)
 	case "depcheck":
 		return depcheck.Run(cfg.Depcheck, out, depcheck.GoLister(*goBin, *root))
 	default:

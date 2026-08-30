@@ -112,3 +112,13 @@ func TestHermeticReportsAMissingToolchain(t *testing.T) {
 		t.Fatal("a missing toolchain must fail")
 	}
 }
+
+// tempdir takes its command after --, so a repo that is not a Go module still
+// reaches the gate. `true` touches nothing, which is the vacuous-pass refusal
+// and proves the argv reached the gate.
+func TestTempDirTakesItsCommandAfterTheSeparator(t *testing.T) {
+	_, err := out(t, "tempdir", "-C", t.TempDir(), "--", "true")
+	if err == nil || !strings.Contains(err.Error(), "did not use it") {
+		t.Fatalf("want the unused-sandbox refusal, got %v", err)
+	}
+}
