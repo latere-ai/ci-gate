@@ -1,5 +1,5 @@
-// Copyright 2026 Latere AI.
-// Licensed under the MIT License.
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: MIT
 
 // Package depcheck gates what a package's build is allowed to reach.
 //
