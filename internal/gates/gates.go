@@ -197,7 +197,7 @@ func hasFixer(help, name string) bool {
 // in it cannot split a record.
 func nulSeparated(s string) []string {
 	var out []string
-	for _, p := range strings.Split(s, "\x00") {
+	for p := range strings.SplitSeq(s, "\x00") {
 		if p != "" {
 			out = append(out, p)
 		}

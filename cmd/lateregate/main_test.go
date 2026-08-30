@@ -102,8 +102,18 @@ func TestSpecLintIsANoopWithoutConfig(t *testing.T) {
 // The gates that shell out are wired to a real toolchain here, which is what
 // makes this a check of the wiring rather than of the logic.
 func TestFmtCheckRunsAgainstThisRepository(t *testing.T) {
-	if _, err := out(t, "fmt-check", "-C", t.TempDir()); err != nil {
+	// The repository root, not a temp directory: the file list comes from git
+	// now, and an empty directory proves nothing. It used to pass here by
+	// scanning nothing at all.
+	if _, err := out(t, "fmt-check", "-C", "../.."); err != nil {
 		t.Errorf("this repository is gofmt-clean, so the gate should pass: %v", err)
+	}
+}
+
+// A directory git knows nothing about is not a formatted repository.
+func TestFmtCheckFailsOutsideACheckout(t *testing.T) {
+	if _, err := out(t, "fmt-check", "-C", t.TempDir()); err == nil {
+		t.Error("a non-checkout must fail rather than report a clean tree")
 	}
 }
 
