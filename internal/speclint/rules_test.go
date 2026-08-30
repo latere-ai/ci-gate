@@ -171,3 +171,101 @@ func TestATableInACodeFenceIsNotATable(t *testing.T) {
 		t.Errorf("a fenced example is not a table: %v", got)
 	}
 }
+
+func registerCfg() config.Spec {
+	return config.Spec{Register: config.Register{
+		File: "010-c.md", Define: `(?m)^\| (C\d+) \|`,
+		Cite: `010 (C\d+)|\b(C\d+)\]\(010-c\.md\)`, Sequential: true, Prefix: "C",
+	}}
+}
+
+func registerSpecs(t *testing.T, table, citing string) []Spec {
+	t.Helper()
+	return []Spec{
+		parse(t, "010-c.md", "---\nstatus: record\n---\n"+table),
+		parse(t, "011-d.md", "---\nstatus: draft\n---\n"+citing),
+	}
+}
+
+func TestAWellFormedRegisterPasses(t *testing.T) {
+	specs := registerSpecs(t, "| C1 | a |\n| C2 | b |\n", "see 010 C2\n")
+	if got := CheckRegister(registerCfg(), specs); got != nil {
+		t.Errorf("a complete register with a live citation should pass: %v", got)
+	}
+}
+
+// A gap means a row was deleted, and every number after it now means something
+// other than what a reader citing it meant.
+func TestAGapInTheRegisterIsReported(t *testing.T) {
+	specs := registerSpecs(t, "| C1 | a |\n| C3 | c |\n", "")
+	got := joined(CheckRegister(registerCfg(), specs))
+	if !strings.Contains(got, "no C2") {
+		t.Errorf("the gap must be named:\n%s", got)
+	}
+}
+
+func TestADuplicateRegisterRowIsReported(t *testing.T) {
+	specs := registerSpecs(t, "| C1 | a |\n| C1 | again |\n", "")
+	if got := joined(CheckRegister(registerCfg(), specs)); !strings.Contains(got, "appears twice") {
+		t.Errorf("a repeated id must be reported:\n%s", got)
+	}
+}
+
+func TestACitationOfAMissingRowIsReported(t *testing.T) {
+	specs := registerSpecs(t, "| C1 | a |\n", "as 010 C7 says\n")
+	got := joined(CheckRegister(registerCfg(), specs))
+	if !strings.Contains(got, "011-d.md cites register row C7") {
+		t.Errorf("a dangling citation must be reported:\n%s", got)
+	}
+}
+
+// One pattern carries several citation shapes as alternatives, so the first
+// non-empty group is the id.
+func TestTheSecondCitationShapeAlsoResolves(t *testing.T) {
+	specs := registerSpecs(t, "| C1 | a |\n", "see [C9](010-c.md)\n")
+	if got := joined(CheckRegister(registerCfg(), specs)); !strings.Contains(got, "C9") {
+		t.Errorf("the link form must be read too:\n%s", got)
+	}
+}
+
+// The register is not a citation of itself: its own rows name every id.
+func TestTheRegisterDoesNotCiteItself(t *testing.T) {
+	specs := registerSpecs(t, "| C1 | a, see 010 C1 |\n", "")
+	if got := CheckRegister(registerCfg(), specs); got != nil {
+		t.Errorf("the owning spec must be skipped: %v", got)
+	}
+}
+
+func TestAnEmptyRegisterIsReported(t *testing.T) {
+	specs := registerSpecs(t, "no table here\n", "")
+	if got := joined(CheckRegister(registerCfg(), specs)); !strings.Contains(got, "defines no rows") {
+		t.Errorf("a register that matches nothing must fail, not pass:\n%s", got)
+	}
+}
+
+func TestAMissingRegisterFileIsReported(t *testing.T) {
+	cfg := registerCfg()
+	cfg.Register.File = "999-gone.md"
+	if got := joined(CheckRegister(cfg, registerSpecs(t, "| C1 | a |\n", ""))); !strings.Contains(got, "not a spec in the tree") {
+		t.Errorf("a register pointing at nothing must be reported:\n%s", got)
+	}
+}
+
+func TestRegisterIsOffByDefault(t *testing.T) {
+	if got := CheckRegister(config.Spec{}, nil); got != nil {
+		t.Errorf("no register configured should check nothing, got %v", got)
+	}
+}
+
+func TestInvalidRegisterPatternsAreReported(t *testing.T) {
+	cfg := registerCfg()
+	cfg.Register.Define = "("
+	if got := joined(CheckRegister(cfg, nil)); !strings.Contains(got, "not a valid pattern") {
+		t.Errorf("a broken define pattern must be reported: %q", got)
+	}
+	cfg = registerCfg()
+	cfg.Register.Cite = "("
+	if got := joined(CheckRegister(cfg, registerSpecs(t, "| C1 | a |\n", ""))); !strings.Contains(got, "not a valid pattern") {
+		t.Errorf("a broken cite pattern must be reported: %q", got)
+	}
+}

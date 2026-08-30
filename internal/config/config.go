@@ -95,6 +95,29 @@ type Spec struct {
 	ScopedIDs string `yaml:"scoped_ids"`
 	// Tables turns on the table well-formedness check.
 	Tables bool `yaml:"tables"`
+	// Register gates a table of identifiers that one spec defines and the
+	// rest of the tree cites.
+	Register Register `yaml:"register"`
+}
+
+// Register describes an id table one spec owns.
+//
+// A tree that numbers something -- conformance rows, requirements, risks --
+// and cites those numbers from elsewhere has two failures nothing else sees:
+// a gap, which means a row was deleted and the numbers after it now mean
+// something different, and a citation of a row that does not exist.
+type Register struct {
+	// File is the spec that defines the rows. Empty disables the check.
+	File string `yaml:"file"`
+	// Define matches a defining row; its first group is the id.
+	Define string `yaml:"define"`
+	// Cite matches a citation elsewhere in the tree. The first non-empty
+	// group is the id, so one pattern can carry several citation shapes.
+	Cite string `yaml:"cite"`
+	// Sequential requires the ids to run from 1 with no gaps, given Prefix.
+	Sequential bool `yaml:"sequential"`
+	// Prefix is the letter the numbers carry, e.g. "C" for C1, C2.
+	Prefix string `yaml:"prefix"`
 }
 
 // StatusRule is one status-to-frontmatter-key rule.

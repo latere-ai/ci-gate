@@ -8,6 +8,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"latere.ai/x/ci-gate/internal/config"
@@ -227,4 +228,90 @@ func CheckTables(specs []Spec) []string {
 func tableCells(row string) int {
 	hidden := strings.ReplaceAll(row, `\|`, "\x00")
 	return len(strings.Split(strings.TrimSpace(hidden), "|")) - 2
+}
+
+// CheckRegister reports gaps in an id register and citations of rows that do
+// not exist.
+//
+// A gap means a row was deleted, and every number after it now means something
+// other than what a reader citing it meant. A dangling citation is the same
+// drift one level up, and neither is visible in review.
+func CheckRegister(cfg config.Spec, specs []Spec) []string {
+	r := cfg.Register
+	if r.File == "" || r.Define == "" {
+		return nil
+	}
+	define, err := regexp.Compile(r.Define)
+	if err != nil {
+		return []string{fmt.Sprintf("register.define is not a valid pattern: %v", err)}
+	}
+
+	var owner *Spec
+	for i := range specs {
+		if specs[i].Name == r.File {
+			owner = &specs[i]
+			break
+		}
+	}
+	if owner == nil {
+		return []string{fmt.Sprintf("register.file %s is not a spec in the tree", r.File)}
+	}
+
+	var out []string
+	rows := map[string]bool{}
+	for _, m := range define.FindAllStringSubmatch(owner.body, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		if rows[m[1]] {
+			out = append(out, fmt.Sprintf("%s: register row %s appears twice", r.File, m[1]))
+		}
+		rows[m[1]] = true
+	}
+	if len(rows) == 0 {
+		return append(out, fmt.Sprintf("%s: the register defines no rows; has the table shape changed?", r.File))
+	}
+
+	if r.Sequential {
+		for i := 1; i <= len(rows); i++ {
+			id := r.Prefix + strconv.Itoa(i)
+			if !rows[id] {
+				out = append(out, fmt.Sprintf("%s: the register has %d rows and no %s; a gap "+
+					"means a row was deleted", r.File, len(rows), id))
+			}
+		}
+	}
+
+	if r.Cite == "" {
+		return out
+	}
+	cite, err := regexp.Compile(r.Cite)
+	if err != nil {
+		return append(out, fmt.Sprintf("register.cite is not a valid pattern: %v", err))
+	}
+	for _, s := range specs {
+		if s.Name == r.File {
+			continue // the register is not a citation of itself
+		}
+		for _, m := range cite.FindAllStringSubmatch(s.body, -1) {
+			id := firstGroup(m)
+			if id == "" || rows[id] {
+				continue
+			}
+			out = append(out, fmt.Sprintf("%s cites register row %s, which %s does not have",
+				s.Name, id, r.File))
+		}
+	}
+	return out
+}
+
+// firstGroup returns the first non-empty capture, so one pattern can carry
+// several citation shapes as alternatives.
+func firstGroup(m []string) string {
+	for _, g := range m[1:] {
+		if g != "" {
+			return g
+		}
+	}
+	return ""
 }
