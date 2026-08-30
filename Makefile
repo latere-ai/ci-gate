@@ -5,7 +5,7 @@ GO ?= go
 build:
 	$(GO) build ./...
 
-test:
+test: lint-config
 	$(GO) vet ./...
 	$(GO) test ./...
 
@@ -42,9 +42,9 @@ fmt-check:
 lint-modernize:
 	@$(GO) run ./cmd/lateregate modernize
 
-# .golangci.yml is generated: golangci-lint cannot inherit a shared config, so
-# it is rendered from this module and checked here. Regenerate with
-# `go run ./cmd/lateregate golangci -write`.
+# .golangci.yml is generated and gitignored: golangci-lint cannot inherit a
+# shared config, so it is rendered here on every run. Regenerating rather than
+# committing is what makes divergence impossible instead of merely detectable.
 lint-config:
 	@$(GO) run ./cmd/lateregate golangci
 

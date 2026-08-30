@@ -41,7 +41,7 @@ Commands:
 	modernize   fail on code the standard library already covers
 	depcheck    fail when a build reaches a dependency nobody admitted
 	cgo-free    fail on any Go file that imports \"C\"
-	golangci    check (or -write) the generated .golangci.yml
+	golangci    render the shared .golangci.yml (generated, gitignored)
 	tempdir     run the suite against an empty TMPDIR and fail on what survives
 
 Every command reads .lateregate.yaml from -C (default: the working
@@ -76,7 +76,6 @@ func run(argv []string, out io.Writer) error {
 	root := fs.String("C", ".", "repository root holding "+config.Name)
 	goBin := fs.String("go", "go", "Go toolchain to run")
 	profile := fs.String("profile", "coverage.out", "coverage profile to read (cover)")
-	write := fs.Bool("write", false, "write the file instead of checking it (golangci)")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -103,18 +102,11 @@ func run(argv []string, out io.Writer) error {
 	case "tempdir":
 		return gates.TempDir(cfg.TempDir, fs.Args(), out, exec)
 	case "golangci":
-		if *write {
-			path, err := golangci.Write(*root, cfg, *goBin)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(out, "wrote "+path)
-			return nil
-		}
-		if err := golangci.Check(*root, cfg, *goBin); err != nil {
+		path, err := golangci.Write(*root, cfg, *goBin)
+		if err != nil {
 			return err
 		}
-		fmt.Fprintln(out, golangci.Name+" matches the shared configuration")
+		fmt.Fprintln(out, "wrote "+path)
 		return nil
 	case "depcheck":
 		return depcheck.Run(cfg.Depcheck, out, depcheck.GoLister(*goBin, *root))

@@ -5,6 +5,7 @@ package golangci
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,9 +21,12 @@ func TestRenderCarriesTheModulePath(t *testing.T) {
 	if !strings.Contains(got, "Do not edit") {
 		t.Error("a generated file must say so")
 	}
-	// A reader who finds the file wrong needs the command, not a hunt.
-	if !strings.Contains(got, "lateregate golangci -write") {
-		t.Error("the header must say how to regenerate it")
+	// A reader who finds the file wrong needs to know it is generated, that
+	// committing it is a mistake, and where the real source is.
+	for _, want := range []string{"do not commit", "gitignored", "ci-gate", ".lateregate.yaml"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the header must mention %q:\n%s", want, got)
+		}
 	}
 }
 
@@ -57,56 +61,73 @@ func repo(t *testing.T, files map[string]string) string {
 	return root
 }
 
-func TestWriteThenCheckAgrees(t *testing.T) {
-	root := repo(t, nil)
-	cfg := &config.Config{Modernize: config.Modernize{Disable: []string{"newexpr"}}}
-	if _, err := Write(root, cfg, "go"); err != nil {
-		t.Fatal(err)
-	}
-	if err := Check(root, cfg, "go"); err != nil {
-		t.Fatalf("a file just written must pass its own check: %v", err)
-	}
-}
-
-// The failure the whole design exists to make impossible: a config that drifts
-// from the shared one and nobody notices.
-func TestCheckFailsOnAnEditedFile(t *testing.T) {
+// Regenerating on every run is what makes drift impossible: a hand edit does
+// not survive the next Write, so there is nothing to detect.
+func TestWriteOverwritesAHandEdit(t *testing.T) {
 	root := repo(t, nil)
 	cfg := &config.Config{Modernize: config.Modernize{Disable: []string{"newexpr"}}}
 	if _, err := Write(root, cfg, "go"); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, Name)
-	body, _ := os.ReadFile(path)
-	if err := os.WriteFile(path, append(body, []byte("\n# hand edit\n")...), 0o644); err != nil {
+	first, _ := os.ReadFile(path)
+	if err := os.WriteFile(path, []byte("version: \"2\"\n# hand edit\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := Check(root, cfg, "go")
-	if err == nil {
-		t.Fatal("an edited file must fail the check")
+	if _, err := Write(root, cfg, "go"); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "-write") {
-		t.Errorf("the error must say how to fix it, got %v", err)
+	again, _ := os.ReadFile(path)
+	if string(again) != string(first) {
+		t.Error("a hand edit must not survive regeneration")
+	}
+	if strings.Contains(string(again), "hand edit") {
+		t.Error("the edit is still there")
 	}
 }
 
-// Changing the disabled list must move every repository, which is the point of
-// a single source.
-func TestCheckFailsWhenTheDisabledListChanges(t *testing.T) {
+// Changing the disabled list moves every repository on the next run, which is
+// the point of one source.
+func TestWriteFollowsTheDisabledList(t *testing.T) {
 	root := repo(t, nil)
 	if _, err := Write(root, &config.Config{Modernize: config.Modernize{Disable: []string{"newexpr"}}}, "go"); err != nil {
 		t.Fatal(err)
 	}
-	changed := &config.Config{Modernize: config.Modernize{Disable: []string{"newexpr", "errorsastype"}}}
-	if err := Check(root, changed, "go"); err == nil {
-		t.Fatal("a changed disable list must fail the check until the file is regenerated")
+	if _, err := Write(root, &config.Config{Modernize: config.Modernize{Disable: []string{"newexpr", "errorsastype"}}}, "go"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, Name))
+	if !strings.Contains(string(got), "errorsastype") {
+		t.Errorf("the second render should carry the new list:\n%s", got)
 	}
 }
 
-func TestCheckReportsAMissingFile(t *testing.T) {
-	err := Check(repo(t, nil), &config.Config{}, "go")
-	if err == nil || !strings.Contains(err.Error(), "does not exist") {
-		t.Fatalf("a missing file must say so, got %v", err)
+// A generated file that is also committed is two sources of truth that agree
+// until one is edited, which is the shape this design exists to avoid.
+func TestWriteRefusesATrackedFile(t *testing.T) {
+	root := repo(t, nil)
+	for _, args := range [][]string{
+		{"init", "-b", "main"}, {"add", ".golangci.yml"},
+	} {
+		if len(args) == 2 && args[0] == "add" {
+			if err := os.WriteFile(filepath.Join(root, Name), []byte("version: \"2\"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if err := cmd.Run(); err != nil {
+			t.Skipf("git unavailable: %v", err)
+		}
+	}
+	_, err := Write(root, &config.Config{}, "go")
+	if err == nil {
+		t.Fatal("writing over a tracked file must fail")
+	}
+	for _, want := range []string{"tracked by git", "gitignored", "git rm --cached"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should say %q, got %v", want, err)
+		}
 	}
 }
 
@@ -116,16 +137,6 @@ func TestAMissingModuleIsAnError(t *testing.T) {
 	}
 	if _, err := ModulePath("no-such-go-binary", "."); err == nil {
 		t.Fatal("a missing toolchain must be an error")
-	}
-}
-
-func TestCheckReportsAnUnreadableFile(t *testing.T) {
-	root := repo(t, nil)
-	if err := os.Mkdir(filepath.Join(root, Name), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := Check(root, &config.Config{}, "go"); err == nil {
-		t.Fatal("a directory in place of the file must be an error")
 	}
 }
 
