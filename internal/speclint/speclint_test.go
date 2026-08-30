@@ -410,3 +410,20 @@ func TestDriftInASecondaryIndexTableIsReported(t *testing.T) {
 		t.Errorf("report:\n%s", out)
 	}
 }
+
+func TestAnIndexRowIntoASubdirectoryIsLeftAlone(t *testing.T) {
+	root := tree(t, map[string]string{
+		"001-a.md": spec("draft"),
+		"README.md": index(
+			"| 001 | [A](001-a.md) | draft | x |",
+			"| 002 | [Retired](.archive/002-b.md) | complete | x |",
+		),
+	})
+	out, err := run(t, cfg(), root)
+	if err != nil {
+		t.Fatalf("a row pointing outside the linted set must not fail the gate:\n%s", out)
+	}
+	if strings.Contains(out, "002-b.md") {
+		t.Errorf("an archived spec is not loaded, so the index cannot be asked to agree with it:\n%s", out)
+	}
+}

@@ -326,9 +326,16 @@ func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
 			continue
 		}
 		cells := rowCells(line)
-		linkCol, target := linkCell(cells)
+		linkCol, target, href := linkCell(cells)
 		if linkCol < 0 || linkCol >= statusCol {
 			continue // prose citation, or a legend row about the status itself
+		}
+		// A row pointing into a subdirectory is pointing outside the linted
+		// set -- an archive, or another tree. Load never reads those, so the
+		// index cannot be asked to agree with them, the same way a depends_on
+		// edge into another repository is left alone.
+		if strings.Contains(href, "/") {
+			continue
 		}
 		rows++
 		spec, ok := byName[target]
@@ -363,13 +370,13 @@ func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
 
 // linkCell returns the index of the first cell holding a link to a .md file,
 // and the file's base name.
-func linkCell(cells []string) (int, string) {
+func linkCell(cells []string) (int, string, string) {
 	for i, c := range cells {
 		if m := linkRe.FindStringSubmatch(c); m != nil {
-			return i, filepath.Base(m[1])
+			return i, filepath.Base(m[1]), m[1]
 		}
 	}
-	return -1, ""
+	return -1, "", ""
 }
 
 func isTableRow(line string) bool {
