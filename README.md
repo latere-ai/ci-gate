@@ -56,6 +56,10 @@ license:
 | `spec-lint` | the spec tree agrees with itself and with its index | your spec conventions |
 | `tempdir` | the suite leaves nothing behind under `TMPDIR` | the prefixes you allow |
 | `license` | every source file carries the SPDX notice the repo declared | the identifier and holder |
+| `golangci` | renders the shared `.golangci.yml`, so no repo keeps its own | no |
+| `depcheck` | no build reaches a dependency nobody admitted | the packages you gate |
+| `cgo-free` | no Go file imports `"C"` | no |
+| `otel-client` | no outbound HTTP client is built without a tracing transport | the directories you skip |
 
 ### `cover` gates per package, not on average
 
@@ -291,6 +295,70 @@ same way a `depends_on` edge into another repository is.
 
 Conventions beyond that — decision records, layers, outcome rules — stay in
 your repository. This checks the parts every spec tree needs.
+
+### `golangci` renders the config instead of committing it
+
+golangci-lint has no configuration inheritance: its v2 schema rejects an
+`extends` key outright, so a shared config cannot be referenced, only
+produced. Every repository's file was byte-identical apart from goimports'
+local-prefixes, which is just the module path, so there was nothing
+repo-specific being duplicated — only the duplication.
+
+`lateregate golangci` writes `.golangci.yml` to the repository root, where
+editors and IDEs look for it. It is **not committed**: regenerating on every
+run makes drift impossible, where a committed copy only makes drift
+detectable. Gitignore it, and the gate refuses to write over a tracked file.
+
+The shared set is the org's bar. Beyond the standard linters it turns on the
+ones that catch bugs rather than style — `bodyclose`, `errorlint`, `nilerr`,
+`sqlclosecheck`, `rowserrcheck`, `noctx`, `contextcheck`, `errchkjson`,
+`durationcheck`, `copyloopvar`, `unconvert`, `wastedassign` — and four
+settings that each closed a hole a single repository had already closed alone:
+
+- **Nothing is truncated.** `max-issues-per-linter` and `max-same-issues` are
+  both zero. The default turns a list of twenty into a list of three and hides
+  the rest until the first three are fixed, so the size of the work is never
+  visible at once.
+- **Every vet analyzer** runs. Enabling the set by name means a toolchain that
+  adds an analyzer ships it disabled and nobody notices which. `fieldalignment`
+  and `shadow` are off by judgement: one trades readable structs for memory
+  layout, the other flags idiomatic `if err := f(); err != nil`.
+- **Type assertions are checked.** A dropped second result panics on exactly
+  the value the assertion was written to handle.
+- **The standard library choices are fixed**: `io/ioutil`, `math/rand`, `log`
+  and `github.com/pkg/errors` are denied, each with the replacement named.
+  `log/slog` is allowed explicitly, since depguard matches by prefix.
+
+A repository adds to the set through `golangci.extra`, which merges over the
+shared document — `linters.enable` appends, so adding a linter means "as well
+as", never "instead of". Layering rules, which are facts about one service's
+directories, belong there:
+
+```yaml
+golangci:
+  extra:
+    linters:
+      settings:
+        depguard:
+          rules:
+            below-transport:
+              files: ['**/internal/store/**']
+              deny:
+                - pkg: net/http
+                  desc: the storage layer sits below transport
+```
+
+A repository that genuinely cannot use the shared config says so with a
+reason, and the gate then leaves its committed file alone:
+
+```yaml
+golangci:
+  own: >-
+    vendored third-party tree with its own lint history
+```
+
+A declared exception that points at no file fails, because a repository that
+lost its config and did not notice is the case the field exists to catch.
 
 ### `modernize` will not pass silently
 

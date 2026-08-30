@@ -55,9 +55,46 @@ func TestRenderDisablesWhatTheConfigDisables(t *testing.T) {
 	}
 }
 
-func TestRenderOmitsTheSettingsBlockWhenNothingIsDisabled(t *testing.T) {
-	if got := mustRender(t, "m", nil, nil); strings.Contains(got, "disable:") {
-		t.Errorf("an empty list should produce no disable block:\n%s", got)
+func TestRenderOmitsTheModernizeBlockWhenNothingIsDisabled(t *testing.T) {
+	// govet carries a disable list of its own, so the assertion is on the
+	// modernize block rather than on the word appearing anywhere.
+	if got := mustRender(t, "m", nil, nil); strings.Contains(got, "modernize:") {
+		t.Errorf("an empty list should produce no modernize settings block:\n%s", got)
+	}
+}
+
+// The shared set is the org's bar. Each of these was carried by one
+// repository's own config before this file existed, and a repository may add
+// to the set through golangci.extra but never subtract from it.
+func TestRenderCarriesTheSharedBar(t *testing.T) {
+	got := mustRender(t, "m", nil, nil)
+	for what, want := range map[string]string{
+		"repeated findings are not capped": "max-same-issues: 0",
+		"a linter's findings are not cut":  "max-issues-per-linter: 0",
+		"unchecked type assertions":        "check-type-assertions: true",
+		"every vet analyzer":               "enable-all: true",
+		"staticcheck beyond the default":   "- -ST1000",
+		"the deprecated io helper":         "pkg: io/ioutil",
+		"the superseded random source":     "pkg: math/rand",
+		"generated code is not ours":       "generated: lax",
+		"a frontend's vendored Go":         "node_modules",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the shared set must gate %s (%q missing):\n%s", what, want, got)
+		}
+	}
+}
+
+// slog would be caught by the "log" denial's prefix match unless it is
+// allowed by name, and a repository that lost structured logging that way
+// would find out one finding at a time.
+func TestTheStructuredLoggerSurvivesTheLogDenial(t *testing.T) {
+	got := mustRender(t, "m", nil, nil)
+	if !strings.Contains(got, "- log/slog") {
+		t.Errorf("log/slog must be allowed by name:\n%s", got)
+	}
+	if !strings.Contains(got, "pkg: log\n") {
+		t.Errorf("the unstructured logger must still be denied:\n%s", got)
 	}
 }
 
