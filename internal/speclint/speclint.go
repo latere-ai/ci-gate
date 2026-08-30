@@ -71,6 +71,8 @@ func Run(cfg config.Spec, root string, out io.Writer) error {
 	problems = append(problems, CheckMarker(cfg, specs)...)
 	problems = append(problems, CheckDependencies(specs)...)
 	problems = append(problems, CheckAcyclic(specs)...)
+	problems = append(problems, CheckNumbering(cfg, specs)...)
+	problems = append(problems, CheckReadiness(cfg, specs)...)
 	if cfg.Tables {
 		problems = append(problems, CheckTables(specs)...)
 	}

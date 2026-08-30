@@ -18,6 +18,14 @@ spec:
   require: [title, status]
   index: specs/README.md
   wikilinks: true
+  # Every spec here is NNN-name.md, and the number is what the index rows, the
+  # wikilinks and the commit messages all cite.
+  numbered: true
+  # This tree has no dispatch statuses, so `complete` is both the point at
+  # which work has started and the point at which a dependency has closed. A
+  # tree with a longer vocabulary lists more of them.
+  started: [complete]
+  settled: [complete]
 
 hermetic:
   # The suite shells out to gofmt and go, both of which live in the toolchain

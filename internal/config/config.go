@@ -180,6 +180,19 @@ type Spec struct {
 	// Marker gates a paragraph whose content has to differ between two
 	// statuses, which is what makes the pair exhaustive in both directions.
 	Marker Marker `yaml:"status_marker"`
+	// Numbered requires every spec file to be named NNN-name.md, and no two
+	// to carry the same number. The number is what every citation resolves
+	// through, so reusing one silently repoints the citations that exist.
+	Numbered bool `yaml:"numbered"`
+	// Started names the statuses at which work on a spec has begun. A spec at
+	// one of them whose dependency has not reached Settled was built ahead of
+	// the design it depends on, and the tree then records an ordering that
+	// never happened. Empty turns the rule off.
+	Started []string `yaml:"started"`
+	// Settled names the statuses at which a dependency no longer blocks. A
+	// superseded spec settles because its work moved to the spec that
+	// replaced it, which carries its own edges.
+	Settled []string `yaml:"settled"`
 }
 
 // Marker gates a paragraph that a status must carry, and what it must say.
@@ -453,6 +466,31 @@ func (c *Config) validate(path string) error {
 			"a directory that outlives the test run is one nobody will delete: "+
 			"write why this one may, or delete the entry",
 			path, strings.Join(unowned, ", "))
+	}
+	// `started` without `settled` makes every dependency unsettled, so the
+	// rule fires on every spec that has one. A gate that always fails is
+	// turned off within the day, and turning it off is what it deserves.
+	if len(c.Spec.Started) > 0 && len(c.Spec.Settled) == 0 {
+		return fmt.Errorf("%s: spec.started is set and spec.settled is empty, so no "+
+			"dependency could ever be closed and every started spec would fail\n"+
+			"name the statuses at which a dependency stops blocking", path)
+	}
+	// A status listed here that the vocabulary does not have never matches,
+	// so the rule silently covers fewer specs than it reads as covering.
+	if len(c.Spec.Status) > 0 {
+		var unknown []string
+		for _, s := range append(slices.Clone(c.Spec.Started), c.Spec.Settled...) {
+			if !slices.Contains(c.Spec.Status, s) {
+				unknown = append(unknown, s)
+			}
+		}
+		if len(unknown) > 0 {
+			sort.Strings(unknown)
+			return fmt.Errorf("%s: spec.started/spec.settled name %s, which spec.status "+
+				"does not list\na status no spec can hold matches nothing, so the rule "+
+				"would cover less than it appears to",
+				path, strings.Join(slices.Compact(unknown), ", "))
+		}
 	}
 	var unreadable []string
 	for _, ext := range append(slices.Clone(c.License.Extensions), c.License.Names...) {

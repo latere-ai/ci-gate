@@ -263,7 +263,33 @@ each status comes from your vocabulary, `depends_on` edges resolve, the graph
 is acyclic, every spec appears in the index with the status it claims, and
 `[[wikilinks]]` point at something.
 
-Conventions beyond hygiene — decision records, layers, outcome rules — stay in
+Two rules are off unless you ask for them, because both encode a convention
+rather than plain hygiene:
+
+```yaml
+spec:
+  numbered: true
+  started: [dispatched, in_progress, testing, complete]
+  settled: [complete, superseded]
+```
+
+`numbered` requires every file to be `NNN-name.md` and no two to carry the
+same number. Reuse is the half that matters: a number is what an index row, a
+wikilink and a commit message all resolve through, so handing a deleted spec's
+number to the next one silently repoints every citation that already exists.
+
+`started` and `settled` turn `depends_on` from a note into an ordering anyone
+kept to. A spec at a started status whose dependency has not settled was built
+against a design that was still moving, and the tree then records an ordering
+that never happened. Both vocabularies are yours, since where work begins is a
+repository's own decision; `started` without `settled` is refused at load,
+because no dependency could ever close and the gate would fail on everything.
+
+A row in the index that links into a subdirectory is left alone. An archive
+is outside the linted set, so the index cannot be asked to agree with it, the
+same way a `depends_on` edge into another repository is.
+
+Conventions beyond that — decision records, layers, outcome rules — stay in
 your repository. This checks the parts every spec tree needs.
 
 ### `modernize` will not pass silently
@@ -364,6 +390,9 @@ spec:
   index: ""                # empty disables the index checks
   wikilinks: false
   exclude: []              # file names in dir that are not specs
+  numbered: false          # require NNN-name.md, and no number used twice
+  started: []              # statuses at which work on a spec has begun
+  settled: []              # statuses at which a dependency stops blocking
 
 hermetic:
   allow: []                # directories kept on PATH besides the toolchain's

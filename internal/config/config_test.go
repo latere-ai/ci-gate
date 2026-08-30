@@ -301,3 +301,43 @@ func TestTheCommentMarkerFollowsTheFileType(t *testing.T) {
 		}
 	}
 }
+
+// A readiness rule with nothing to settle into fires on every started spec
+// that has a dependency. A gate that always fails is turned off within the
+// day, so the config is refused instead.
+func TestStartedWithoutSettledIsRefused(t *testing.T) {
+	dir := write(t, "spec:\n  dir: specs\n  started: [complete]\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("started without settled must not load")
+	}
+	if !strings.Contains(err.Error(), "spec.settled is empty") {
+		t.Errorf("the error must name the missing key, got %q", err)
+	}
+}
+
+// A status the vocabulary does not list can never match, so the rule covers
+// fewer specs than reading it suggests.
+func TestAReadinessStatusOutsideTheVocabularyIsRefused(t *testing.T) {
+	dir := write(t, "spec:\n  dir: specs\n  status: [draft, complete]\n"+
+		"  started: [shipped]\n  settled: [complete]\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("a status outside the vocabulary must not load")
+	}
+	if !strings.Contains(err.Error(), "shipped") {
+		t.Errorf("the error must name the unknown status, got %q", err)
+	}
+}
+
+func TestReadinessLoadsWhenBothAreSet(t *testing.T) {
+	dir := write(t, "spec:\n  dir: specs\n  status: [draft, complete]\n"+
+		"  numbered: true\n  started: [complete]\n  settled: [complete]\n")
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Spec.Numbered || len(c.Spec.Started) != 1 {
+		t.Errorf("the rule keys must survive the load, got %+v", c.Spec)
+	}
+}
