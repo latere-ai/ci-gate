@@ -163,12 +163,15 @@ source. The prose form was not machine-readable either. No scanner turns
 license:
   spdx: AGPL-3.0-or-later
   holder: Latere AI
-  # Unset means .go. All the extensions the gate reads take // comments.
-  extensions: ['.go', '.ts', '.tsx', '.mjs']
+  # Unset means .go. List what this repository actually ships.
+  extensions: ['.go', '.ts', '.tsx', '.mjs', '.sh']
+  # For the files that have no extension.
+  names: [Makefile, Dockerfile]
   skip: [dist]
 ```
 
-The notice is the first two lines and then a blank one:
+The notice is the first two lines and then a blank one, in whatever marker the
+file type comments with:
 
 ```go
 // SPDX-FileCopyrightText: 2026 Latere AI
@@ -176,6 +179,17 @@ The notice is the first two lines and then a blank one:
 
 // Package audit decides what a paper released.
 package audit
+```
+
+A script keeps its shebang on line 1, because the kernel only honours it
+there, and the notice moves below:
+
+```sh
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Latere AI
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+set -eu
 ```
 
 `spdx` has no default, and a repository that runs the gate without one gets an
@@ -191,6 +205,11 @@ pkg.go.dev, and the mistake is invisible in review and permanent once it is in
 every file. And the **year is a pattern**, `2026` or `2024-2026`, not a fixed
 value, because a gate that goes red every 1 January for a reason nobody caused
 is a gate people learn to skip.
+
+A file type the gate has no comment marker for is rejected when the config
+loads, not skipped during the scan. The Go marker is a legal comment in most
+languages, so scanning with the wrong one finds nothing and reports a clean
+pass over files nobody checked.
 
 ### `spec-lint` keeps the index honest
 

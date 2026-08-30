@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Latere AI
+# SPDX-License-Identifier: MIT
+
 GO ?= go
 
 .PHONY: build test cover test-hermetic test-tempdir test-race fmt fmt-check lint-modernize spec-lint license

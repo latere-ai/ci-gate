@@ -58,3 +58,7 @@ license:
   # the tree against.
   spdx: MIT
   holder: Latere AI
+  # The Makefile is where every gate is actually invoked, so it is part of
+  # the work rather than packaging around it.
+  extensions: ['.go']
+  names: [Makefile]

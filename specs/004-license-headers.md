@@ -64,15 +64,16 @@ licence with extra steps.
 
 ## The check
 
-For each source file under the repository root, in the configured
-extensions:
+For each source file under the repository root, of a configured type, with
+`<c>` the comment marker that type uses and `n = 2` when the file opens with
+a shebang, `1` otherwise:
 
 ```
-  line 1   ==  "// SPDX-FileCopyrightText: <year> <holder>"
-  line 2   ==  "// SPDX-License-Identifier: <spdx>"
-  line 3   ==  ""                        (or the file ends at line 2)
+  line n     ==  "<c> SPDX-FileCopyrightText: <year> <holder>"
+  line n+1   ==  "<c> SPDX-License-Identifier: <spdx>"
+  line n+2   ==  ""                      (or the file ends at line n+1)
 
-  <year>   ~   \d{4}(-\d{4})?            a year or a range, not a fixed value
+  <year>     ~   \d{4}(-\d{4})?          a year or a range, not a fixed value
 ```
 
 with `<holder>` and `<spdx>` from `.lateregate.yaml`, matched literally.
@@ -121,23 +122,29 @@ The check accepts a year or a range, so `2026`, `2024-2026` and a file
 written next year all pass. What the gate asserts is that a human wrote a
 year, not which one.
 
-## D4 — one extension list, `.go` by default
+## D4 — one file-type list, `.go` by default
 
 The gate is written for a Go tool, so `.go` is what it checks when nothing
-says otherwise. A repository that also ships another language names the
-extensions:
+says otherwise. A repository that ships more than Go lists what it ships:
 
 ```yaml
 license:
   spdx: AGPL-3.0-or-later
   holder: Latere AI
-  extensions: ['.go', '.ts', '.tsx', '.mjs']
+  extensions: ['.go', '.ts', '.tsx', '.mjs', '.sh']
+  names: [Makefile, Dockerfile]
 ```
 
-All four take `//` line comments, which is the whole set the gate handles.
-An extension whose comment syntax differs is not silently accepted: the gate
-rejects it in config validation, so a repository cannot believe it is
-checking files that it is not.
+`names` exists because the files most likely to have no extension -- the
+Makefile, the Dockerfile -- are still part of the work. Listing anything
+turns the Go default off, so what a repository names is what gets checked.
+
+The comment marker comes from the file type, not from the gate: `//` for Go
+and TypeScript, `#` for shell, YAML and a Makefile. A type the table has no
+marker for is rejected when the config loads rather than skipped at scan
+time. This is the one that would fail silently: `//` is a legal comment in
+most languages, so a mismatched marker matches nothing and reports a clean
+pass over files nobody checked.
 
 ## D5 — nothing passes vacuously
 
@@ -146,12 +153,29 @@ catches a wrong `extensions` entry or a root pointed at the wrong directory.
 A gate reporting "0 files, all correct" is the failure mode that makes every
 other gate here suspicious.
 
+## D6 — a shebang keeps line 1
+
+The kernel honours `#!` only as the first two bytes of the file, so a notice
+pushed above it makes the script unexecutable:
+
+```sh
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Latere AI
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+set -eu
+```
+
+The whole check moves down one line with it, the blank-line rule included,
+so a script is held to the same shape as everything else rather than
+exempted from it.
+
 ## What shipped
 
 - `lateregate license`, and `make license` in this repository.
-- `license.spdx`, `license.holder`, `license.extensions` and `license.skip`
-  in `.lateregate.yaml`, the extension list validated against the set the
-  scanner can read a notice from.
+- `license.spdx`, `license.holder`, `license.extensions`, `license.names` and
+  `license.skip` in `.lateregate.yaml`, every file type validated against the
+  table of comment markers the scanner knows.
 - This repository's own 24 Go files moved from the prose notice to the SPDX
   form, which is the change that made the old one's unreadability concrete.
 
@@ -165,9 +189,14 @@ other gate here suspicious.
 - [x] A header with no blank line before the doc comment fails.
 - [x] A year range passes; a missing year fails.
 - [x] A `//go:build` line between the header and `package` passes.
+- [x] A shell script's notice uses `#`, and the Go marker there fails.
+- [x] A notice below a shebang passes; the line numbers in a failure count
+      from below it.
+- [x] A file listed by whole name is checked; listing anything turns the Go
+      default off.
 - [x] `license.spdx` unset fails with a message naming the field.
 - [x] A repository with no root `LICENSE` fails.
-- [x] An extension the gate has no comment syntax for is rejected by
+- [x] A file type the gate has no comment marker for is rejected by
       `config.Load`, not at scan time.
 - [x] A scan that matched no file fails.
 - [x] This repository gates itself: all 22 Go files carry the MIT form.
