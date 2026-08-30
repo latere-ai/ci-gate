@@ -59,6 +59,16 @@ run:
 linters:
   default: none
   enable:
+    # The standard set. errcheck is the one with teeth: turning it on across
+    # four repositories surfaced 452 discarded errors, and among them a lock
+    # file left empty so its holder could not be named, a truncated weight
+    # copy reported as success, a partial mirror published as complete, and
+    # telemetry shutdown failures indistinguishable from a clean exit.
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
     # modernize reports hand-written code that a standard library call or a
     # language builtin already covers: membership loops that are
     # slices.Contains, if/else pairs that are min/max, map loops that are
@@ -67,10 +77,13 @@ linters:
     # ` + "`make lint-modernize`" + ` runs the toolchain's own fixers on top of this;
     # they overlap but each carries checks the other does not.
     - modernize
+    # depguard carries one org rule: the standard library's testing package is
+    # the only test framework here.
+    - depguard
 `)
+	b.WriteString("  settings:\n")
 	if len(disable) > 0 {
-		b.WriteString(`  settings:
-    modernize:
+		b.WriteString(`    modernize:
       # Disabled in .lateregate.yaml, which the go fix gate reads too, so both
       # run the same set.
       disable:
@@ -79,7 +92,13 @@ linters:
 			fmt.Fprintf(&b, "        - %s\n", d)
 		}
 	}
-	b.WriteString(`
+	b.WriteString(`    depguard:
+      rules:
+        no-testify:
+          deny:
+            - pkg: github.com/stretchr/testify
+              desc: "use the standard library's testing package"
+
 formatters:
   enable:
     - gofmt

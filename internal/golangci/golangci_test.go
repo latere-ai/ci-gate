@@ -149,3 +149,27 @@ func TestWriteReportsAnUnwritablePath(t *testing.T) {
 		t.Fatal("an unwritable path must be an error")
 	}
 }
+
+// The set is the point: errcheck across four repositories surfaced 452
+// discarded errors and several real bugs, so a render that quietly loses a
+// linter would undo that.
+func TestRenderCarriesTheWholeLinterSet(t *testing.T) {
+	got := Render("m", nil)
+	for _, linter := range []string{"errcheck", "govet", "ineffassign", "staticcheck", "unused", "modernize", "depguard"} {
+		if !strings.Contains(got, "- "+linter) {
+			t.Errorf("%s missing from the rendered set:\n%s", linter, got)
+		}
+	}
+	if !strings.Contains(got, "default: none") {
+		t.Error("the set must be explicit, not inherited from a golangci-lint default that can move")
+	}
+}
+
+// depguard's settings must survive even when no modernize fixer is disabled,
+// because the two share the settings block.
+func TestTheTestifyBanSurvivesAnEmptyDisableList(t *testing.T) {
+	got := Render("m", nil)
+	if !strings.Contains(got, "no-testify") || !strings.Contains(got, "stretchr/testify") {
+		t.Errorf("the testify ban is org policy, not per repo:\n%s", got)
+	}
+}
