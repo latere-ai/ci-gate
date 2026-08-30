@@ -98,6 +98,30 @@ type Spec struct {
 	// Register gates a table of identifiers that one spec defines and the
 	// rest of the tree cites.
 	Register Register `yaml:"register"`
+	// StatusLinkedFrom requires a spec at a status to be linked from a named
+	// file. A status that means "the outcome is recorded over there" is not
+	// checked by the section rule alone.
+	StatusLinkedFrom map[string]string `yaml:"status_linked_from"`
+	// Marker gates a paragraph whose content has to differ between two
+	// statuses, which is what makes the pair exhaustive in both directions.
+	Marker Marker `yaml:"status_marker"`
+}
+
+// Marker gates a paragraph that a status must carry, and what it must say.
+//
+// Two statuses that mean different things but read the same leave a reader
+// guessing, and a spec sitting at the earlier one hides that it is finished.
+// The pattern's first group is the text compared against Expect and Reject.
+type Marker struct {
+	// Pattern matches the paragraph; group 1 is the text under test.
+	Pattern string `yaml:"pattern"`
+	// Required lists the statuses that must carry it at all.
+	Required []string `yaml:"required"`
+	// Expect maps a status to a pattern group 1 must match.
+	Expect map[string]string `yaml:"expect"`
+	// Reject maps a status to a pattern group 1 must not match. Go's regexp
+	// has no negative lookahead, so the two directions are separate fields.
+	Reject map[string]string `yaml:"reject"`
 }
 
 // Register describes an id table one spec owns.

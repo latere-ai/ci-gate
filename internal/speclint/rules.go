@@ -315,3 +315,93 @@ func firstGroup(m []string) string {
 	}
 	return ""
 }
+
+// CheckStatusLinked reports specs at a status that the named file does not
+// link. A status meaning "the outcome is recorded over there" is a claim about
+// another file, and the section rule cannot see it.
+func CheckStatusLinked(cfg config.Spec, specs []Spec) []string {
+	if len(cfg.StatusLinkedFrom) == 0 {
+		return nil
+	}
+	body := map[string]string{}
+	for _, s := range specs {
+		body[s.Name] = s.body
+	}
+	var out []string
+	for _, status := range slices.Sorted(maps.Keys(cfg.StatusLinkedFrom)) {
+		file := cfg.StatusLinkedFrom[status]
+		text, ok := body[file]
+		if !ok {
+			out = append(out, fmt.Sprintf("status_linked_from.%s names %s, which is not a spec in the tree", status, file))
+			continue
+		}
+		for _, s := range specs {
+			if s.Status != status || s.Name == file {
+				continue
+			}
+			if !strings.Contains(text, "]("+s.Name+")") {
+				out = append(out, fmt.Sprintf("%s: status is %s and %s does not link it",
+					s.Name, status, file))
+			}
+		}
+	}
+	return out
+}
+
+// CheckMarker reports a required paragraph that is missing, or present and
+// saying the wrong thing for the status the spec claims.
+//
+// The rule exists because two statuses that mean different things can read the
+// same. Checking one direction only lets a finished spec sit at the earlier
+// status, which hides that it is finished.
+func CheckMarker(cfg config.Spec, specs []Spec) []string {
+	m := cfg.Marker
+	if m.Pattern == "" {
+		return nil
+	}
+	re, err := regexp.Compile(m.Pattern)
+	if err != nil {
+		return []string{fmt.Sprintf("status_marker.pattern is not a valid pattern: %v", err)}
+	}
+	expect, problems := compileAll(m.Expect, "expect")
+	reject, more := compileAll(m.Reject, "reject")
+	problems = append(problems, more...)
+	if len(problems) > 0 {
+		return problems
+	}
+
+	var out []string
+	for _, s := range specs {
+		match := re.FindStringSubmatch(s.body)
+		if match == nil {
+			if slices.Contains(m.Required, s.Status) {
+				out = append(out, fmt.Sprintf("%s: status is %s and the required paragraph is missing", s.Name, s.Status))
+			}
+			continue
+		}
+		got := firstGroup(match)
+		if want, ok := expect[s.Status]; ok && !want.MatchString(got) {
+			out = append(out, fmt.Sprintf("%s: status is %s and the paragraph opens with %q, which that status does not allow",
+				s.Name, s.Status, got))
+		}
+		if no, ok := reject[s.Status]; ok && no.MatchString(got) {
+			out = append(out, fmt.Sprintf("%s: status is %s and the paragraph opens with %q, which belongs to another status",
+				s.Name, s.Status, got))
+		}
+	}
+	return out
+}
+
+func compileAll(patterns map[string]string, field string) (map[string]*regexp.Regexp, []string) {
+	out := map[string]*regexp.Regexp{}
+	var bad []string
+	for _, k := range slices.Sorted(maps.Keys(patterns)) {
+		re, err := regexp.Compile(patterns[k])
+		if err != nil {
+			bad = append(bad, fmt.Sprintf("status_marker.%s.%s is not a valid pattern: %v", field, k, err))
+			continue
+		}
+		out[k] = re
+	}
+	return out, bad
+}

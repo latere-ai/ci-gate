@@ -269,3 +269,98 @@ func TestInvalidRegisterPatternsAreReported(t *testing.T) {
 		t.Errorf("a broken cite pattern must be reported: %q", got)
 	}
 }
+
+// A status meaning "the outcome is recorded over there" is a claim about
+// another file, which the section rule cannot see.
+func TestAStatusMustBeLinkedFromItsRecord(t *testing.T) {
+	cfg := config.Spec{StatusLinkedFrom: map[string]string{"complete": "011-seq.md"}}
+	specs := []Spec{
+		parse(t, "011-seq.md", "---\nstatus: record\n---\nsee [008](008-a.md)\n"),
+		parse(t, "008-a.md", "---\nstatus: complete\n---\nbody\n"),
+		parse(t, "009-b.md", "---\nstatus: complete\n---\nbody\n"),
+		parse(t, "010-c.md", "---\nstatus: draft\n---\nbody\n"),
+	}
+	got := joined(CheckStatusLinked(cfg, specs))
+	if strings.Contains(got, "008-a.md") {
+		t.Errorf("a linked spec must pass:\n%s", got)
+	}
+	if !strings.Contains(got, "009-b.md: status is complete and 011-seq.md does not link it") {
+		t.Errorf("an unlinked complete spec must be reported:\n%s", got)
+	}
+	if strings.Contains(got, "010-c.md") {
+		t.Errorf("a draft owes no link:\n%s", got)
+	}
+}
+
+func TestAMissingLinkFileIsReported(t *testing.T) {
+	cfg := config.Spec{StatusLinkedFrom: map[string]string{"complete": "999-gone.md"}}
+	if got := joined(CheckStatusLinked(cfg, nil)); !strings.Contains(got, "not a spec in the tree") {
+		t.Errorf("a rule pointing at nothing must be reported: %q", got)
+	}
+}
+
+func markerCfg() config.Spec {
+	return config.Spec{Marker: config.Marker{
+		Pattern:  `\*\*Not built\.?\*\*:?\s+(\S+)`,
+		Required: []string{"implemented", "complete"},
+		Expect:   map[string]string{"complete": "^Nothing"},
+		Reject:   map[string]string{"implemented": "^Nothing"},
+	}}
+}
+
+// The rule runs both ways so the pair stays exhaustive: a finished spec left
+// at the earlier status hides that it is finished.
+func TestTheMarkerDiscriminatesTwoStatuses(t *testing.T) {
+	specs := []Spec{
+		parse(t, "001-a.md", "---\nstatus: complete\n---\n**Not built.** Nothing in scope.\n"),
+		parse(t, "002-b.md", "---\nstatus: complete\n---\n**Not built.** Three things.\n"),
+		parse(t, "003-c.md", "---\nstatus: implemented\n---\n**Not built.** Nothing in scope.\n"),
+		parse(t, "004-d.md", "---\nstatus: implemented\n---\n**Not built.** Two things.\n"),
+	}
+	got := joined(CheckMarker(markerCfg(), specs))
+	if strings.Contains(got, "001-a.md") || strings.Contains(got, "004-d.md") {
+		t.Errorf("the two correct pairings must pass:\n%s", got)
+	}
+	if !strings.Contains(got, `002-b.md: status is complete and the paragraph opens with "Three"`) {
+		t.Errorf("complete with open work must be reported:\n%s", got)
+	}
+	if !strings.Contains(got, "003-c.md") {
+		t.Errorf("implemented with nothing open must be reported; it is finished:\n%s", got)
+	}
+}
+
+func TestAMissingMarkerIsReportedOnlyWhereRequired(t *testing.T) {
+	specs := []Spec{
+		parse(t, "001-a.md", "---\nstatus: complete\n---\nno paragraph here\n"),
+		parse(t, "002-b.md", "---\nstatus: draft\n---\nno paragraph here\n"),
+	}
+	got := joined(CheckMarker(markerCfg(), specs))
+	if !strings.Contains(got, "001-a.md: status is complete and the required paragraph is missing") {
+		t.Errorf("a required marker must be reported:\n%s", got)
+	}
+	if strings.Contains(got, "002-b.md") {
+		t.Errorf("a draft owes no paragraph:\n%s", got)
+	}
+}
+
+func TestMarkerIsOffByDefault(t *testing.T) {
+	if got := CheckMarker(config.Spec{}, nil); got != nil {
+		t.Errorf("no pattern configured should check nothing, got %v", got)
+	}
+}
+
+func TestInvalidMarkerPatternsAreReported(t *testing.T) {
+	for name, mutate := range map[string]func(*config.Marker){
+		"pattern": func(m *config.Marker) { m.Pattern = "(" },
+		"expect":  func(m *config.Marker) { m.Expect = map[string]string{"complete": "("} },
+		"reject":  func(m *config.Marker) { m.Reject = map[string]string{"implemented": "("} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := markerCfg()
+			mutate(&cfg.Marker)
+			if got := joined(CheckMarker(cfg, nil)); !strings.Contains(got, "not a valid pattern") {
+				t.Errorf("a broken %s must be reported: %q", name, got)
+			}
+		})
+	}
+}
