@@ -107,8 +107,17 @@ linters:
 	b.WriteString(`    depguard:
       rules:
         no-testify:
+          # The subpackages are listed, not just the root: a deny on the module
+          # path alone leaves it to depguard's prefix matching, and the rule is
+          # too cheap to make anyone verify that.
           deny:
             - pkg: github.com/stretchr/testify
+              desc: "use the standard library's testing package"
+            - pkg: github.com/stretchr/testify/assert
+              desc: "use the standard library's testing package"
+            - pkg: github.com/stretchr/testify/require
+              desc: "use the standard library's testing package"
+            - pkg: github.com/stretchr/testify/suite
               desc: "use the standard library's testing package"
 `)
 	if sl != nil {
