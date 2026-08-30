@@ -1,5 +1,5 @@
-// Copyright 2026 Latere AI.
-// Licensed under the MIT License.
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: MIT
 
 // Command lateregate runs the per-push quality gates every Latere Go
 // repository shares.
@@ -25,6 +25,7 @@ import (
 	"latere.ai/x/ci-gate/internal/depcheck"
 	"latere.ai/x/ci-gate/internal/gates"
 	"latere.ai/x/ci-gate/internal/golangci"
+	"latere.ai/x/ci-gate/internal/license"
 	"latere.ai/x/ci-gate/internal/speclint"
 )
 
@@ -41,6 +42,7 @@ Commands:
 	modernize   fail on code the standard library already covers
 	depcheck    fail when a build reaches a dependency nobody admitted
 	cgo-free    fail on any Go file that imports \"C\"
+	license     fail on a source file without the declared SPDX notice
 	golangci    render the shared .golangci.yml (generated, gitignored)
 	tempdir     run the suite against an empty TMPDIR and fail on what survives
 
@@ -97,6 +99,8 @@ func run(argv []string, out io.Writer) error {
 		return gates.FmtCheck(out, exec)
 	case "modernize":
 		return gates.Modernize(cfg.Modernize, *goBin, out, exec)
+	case "license":
+		return license.Run(cfg.License, *root, out)
 	case "cgo-free":
 		return gates.CgoFree(*root, out, cfg.CgoFree.Skip)
 	case "tempdir":

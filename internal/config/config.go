@@ -1,5 +1,5 @@
-// Copyright 2026 Latere AI.
-// Licensed under the MIT License.
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: MIT
 
 // Package config reads .lateregate.yaml, the one file a consumer repo uses
 // to configure every gate.
@@ -44,6 +44,45 @@ type Config struct {
 	Golangci  Golangci  `yaml:"golangci"`
 	CgoFree   CgoFree   `yaml:"cgo_free"`
 	TempDir   TempDir   `yaml:"tempdir"`
+	License   License   `yaml:"license"`
+}
+
+// License configures the per-file licence notice gate.
+//
+// There is no default for any of it. Every other gate here defaults to
+// something sensible so a repository adopts it without config, but a licence
+// guessed on a repository's behalf would be printed into every file it has,
+// and a wrong identifier in 300 files is worse than none. The declaration is
+// the point: the gate asserts that a person decided, and that the tree agrees
+// with what they decided.
+type License struct {
+	// SPDX is the identifier every file must carry, e.g. "MIT" or
+	// "AGPL-3.0-or-later". Unset makes the gate fail rather than pass.
+	SPDX string `yaml:"spdx"`
+	// Holder is the copyright holder the notice names, matched literally.
+	// One holder per repository, because the field that decides who may
+	// relicense is not one to leave to whoever wrote the file.
+	Holder string `yaml:"holder"`
+	// Extensions are the file types checked. Empty means Go only, which is
+	// what a Go repository needs and the only thing this tool can assume.
+	Extensions []string `yaml:"extensions"`
+	// Skip names directories the scan does not enter, besides .git and
+	// node_modules. Generated output belongs here; source does not.
+	Skip []string `yaml:"skip"`
+}
+
+// LineComment holds the extensions the gate knows how to read a notice from.
+// All of them take // line comments. An extension outside this set is
+// rejected by Load rather than skipped at scan time, so a repository cannot
+// believe it is checking files that it is not.
+var LineComment = []string{".go", ".ts", ".tsx", ".js", ".mjs", ".cjs", ".jsx", ".rs", ".java", ".kt", ".swift", ".c", ".h", ".cc", ".cpp", ".hpp", ".proto"}
+
+// Exts is the extension list with the Go default applied.
+func (l License) Exts() []string {
+	if len(l.Extensions) == 0 {
+		return []string{".go"}
+	}
+	return l.Extensions
 }
 
 // Cover configures the per-package coverage gate.
@@ -362,6 +401,19 @@ func (c *Config) validate(path string) error {
 			"a directory that outlives the test run is one nobody will delete: "+
 			"write why this one may, or delete the entry",
 			path, strings.Join(unowned, ", "))
+	}
+	var unreadable []string
+	for _, ext := range c.License.Extensions {
+		if !slices.Contains(LineComment, ext) {
+			unreadable = append(unreadable, ext)
+		}
+	}
+	if len(unreadable) > 0 {
+		sort.Strings(unreadable)
+		return fmt.Errorf("%s: license.extensions the gate cannot read a notice from: %s\n"+
+			"it looks for a // line comment at the top of the file; an extension "+
+			"whose comment syntax differs would be scanned and never match",
+			path, strings.Join(unreadable, ", "))
 	}
 	if t := c.Cover.Threshold; t < 0 || t > 100 {
 		return fmt.Errorf("%s: cover.threshold %.1f is not a percentage", path, t)

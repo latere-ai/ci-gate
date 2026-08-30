@@ -1,0 +1,284 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: MIT
+
+package license
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"latere.ai/x/ci-gate/internal/config"
+)
+
+const notice = "// SPDX-FileCopyrightText: 2026 Latere AI\n" +
+	"// SPDX-License-Identifier: AGPL-3.0-or-later\n\n"
+
+func cfg() config.License {
+	return config.License{SPDX: "AGPL-3.0-or-later", Holder: "Latere AI"}
+}
+
+// repo writes a tree with a LICENSE at its root, which every case but the
+// one testing its absence needs.
+func repo(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	files["LICENSE"] = "GNU AFFERO GENERAL PUBLIC LICENSE\n"
+	for name, body := range files {
+		p := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+func run(t *testing.T, c config.License, files map[string]string) (string, error) {
+	t.Helper()
+	var sb strings.Builder
+	err := Run(c, repo(t, files), &sb)
+	return sb.String(), err
+}
+
+func TestANoticedTreePasses(t *testing.T) {
+	out, err := run(t, cfg(), map[string]string{
+		"a.go":      notice + "package a\n",
+		"b/b.go":    notice + "// Package b does something.\npackage b\n",
+		"c.txt":     "no notice here\n",
+		"README.md": "```go\n// no notice here either\n```\n",
+	})
+	if err != nil {
+		t.Fatalf("a noticed tree should pass: %v", err)
+	}
+	if !strings.Contains(out, "AGPL-3.0-or-later declared on 2 file(s)") {
+		t.Errorf("the count should cover only the configured extensions:\n%s", out)
+	}
+}
+
+func TestAMissingNoticeFailsAndNamesTheFile(t *testing.T) {
+	out, err := run(t, cfg(), map[string]string{
+		"a.go":   notice + "package a\n",
+		"b/b.go": "package b\n",
+	})
+	if err == nil {
+		t.Fatal("a file with no notice should fail the gate")
+	}
+	if !strings.Contains(out, "b/b.go") || strings.Contains(out, "a.go:") {
+		t.Errorf("only the file without a notice should be named:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "SPDX-FileCopyrightText") {
+		t.Errorf("the failure should show the shape that was wanted: %v", err)
+	}
+}
+
+func TestAStaleIdentifierFailsWithBothValues(t *testing.T) {
+	out, err := run(t, cfg(), map[string]string{
+		"a.go": "// SPDX-FileCopyrightText: 2026 Latere AI\n" +
+			"// SPDX-License-Identifier: MIT\n\npackage a\n",
+	})
+	if err == nil {
+		t.Fatal("an identifier that is not the declared one should fail")
+	}
+	if !strings.Contains(out, `"MIT"`) || !strings.Contains(out, `"AGPL-3.0-or-later"`) {
+		t.Errorf("the failure should print what was found and what was declared:\n%s", out)
+	}
+}
+
+func TestAWrongHolderFails(t *testing.T) {
+	out, err := run(t, cfg(), map[string]string{
+		"a.go": "// SPDX-FileCopyrightText: 2026 Someone Else\n" +
+			"// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage a\n",
+	})
+	if err == nil {
+		t.Fatal("a holder that is not the declared one should fail")
+	}
+	if !strings.Contains(out, `"Someone Else"`) {
+		t.Errorf("the failure should print the holder it found:\n%s", out)
+	}
+}
+
+// The notice touching the doc comment is the failure this gate exists for as
+// much as a missing notice: it compiles, it reviews clean, and it puts the
+// licence text at the top of every page on pkg.go.dev.
+func TestAnUnseparatedNoticeBecomesThePackageDoc(t *testing.T) {
+	out, err := run(t, cfg(), map[string]string{
+		"a.go": "// SPDX-FileCopyrightText: 2026 Latere AI\n" +
+			"// SPDX-License-Identifier: AGPL-3.0-or-later\n" +
+			"// Package a does something.\npackage a\n",
+	})
+	if err == nil {
+		t.Fatal("a notice running into the doc comment should fail")
+	}
+	if !strings.Contains(out, "line 3 is not blank") {
+		t.Errorf("the failure should say what is wrong:\n%s", out)
+	}
+}
+
+func TestAYearRangePassesAndAMissingYearFails(t *testing.T) {
+	if _, err := run(t, cfg(), map[string]string{
+		"a.go": "// SPDX-FileCopyrightText: 2024-2026 Latere AI\n" +
+			"// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage a\n",
+	}); err != nil {
+		t.Errorf("a year range should pass: %v", err)
+	}
+	out, err := run(t, cfg(), map[string]string{
+		"a.go": "// SPDX-FileCopyrightText: Latere AI\n" +
+			"// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage a\n",
+	})
+	if err == nil {
+		t.Fatal("a notice with no year should fail")
+	}
+	if !strings.Contains(out, "not a year") {
+		t.Errorf("the failure should say the year is missing:\n%s", out)
+	}
+}
+
+func TestABuildConstraintBetweenNoticeAndPackagePasses(t *testing.T) {
+	if _, err := run(t, cfg(), map[string]string{
+		"a.go": notice + "//go:build linux\n\npackage a\n",
+	}); err != nil {
+		t.Errorf("a build constraint below the notice should pass: %v", err)
+	}
+}
+
+func TestATwoLineFilePasses(t *testing.T) {
+	if _, err := run(t, cfg(), map[string]string{
+		"a.go": "// SPDX-FileCopyrightText: 2026 Latere AI\n" +
+			"// SPDX-License-Identifier: AGPL-3.0-or-later\n",
+	}); err != nil {
+		t.Errorf("a file that ends at the notice should pass: %v", err)
+	}
+}
+
+func TestAnUndeclaredRepositoryFails(t *testing.T) {
+	_, err := run(t, config.License{Holder: "Latere AI"}, map[string]string{
+		"a.go": notice + "package a\n",
+	})
+	if err == nil {
+		t.Fatal("a repository that declares no licence should fail, not pass")
+	}
+	if !strings.Contains(err.Error(), "license.spdx") {
+		t.Errorf("the failure should name the field to fill in: %v", err)
+	}
+}
+
+func TestAMissingLicenseFileFails(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte(notice+"package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	if err := Run(cfg(), root, &sb); err == nil {
+		t.Fatal("a notice pointing at terms that are not in the tree should fail")
+	}
+}
+
+func TestAScanThatMatchedNothingFails(t *testing.T) {
+	_, err := run(t, cfg(), map[string]string{"README.md": "no source here\n"})
+	if err == nil {
+		t.Fatal("a scan that read no file should fail rather than pass vacuously")
+	}
+	if !strings.Contains(err.Error(), "vacuously") {
+		t.Errorf("the failure should say why: %v", err)
+	}
+}
+
+func TestTheExtensionListReplacesTheGoDefault(t *testing.T) {
+	c := cfg()
+	c.Extensions = []string{".ts", ".tsx"}
+	out, err := run(t, c, map[string]string{
+		"a.go":         "package a\n", // not checked: .go is not in the list
+		"src/a.ts":     notice + "export const a = 1\n",
+		"src/b.tsx":    notice + "export const B = () => null\n",
+		"dist/c.ts":    notice + "export const c = 1\n",
+		"src/skip.mjs": "export const d = 1\n",
+	})
+	if err != nil {
+		t.Fatalf("a noticed TypeScript tree should pass: %v", err)
+	}
+	if !strings.Contains(out, "on 3 file(s)") {
+		t.Errorf("only the listed extensions should be counted:\n%s", out)
+	}
+}
+
+func TestASkippedDirectoryIsNotScanned(t *testing.T) {
+	c := cfg()
+	c.Skip = []string{"dist"}
+	out, err := run(t, c, map[string]string{
+		"a.go":                notice + "package a\n",
+		"dist/gen.go":         "package gen\n",
+		"node_modules/x/x.go": "package x\n",
+	})
+	if err != nil {
+		t.Fatalf("generated output should not fail the gate: %v", err)
+	}
+	if !strings.Contains(out, "on 1 file(s)") {
+		t.Errorf("the skipped directories should not be counted:\n%s", out)
+	}
+}
+
+func TestAHeaderWithNeitherYearNorHolderFails(t *testing.T) {
+	out, err := run(t, cfg(), map[string]string{
+		"a.go": "// SPDX-FileCopyrightText:\n" +
+			"// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage a\n",
+	})
+	if err == nil {
+		t.Fatal("a copyright tag with nothing after it should fail")
+	}
+	if !strings.Contains(out, "no year or holder") {
+		t.Errorf("the failure should say what is missing:\n%s", out)
+	}
+}
+
+func TestASecondLineThatIsNotTheIdentifierFails(t *testing.T) {
+	out, err := run(t, cfg(), map[string]string{
+		"a.go": "// SPDX-FileCopyrightText: 2026 Latere AI\n" +
+			"// All rights reserved.\n\npackage a\n",
+	})
+	if err == nil {
+		t.Fatal("a notice with no identifier should fail")
+	}
+	if !strings.Contains(out, "no "+IdentifierTag+" on line 2") {
+		t.Errorf("the failure should name the missing tag:\n%s", out)
+	}
+}
+
+// A walk that cannot read part of the tree has not checked it, and a gate
+// that reports a pass over files it never opened is the vacuous case again.
+func TestAnUnreadableTreeFailsRatherThanReportingAPass(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads an unreadable directory anyway")
+	}
+	root := repo(t, map[string]string{"a.go": notice + "package a\n"})
+	locked := filepath.Join(root, "locked")
+	if err := os.Mkdir(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	var sb strings.Builder
+	if err := Run(cfg(), root, &sb); err == nil {
+		t.Fatal("a directory the walk cannot enter should fail the gate")
+	}
+}
+
+func TestAnUnreadableFileFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads an unreadable file anyway")
+	}
+	root := repo(t, map[string]string{"a.go": notice + "package a\n"})
+	locked := filepath.Join(root, "b.go")
+	if err := os.WriteFile(locked, []byte(notice+"package b\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o644) })
+
+	var sb strings.Builder
+	if err := Run(cfg(), root, &sb); err == nil {
+		t.Fatal("a file the gate cannot open should fail rather than be skipped")
+	}
+}

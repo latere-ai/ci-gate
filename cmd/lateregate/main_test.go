@@ -1,5 +1,5 @@
-// Copyright 2026 Latere AI.
-// Licensed under the MIT License.
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: MIT
 
 package main
 
@@ -120,5 +120,21 @@ func TestTempDirTakesItsCommandAfterTheSeparator(t *testing.T) {
 	_, err := out(t, "tempdir", "-C", t.TempDir(), "--", "true")
 	if err == nil || !strings.Contains(err.Error(), "did not use it") {
 		t.Fatalf("want the unused-sandbox refusal, got %v", err)
+	}
+}
+
+// The gate reads this repository's own config and its own tree, which is the
+// only way the two stay true to each other.
+func TestLicenseRunsAgainstThisRepository(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := out(t, "license", "-C", root)
+	if err != nil {
+		t.Fatalf("this repository declares MIT on every Go file: %v\n%s", err, s)
+	}
+	if !strings.Contains(s, "MIT declared on") {
+		t.Errorf("report:\n%s", s)
 	}
 }

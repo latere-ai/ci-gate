@@ -1,5 +1,5 @@
-// Copyright 2026 Latere AI.
-// Licensed under the MIT License.
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: MIT
 
 package config
 
@@ -211,5 +211,51 @@ tempdir:
 	}
 	if _, ok := c.TempDir.AllowedFor("nanogo-corpus77"); ok {
 		t.Error("an unlisted prefix must not be admitted")
+	}
+}
+
+func TestLicenseIsRead(t *testing.T) {
+	c, err := Load(write(t, `
+license:
+  spdx: AGPL-3.0-or-later
+  holder: Latere AI
+  extensions: ['.go', '.ts']
+  skip: [dist]
+`))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if c.License.SPDX != "AGPL-3.0-or-later" || c.License.Holder != "Latere AI" {
+		t.Errorf("license = %+v", c.License)
+	}
+	if got := c.License.Exts(); len(got) != 2 || got[0] != ".go" {
+		t.Errorf("extensions = %v", got)
+	}
+	if len(c.License.Skip) != 1 || c.License.Skip[0] != "dist" {
+		t.Errorf("skip = %v", c.License.Skip)
+	}
+}
+
+// Unset means Go, which is what a Go repository needs and the only thing this
+// tool can assume about a tree.
+func TestAnUnsetExtensionListIsGoOnly(t *testing.T) {
+	c, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.License.Exts(); len(got) != 1 || got[0] != ".go" {
+		t.Errorf("extensions = %v, want [.go]", got)
+	}
+}
+
+// An extension the scanner cannot read a notice from would be walked and
+// never matched, which reads as a clean pass over files nobody checked.
+func TestAnExtensionWithoutLineCommentsIsRejected(t *testing.T) {
+	_, err := Load(write(t, "license:\n  spdx: MIT\n  extensions: ['.go', '.css', '.py']\n"))
+	if err == nil {
+		t.Fatal("an extension the gate cannot read should be rejected at load")
+	}
+	if !strings.Contains(err.Error(), ".css") || !strings.Contains(err.Error(), ".py") {
+		t.Errorf("both bad extensions should be named: %v", err)
 	}
 }
