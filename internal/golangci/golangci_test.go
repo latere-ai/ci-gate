@@ -14,7 +14,7 @@ import (
 )
 
 func TestRenderCarriesTheModulePath(t *testing.T) {
-	got := Render("github.com/latere-ai/tgo", nil)
+	got := Render("github.com/latere-ai/tgo", nil, nil)
 	if !strings.Contains(got, "- github.com/latere-ai/tgo") {
 		t.Errorf("the module path is the one thing that differs per repo:\n%s", got)
 	}
@@ -33,7 +33,7 @@ func TestRenderCarriesTheModulePath(t *testing.T) {
 // The modernize linter and the toolchain's fixers are the same analyzers, so
 // both read one list.
 func TestRenderDisablesWhatTheConfigDisables(t *testing.T) {
-	got := Render("m", []string{"newexpr", "errorsastype"})
+	got := Render("m", []string{"newexpr", "errorsastype"}, nil)
 	for _, f := range []string{"- newexpr", "- errorsastype"} {
 		if !strings.Contains(got, f) {
 			t.Errorf("%s missing:\n%s", f, got)
@@ -42,7 +42,7 @@ func TestRenderDisablesWhatTheConfigDisables(t *testing.T) {
 }
 
 func TestRenderOmitsTheSettingsBlockWhenNothingIsDisabled(t *testing.T) {
-	if got := Render("m", nil); strings.Contains(got, "disable:") {
+	if got := Render("m", nil, nil); strings.Contains(got, "disable:") {
 		t.Errorf("an empty list should produce no disable block:\n%s", got)
 	}
 }
@@ -154,7 +154,7 @@ func TestWriteReportsAnUnwritablePath(t *testing.T) {
 // discarded errors and several real bugs, so a render that quietly loses a
 // linter would undo that.
 func TestRenderCarriesTheWholeLinterSet(t *testing.T) {
-	got := Render("m", nil)
+	got := Render("m", nil, nil)
 	for _, linter := range []string{"errcheck", "govet", "ineffassign", "staticcheck", "unused", "modernize", "depguard"} {
 		if !strings.Contains(got, "- "+linter) {
 			t.Errorf("%s missing from the rendered set:\n%s", linter, got)
@@ -168,7 +168,7 @@ func TestRenderCarriesTheWholeLinterSet(t *testing.T) {
 // depguard's settings must survive even when no modernize fixer is disabled,
 // because the two share the settings block.
 func TestTheTestifyBanSurvivesAnEmptyDisableList(t *testing.T) {
-	got := Render("m", nil)
+	got := Render("m", nil, nil)
 	if !strings.Contains(got, "no-testify") || !strings.Contains(got, "stretchr/testify") {
 		t.Errorf("the testify ban is org policy, not per repo:\n%s", got)
 	}
@@ -206,5 +206,49 @@ func TestNoClaimMeansGenerate(t *testing.T) {
 	reason, err := Own(repo(t, nil), &config.Config{})
 	if err != nil || reason != "" {
 		t.Errorf("Own = %q, %v; want the generate path", reason, err)
+	}
+}
+
+// The scope is the whole reason sloglint is config rather than template: every
+// repository's request path is its own.
+func TestSloglintIsRenderedWithItsScope(t *testing.T) {
+	got := Render("m", nil, &config.Sloglint{
+		Context: "all", RequestPaths: "internal/(handler|server)/",
+	})
+	for _, want := range []string{
+		"- sloglint",
+		"- path-except: internal/(handler|server)/",
+		"context: all",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// sandbox exempts a sweeper and a store that live under its request path but
+// do not serve requests, so a second exclusion has to survive.
+func TestSloglintCarriesFurtherExemptPaths(t *testing.T) {
+	got := Render("m", nil, &config.Sloglint{
+		Context:      "scope",
+		RequestPaths: "internal/http/(web|api)/",
+		Exempt:       []string{`internal/http/api/(runs_sweeper|runs_store)\.go`},
+	})
+	if !strings.Contains(got, `- path: internal/http/api/(runs_sweeper|runs_store)\.go`) {
+		t.Errorf("the exempt path is missing:\n%s", got)
+	}
+	if !strings.Contains(got, "context: scope") {
+		t.Errorf("context not carried:\n%s", got)
+	}
+}
+
+// A repository that does not serve requests gets no sloglint and no empty
+// exclusions block, which golangci-lint would reject.
+func TestNoSloglintMeansNoExclusionsBlock(t *testing.T) {
+	got := Render("m", nil, nil)
+	for _, unwanted := range []string{"sloglint", "exclusions:", "path-except:"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("unconfigured sloglint should emit no %q:\n%s", unwanted, got)
+		}
 	}
 }

@@ -194,6 +194,11 @@ type Gated struct {
 
 // Golangci configures the lint-config gate.
 type Golangci struct {
+	// Sloglint turns on log-trace correlation, scoped to the packages that
+	// serve requests. It is here rather than in the shared template because
+	// the scope is the one part no template can know: every repository's
+	// request path is its own.
+	Sloglint *Sloglint `yaml:"sloglint"`
 	// Own declares that this repository keeps its own .golangci.yml, and why.
 	//
 	// The shared config exists because most repositories had nothing
@@ -207,6 +212,25 @@ type Golangci struct {
 	// this field fixes: the reason is in the repo, and lint-config checks the
 	// file is really there rather than silently doing nothing.
 	Own string `yaml:"own"`
+}
+
+// Sloglint configures the log-trace correlation linter.
+//
+// Every slog call on a request path must use the *Context variant, so the
+// otelslog bridge can attach a trace and span id to the record. Off the
+// request path -- startup, shutdown, background work -- there is no trace to
+// correlate with and a plain call is right, which is why this is scoped
+// rather than global.
+type Sloglint struct {
+	// Context is sloglint's own setting: "all" requires the *Context variant
+	// everywhere in scope, "scope" only where a context is already in hand.
+	Context string `yaml:"context"`
+	// RequestPaths is a regexp for the packages that serve requests. Only
+	// those are checked.
+	RequestPaths string `yaml:"request_paths"`
+	// Exempt lists further paths inside RequestPaths that are not request
+	// handling -- a sweeper or a store that happens to live there.
+	Exempt []string `yaml:"exempt"`
 }
 
 // CgoFree configures the cgo-free gate.
