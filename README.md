@@ -34,6 +34,9 @@ test-hermetic:
 
 spec-lint:
 	@go tool lateregate spec-lint
+
+test-tempdir:
+	@go tool lateregate tempdir
 ```
 
 `fmt-check` and `modernize` need no configuration. The rest read
@@ -48,6 +51,7 @@ spec-lint:
 | `cover` | **every package** clears the floor, not the repository average | threshold and exemptions |
 | `hermetic` | the suite passes with only the toolchain on `PATH` | the directories you allow |
 | `spec-lint` | the spec tree agrees with itself and with its index | your spec conventions |
+| `tempdir` | the suite leaves nothing behind under `TMPDIR` | the prefixes you allow |
 
 ### `cover` gates per package, not on average
 
@@ -88,6 +92,55 @@ hermetic:
 ```
 
 Start with `allow: []` and add only what fails.
+
+### `tempdir` catches tests that fill the disk
+
+A test that makes a directory under `TMPDIR` and does not remove it leaks it
+for the life of the machine. Nothing goes red. The suite passes, coverage
+passes, and the first symptom arrives months later as a full disk.
+
+One repository was measured with 8.2GB free on a 926GB volume. 168GB of that
+was leaked test directories from three sites, the largest 258 directories at
+160GB. All three had made the same reasonable decision: a tool built once for
+the whole package cannot live in a `t.TempDir`, because the testing package
+removes that when the *first* test that asked for it returns. So they used
+`os.MkdirTemp`, whose removal you have to write yourself. Two of the three
+carried a comment saying the directory was removed by the process that made
+it. It never was.
+
+`tempdir` points `TMPDIR`, `TMP` and `TEMP` at an empty directory, runs your
+suite, and fails on whatever is still there:
+
+```
+  nanogo-corpus3529420610 (790.2MB)
+  nanogo-audit774067360 (46.8MB)
+lateregate: 2 entries survived the test run, 837.0MB in all
+```
+
+The check is dynamic rather than a source scan because the leak is a property
+of the process tree. A suite that shells out to a compiler, a container
+runtime or a package manager leaks through those too, and reading the
+caller's source never finds it. That is also why it is not Go-specific:
+
+```yaml
+tempdir:
+  # Whatever runs your suite. Default: go test ./...
+  command: [pytest, -q]
+  allow:
+    go-build: >-
+      a `go build -work` under test, which keeps its work directory on purpose
+```
+
+Name the target that exercises the most code. A leak the gate never runs is a
+leak it reports as absent, and the slow suites are the ones that build caches
+worth gigabytes.
+
+Two behaviours are worth knowing about. An empty sandbox that was **never
+written to** fails rather than passes: a suite launched through a wrapper that
+resets the environment would otherwise score perfectly having proved nothing.
+And when the suite fails *and* leaks, the leak is the verdict, because a red
+suite gets re-run while a leak that only surfaces on a green one is never
+seen.
 
 ### `spec-lint` keeps the index honest
 
@@ -139,9 +192,12 @@ jobs:
     with:
       hermetic: true
       cover: true
+      tempdir: true
 ```
 
-See `ci/README.md` for the full contract.
+See `ci/README.md` for the full contract. `tempdir` needs a runner input in
+`latere-ai/ci` before that flag does anything; until it lands, call the target
+from your own job.
 
 ## Contributing
 
