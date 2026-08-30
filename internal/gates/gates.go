@@ -109,7 +109,21 @@ func toolchainDir(goBin string) (string, error) {
 
 // FmtCheck fails if any Go source is not gofmt-formatted.
 func FmtCheck(out io.Writer, run Exec) error {
-	listed, err := run(nil, false, "gofmt", "-l", ".")
+	// The file list comes from git, not from walking the directory.
+	//
+	// gofmt -l . descends into everything, including a nested git worktree
+	// under .claude/ or any other checkout someone parked inside the repo,
+	// and reports files this repository does not own and cannot fix. Asking
+	// git means the set is exactly what is tracked here.
+	tracked, err := run(nil, false, "git", "ls-files", "-z", "*.go")
+	if err != nil {
+		return fmt.Errorf("listing tracked Go files: %w", err)
+	}
+	paths := nulSeparated(string(tracked))
+	if len(paths) == 0 {
+		return fmt.Errorf("no tracked Go files found; is this a git checkout?")
+	}
+	listed, err := run(nil, false, "gofmt", append([]string{"-l"}, paths...)...)
 	if err != nil {
 		return fmt.Errorf("gofmt: %w", err)
 	}
@@ -177,6 +191,18 @@ func hasFixer(help, name string) bool {
 		}
 	}
 	return false
+}
+
+// nulSeparated splits git's -z output, which uses NUL so a path with a newline
+// in it cannot split a record.
+func nulSeparated(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, "\x00") {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func nonEmptyLines(s string) []string {

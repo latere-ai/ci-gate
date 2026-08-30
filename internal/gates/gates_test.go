@@ -119,11 +119,16 @@ func TestHermeticReportsAMissingToolchain(t *testing.T) {
 func TestFmtCheckPassesOnAFormattedTree(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
-	if err := FmtCheck(&sb, fake(t, &calls, "")); err != nil {
+	if err := FmtCheck(&sb, fake(t, &calls, "a.go\x00b/b.go\x00", "")); err != nil {
 		t.Fatalf("an empty gofmt -l must pass: %v", err)
 	}
-	if calls[0].name != "gofmt" || strings.Join(calls[0].args, " ") != "-l ." {
-		t.Errorf("ran %q %v", calls[0].name, calls[0].args)
+	// The file set comes from git, so a nested checkout parked inside the
+	// repository is never handed to gofmt.
+	if calls[0].name != "git" || !strings.Contains(strings.Join(calls[0].args, " "), "ls-files") {
+		t.Errorf("first call was %q %v, want git ls-files", calls[0].name, calls[0].args)
+	}
+	if calls[1].name != "gofmt" || strings.Join(calls[1].args, " ") != "-l a.go b/b.go" {
+		t.Errorf("ran %q %v", calls[1].name, calls[1].args)
 	}
 	if !strings.Contains(sb.String(), "gofmt-formatted") {
 		t.Errorf("report:\n%s", sb.String())
@@ -133,7 +138,7 @@ func TestFmtCheckPassesOnAFormattedTree(t *testing.T) {
 func TestFmtCheckNamesEveryUnformattedFile(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
-	err := FmtCheck(&sb, fake(t, &calls, "a.go\nb.go\n"))
+	err := FmtCheck(&sb, fake(t, &calls, "a.go\x00b.go\x00", "a.go\nb.go\n"))
 	if err == nil || !strings.Contains(err.Error(), "2 file(s)") {
 		t.Fatalf("want a count of unformatted files, got %v", err)
 	}
@@ -146,8 +151,18 @@ func TestFmtCheckNamesEveryUnformattedFile(t *testing.T) {
 
 func TestFmtCheckReportsAMissingGofmt(t *testing.T) {
 	var calls []call
-	if err := FmtCheck(&strings.Builder{}, fake(t, &calls, errors.New("not found"))); err == nil {
+	if err := FmtCheck(&strings.Builder{}, fake(t, &calls, "a.go\x00", errors.New("not found"))); err == nil {
 		t.Fatal("gofmt failing to run must be an error")
+	}
+}
+
+// A repository with no tracked Go files is not a formatted repository; it is a
+// checkout the gate could not read, and passing there would be vacuous.
+func TestFmtCheckFailsWhenGitListsNothing(t *testing.T) {
+	var calls []call
+	err := FmtCheck(&strings.Builder{}, fake(t, &calls, ""))
+	if err == nil || !strings.Contains(err.Error(), "no tracked Go files") {
+		t.Fatalf("want a clear error, got %v", err)
 	}
 }
 
