@@ -55,17 +55,11 @@ func OtelClient(root string, out io.Writer, skip []string) error {
 		}
 		scanned++
 
-		file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			// A file the parser cannot read is a build failure the compiler
-			// will report with a better message. Do not fail the gate on it.
-			return nil
-		}
 		rel, relErr := filepath.Rel(root, path)
 		if relErr != nil {
 			rel = path
 		}
-		for _, v := range violations(file) {
+		for _, v := range fileViolations(fset, path) {
 			pos := fset.Position(v.pos)
 			found = append(found, fmt.Sprintf("%s:%d: %s", rel, pos.Line, v.reason))
 		}
@@ -92,6 +86,18 @@ func OtelClient(root string, out io.Writer, skip []string) error {
 type violation struct {
 	pos    token.Pos
 	reason string
+}
+
+// fileViolations parses path and reports what it finds. A file the parser
+// cannot read yields nothing: that is a build failure, and the compiler
+// reports it with a better message than this gate could. Returning violations
+// rather than an error keeps that decision in the signature.
+func fileViolations(fset *token.FileSet, path string) []violation {
+	file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil
+	}
+	return violations(file)
 }
 
 // violations walks a parsed file for both losing shapes.
