@@ -238,6 +238,16 @@ type Golangci struct {
 	// the scope is the one part no template can know: every repository's
 	// request path is its own.
 	Sloglint *Sloglint `yaml:"sloglint"`
+	// Extra is merged into the rendered configuration, so a repository whose
+	// lint policy is genuinely its own does not need a second file to hold it.
+	// Maps merge key by key, linters.enable appends to the shared set, and any
+	// other list replaces.
+	//
+	// The reasoning goes here, beside the values. That is the trade: the
+	// rendered file becomes machine output nobody reads, and the argument for
+	// a gosec exclusion or a spelling rule lives where someone editing it will
+	// look.
+	Extra map[string]any `yaml:"extra"`
 	// Own declares that this repository keeps its own .golangci.yml, and why.
 	//
 	// The shared config exists because most repositories had nothing

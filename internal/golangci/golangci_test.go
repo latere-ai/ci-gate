@@ -4,17 +4,31 @@
 package golangci
 
 import (
+	"fmt"
+	"slices"
+
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/goccy/go-yaml"
+
 	"latere.ai/x/ci-gate/internal/config"
 )
 
+func mustRender(t *testing.T, module string, disable []string, sl *config.Sloglint) string {
+	t.Helper()
+	got, err := Render(module, disable, sl, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
 func TestRenderCarriesTheModulePath(t *testing.T) {
-	got := Render("github.com/latere-ai/tgo", nil, nil)
+	got := mustRender(t, "github.com/latere-ai/tgo", nil, nil)
 	if !strings.Contains(got, "- github.com/latere-ai/tgo") {
 		t.Errorf("the module path is the one thing that differs per repo:\n%s", got)
 	}
@@ -33,7 +47,7 @@ func TestRenderCarriesTheModulePath(t *testing.T) {
 // The modernize linter and the toolchain's fixers are the same analyzers, so
 // both read one list.
 func TestRenderDisablesWhatTheConfigDisables(t *testing.T) {
-	got := Render("m", []string{"newexpr", "errorsastype"}, nil)
+	got := mustRender(t, "m", []string{"newexpr", "errorsastype"}, nil)
 	for _, f := range []string{"- newexpr", "- errorsastype"} {
 		if !strings.Contains(got, f) {
 			t.Errorf("%s missing:\n%s", f, got)
@@ -42,7 +56,7 @@ func TestRenderDisablesWhatTheConfigDisables(t *testing.T) {
 }
 
 func TestRenderOmitsTheSettingsBlockWhenNothingIsDisabled(t *testing.T) {
-	if got := Render("m", nil, nil); strings.Contains(got, "disable:") {
+	if got := mustRender(t, "m", nil, nil); strings.Contains(got, "disable:") {
 		t.Errorf("an empty list should produce no disable block:\n%s", got)
 	}
 }
@@ -154,7 +168,7 @@ func TestWriteReportsAnUnwritablePath(t *testing.T) {
 // discarded errors and several real bugs, so a render that quietly loses a
 // linter would undo that.
 func TestRenderCarriesTheWholeLinterSet(t *testing.T) {
-	got := Render("m", nil, nil)
+	got := mustRender(t, "m", nil, nil)
 	for _, linter := range []string{"errcheck", "govet", "ineffassign", "staticcheck", "unused", "modernize", "depguard"} {
 		if !strings.Contains(got, "- "+linter) {
 			t.Errorf("%s missing from the rendered set:\n%s", linter, got)
@@ -168,7 +182,7 @@ func TestRenderCarriesTheWholeLinterSet(t *testing.T) {
 // depguard's settings must survive even when no modernize fixer is disabled,
 // because the two share the settings block.
 func TestTheTestifyBanSurvivesAnEmptyDisableList(t *testing.T) {
-	got := Render("m", nil, nil)
+	got := mustRender(t, "m", nil, nil)
 	if !strings.Contains(got, "no-testify") || !strings.Contains(got, "stretchr/testify") {
 		t.Errorf("the testify ban is org policy, not per repo:\n%s", got)
 	}
@@ -211,41 +225,103 @@ func TestNoClaimMeansGenerate(t *testing.T) {
 
 // The scope is the whole reason sloglint is config rather than template: every
 // repository's request path is its own.
+//
+// Asserted against the parsed document rather than the text, because the
+// marshaller's key order is its business and not the contract.
 func TestSloglintIsRenderedWithItsScope(t *testing.T) {
-	got := Render("m", nil, &config.Sloglint{
+	doc := parseRendered(t, mustRender(t, "m", nil, &config.Sloglint{
 		Context: "all", RequestPaths: "internal/(handler|server)/",
-	})
-	for _, want := range []string{
-		"- sloglint",
-		"- path-except: internal/(handler|server)/",
-		"context: all",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q:\n%s", want, got)
-		}
+	}))
+	linters := doc["linters"].(map[string]any)
+	if !slices.Contains(anyStrings(linters["enable"]), "sloglint") {
+		t.Errorf("sloglint not enabled: %v", linters["enable"])
+	}
+	if got := linters["settings"].(map[string]any)["sloglint"].(map[string]any)["context"]; got != "all" {
+		t.Errorf("context = %v, want all", got)
+	}
+	rules := linters["exclusions"].(map[string]any)["rules"].([]any)
+	first := rules[0].(map[string]any)
+	if first["path-except"] != "internal/(handler|server)/" {
+		t.Errorf("scope = %v", first["path-except"])
+	}
+	if !slices.Contains(anyStrings(first["linters"]), "sloglint") {
+		t.Errorf("the exclusion must name sloglint: %v", first["linters"])
 	}
 }
 
 // sandbox exempts a sweeper and a store that live under its request path but
 // do not serve requests, so a second exclusion has to survive.
 func TestSloglintCarriesFurtherExemptPaths(t *testing.T) {
-	got := Render("m", nil, &config.Sloglint{
+	doc := parseRendered(t, mustRender(t, "m", nil, &config.Sloglint{
 		Context:      "scope",
 		RequestPaths: "internal/http/(web|api)/",
 		Exempt:       []string{`internal/http/api/(runs_sweeper|runs_store)\.go`},
+	}))
+	linters := doc["linters"].(map[string]any)
+	rules := linters["exclusions"].(map[string]any)["rules"].([]any)
+	if len(rules) != 2 {
+		t.Fatalf("want two rules, got %d", len(rules))
+	}
+	if got := rules[1].(map[string]any)["path"]; got != `internal/http/api/(runs_sweeper|runs_store)\.go` {
+		t.Errorf("exempt path = %v", got)
+	}
+	if got := linters["settings"].(map[string]any)["sloglint"].(map[string]any)["context"]; got != "scope" {
+		t.Errorf("context = %v, want scope", got)
+	}
+}
+
+// A repository whose lint policy is genuinely its own keeps it in
+// .lateregate.yaml rather than a second file. Maps merge, enable appends.
+func TestExtraMergesOverTheSharedSet(t *testing.T) {
+	got, err := Render("m", nil, nil, map[string]any{
+		"linters": map[string]any{
+			"enable": []any{"bodyclose", "gosec"},
+			"settings": map[string]any{
+				"gosec": map[string]any{"excludes": []any{"G301"}},
+			},
+		},
 	})
-	if !strings.Contains(got, `- path: internal/http/api/(runs_sweeper|runs_store)\.go`) {
-		t.Errorf("the exempt path is missing:\n%s", got)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(got, "context: scope") {
-		t.Errorf("context not carried:\n%s", got)
+	linters := parseRendered(t, got)["linters"].(map[string]any)
+	enabled := anyStrings(linters["enable"])
+	for _, want := range []string{"errcheck", "modernize", "bodyclose", "gosec"} {
+		if !slices.Contains(enabled, want) {
+			t.Errorf("%s missing; enable appends, it does not replace: %v", want, enabled)
+		}
 	}
+	settings := linters["settings"].(map[string]any)
+	if _, ok := settings["depguard"]; !ok {
+		t.Error("merging a settings key must not drop the shared ones")
+	}
+	if got := settings["gosec"].(map[string]any)["excludes"]; len(anyStrings(got)) != 1 {
+		t.Errorf("gosec excludes = %v", got)
+	}
+}
+
+func parseRendered(t *testing.T, s string) map[string]any {
+	t.Helper()
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(s), &doc); err != nil {
+		t.Fatalf("rendered config does not parse: %v\n%s", err, s)
+	}
+	return doc
+}
+
+func anyStrings(v any) []string {
+	l, _ := v.([]any)
+	out := make([]string, 0, len(l))
+	for _, e := range l {
+		out = append(out, fmt.Sprintf("%v", e))
+	}
+	return out
 }
 
 // A repository that does not serve requests gets no sloglint and no empty
 // exclusions block, which golangci-lint would reject.
 func TestNoSloglintMeansNoExclusionsBlock(t *testing.T) {
-	got := Render("m", nil, nil)
+	got := mustRender(t, "m", nil, nil)
 	for _, unwanted := range []string{"sloglint", "exclusions:", "path-except:"} {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("unconfigured sloglint should emit no %q:\n%s", unwanted, got)
