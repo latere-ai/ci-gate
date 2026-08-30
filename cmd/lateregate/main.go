@@ -39,6 +39,7 @@ Commands:
 	fmt-check   fail if any Go source is not gofmt-formatted
 	modernize   fail on code the standard library already covers
 	depcheck    fail when a build reaches a dependency nobody admitted
+	cgo-free    fail on any Go file that imports \"C\"
 
 Every command reads .lateregate.yaml from -C (default: the working
 directory). A missing file means defaults, so a repository can adopt the
@@ -89,6 +90,8 @@ func run(argv []string, out io.Writer) error {
 		return gates.FmtCheck(out, exec)
 	case "modernize":
 		return gates.Modernize(cfg.Modernize, *goBin, out, exec)
+	case "cgo-free":
+		return gates.CgoFree(*root, out, cfg.CgoFree.Skip)
 	case "depcheck":
 		return depcheck.Run(cfg.Depcheck, out, depcheck.GoLister(*goBin, *root))
 	default:

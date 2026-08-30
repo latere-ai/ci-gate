@@ -41,6 +41,7 @@ type Config struct {
 	Hermetic  Hermetic  `yaml:"hermetic"`
 	Modernize Modernize `yaml:"modernize"`
 	Depcheck  Depcheck  `yaml:"depcheck"`
+	CgoFree   CgoFree   `yaml:"cgo_free"`
 }
 
 // Cover configures the per-package coverage gate.
@@ -187,6 +188,14 @@ type Gated struct {
 	// are its business, and pinning each would make an upstream refactor a
 	// failure here without any new dependency.
 	Allow map[string]string `yaml:"allow"`
+}
+
+// CgoFree configures the cgo-free gate.
+type CgoFree struct {
+	// Skip names directories the scan does not enter, besides .git and
+	// testdata. Keep it short: a directory skipped here is one the promise
+	// does not cover.
+	Skip []string `yaml:"skip"`
 }
 
 // Modernize configures the `go fix` gate.
