@@ -48,6 +48,17 @@ lint-modernize:
 lint-config:
 	@$(GO) run ./cmd/lateregate golangci
 
+# Runs the linter the CI lint job runs, against the config lint-config renders.
+# Without this the only place golangci-lint ever ran was a runner, which is the
+# shape every gate here exists to avoid: a check you cannot run before pushing.
+#
+# The version is the one ci/go-verify pins. golangci-lint embeds the Go
+# toolchain it was built with, so it is compiled by this module's own.
+GOLANGCI_VERSION ?= v2.13.1
+
+lint: lint-config
+	@$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION) run ./...
+
 # The spec tree checks: frontmatter, the closed status vocabulary, the index
 # rows, dependency edges and wikilinks. Conventions live in .lateregate.yaml.
 spec-lint:
