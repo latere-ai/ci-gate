@@ -52,7 +52,7 @@ func Run(cfg config.Cover, profile string, out io.Writer) error {
 		}
 		pct := 100 * float64(c.covered) / float64(c.total)
 		if why, ok := cfg.ExemptFor(p); ok {
-			fmt.Fprintf(out, "     %-44s %6.1f%%  exempt: %s\n", short(cfg, p), pct, why)
+			_, _ = fmt.Fprintf(out, "     %-44s %6.1f%%  exempt: %s\n", short(cfg, p), pct, why)
 			continue
 		}
 		measured++
@@ -61,7 +61,7 @@ func Run(cfg config.Cover, profile string, out io.Writer) error {
 			mark = "FAIL"
 			failed = append(failed, fmt.Sprintf("%s %.1f%%", short(cfg, p), pct))
 		}
-		fmt.Fprintf(out, "%s %-44s %6.1f%%  (%d/%d statements)\n",
+		_, _ = fmt.Fprintf(out, "%s %-44s %6.1f%%  (%d/%d statements)\n",
 			mark, short(cfg, p), pct, c.covered, c.total)
 	}
 
@@ -76,7 +76,7 @@ func Run(cfg config.Cover, profile string, out io.Writer) error {
 			"pass vacuously; either the tests did not run or every package is " +
 			"exempt, and both are failures rather than a green build")
 	}
-	fmt.Fprintf(out, "\nevery package clears %.0f%% (%d measured)\n", cfg.Threshold, measured)
+	_, _ = fmt.Fprintf(out, "\nevery package clears %.0f%% (%d measured)\n", cfg.Threshold, measured)
 	return nil
 }
 
@@ -93,7 +93,7 @@ func parse(profile string) (map[string]*counts, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	type blockKey struct{ file, span string }
 	type blockVal struct {

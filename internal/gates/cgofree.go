@@ -64,11 +64,11 @@ func CgoFree(root string, out io.Writer, skip []string) error {
 	}
 	if len(found) > 0 {
 		for _, f := range found {
-			fmt.Fprintln(out, "  "+f)
+			_, _ = fmt.Fprintln(out, "  "+f)
 		}
 		return fmt.Errorf(`%d file(s) import "C"`, len(found))
 	}
-	fmt.Fprintf(out, "no cgo in %d Go file(s)\n", scanned)
+	_, _ = fmt.Fprintf(out, "no cgo in %d Go file(s)\n", scanned)
 	return nil
 }
 

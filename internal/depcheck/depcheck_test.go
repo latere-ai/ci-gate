@@ -36,12 +36,6 @@ func gated(allow map[string]string) config.Depcheck {
 	}
 }
 
-func run(t *testing.T, cfg config.Depcheck, l Lister) (string, error) {
-	t.Helper()
-	var sb strings.Builder
-	return sb.String(), func() error { err := Run(cfg, &sb, l); return err }()
-}
-
 func TestAnAdmittedDependencyPasses(t *testing.T) {
 	l, _ := lister(t, map[string][]string{"*": {"golang.org/x/text/unicode/norm"}})
 	var sb strings.Builder

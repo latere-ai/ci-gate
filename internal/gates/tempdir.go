@@ -46,14 +46,14 @@ func TempDir(cfg config.TempDir, argv []string, out io.Writer, run Exec) error {
 	}
 	// A gate that leaks while checking for leaks is worse than no gate. This
 	// runs whatever the suite did, including when it failed.
-	defer os.RemoveAll(sandbox)
+	defer func() { _ = os.RemoveAll(sandbox) }()
 
 	before, err := touchedAt(sandbox)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(out, "TMPDIR=%s\n", sandbox)
+	_, _ = fmt.Fprintf(out, "TMPDIR=%s\n", sandbox)
 	_, runErr := run(envWithTemp(os.Environ(), sandbox), true, argv[0], argv[1:]...)
 
 	after, err := touchedAt(sandbox)
@@ -79,11 +79,11 @@ func TempDir(cfg config.TempDir, argv []string, out io.Writer, run Exec) error {
 
 	leaked, allowed := classify(entries, cfg, sandbox)
 	for _, a := range allowed {
-		fmt.Fprintf(out, "  allowed %s: %s\n", a.name, a.why)
+		_, _ = fmt.Fprintf(out, "  allowed %s: %s\n", a.name, a.why)
 	}
 	if len(leaked) > 0 {
 		for _, l := range leaked {
-			fmt.Fprintf(out, "  %s (%s)\n", l.name, humanSize(l.size))
+			_, _ = fmt.Fprintf(out, "  %s (%s)\n", l.name, humanSize(l.size))
 		}
 		return fmt.Errorf("%d entr%s survived the test run, %s in all\n"+
 			"a directory left under TMPDIR is never deleted: use the test "+
@@ -97,7 +97,7 @@ func TempDir(cfg config.TempDir, argv []string, out io.Writer, run Exec) error {
 	if runErr != nil {
 		return fmt.Errorf("the test run failed: %w", runErr)
 	}
-	fmt.Fprintf(out, "nothing survived the test run\n")
+	_, _ = fmt.Fprintf(out, "nothing survived the test run\n")
 	return nil
 }
 
@@ -162,7 +162,9 @@ func envWithTemp(env []string, dir string) []string {
 // 160GB.
 func treeSize(path string) int64 {
 	var total int64
-	filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
+	// The callback never returns an error -- an unreadable entry is skipped,
+	// because a size is best-effort -- so WalkDir's own error is always nil.
+	_ = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}

@@ -55,19 +55,19 @@ tempdir takes the command to watch after --, which overrides tempdir.command:
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "lateregate:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "lateregate:", err)
 		os.Exit(1)
 	}
 }
 
 func run(argv []string, out io.Writer) error {
 	if len(argv) == 0 {
-		fmt.Fprint(out, usage)
+		_, _ = fmt.Fprint(out, usage)
 		return fmt.Errorf("no command given")
 	}
 	cmd, argv := argv[0], argv[1:]
 	if cmd == "help" || cmd == "-h" || cmd == "--help" {
-		fmt.Fprint(out, usage)
+		_, _ = fmt.Fprint(out, usage)
 		return nil
 	}
 
@@ -106,12 +106,12 @@ func run(argv []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "wrote "+path)
+		_, _ = fmt.Fprintln(out, "wrote "+path)
 		return nil
 	case "depcheck":
 		return depcheck.Run(cfg.Depcheck, out, depcheck.GoLister(*goBin, *root))
 	default:
-		fmt.Fprint(out, usage)
+		_, _ = fmt.Fprint(out, usage)
 		return fmt.Errorf("unknown command %q", cmd)
 	}
 }

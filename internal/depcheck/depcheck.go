@@ -33,7 +33,7 @@ type Lister func(goos, goarch, pkg string) ([]string, error)
 // Run checks every gated package on every configured platform.
 func Run(cfg config.Depcheck, out io.Writer, list Lister) error {
 	if len(cfg.Packages) == 0 {
-		fmt.Fprintln(out, "depcheck: no gated packages configured, nothing to check")
+		_, _ = fmt.Fprintln(out, "depcheck: no gated packages configured, nothing to check")
 		return nil
 	}
 	platforms := cfg.Platforms
@@ -68,7 +68,7 @@ func Run(cfg config.Depcheck, out io.Writer, list Lister) error {
 					pkg, d, label(p), decisionOf(g)))
 			}
 		}
-		fmt.Fprintf(out, "  %-52s %d package(s) reached\n", short(pkg), len(reached))
+		_, _ = fmt.Fprintf(out, "  %-52s %d package(s) reached\n", short(pkg), len(reached))
 
 		// A stale allowance sits there admitting whatever later moves under
 		// it, so an entry the build no longer reaches is a failure too.
@@ -84,11 +84,11 @@ func Run(cfg config.Depcheck, out io.Writer, list Lister) error {
 	if len(problems) > 0 {
 		sort.Strings(problems)
 		for _, p := range problems {
-			fmt.Fprintln(out, "  "+p)
+			_, _ = fmt.Fprintln(out, "  "+p)
 		}
 		return fmt.Errorf("%d dependency problem(s)", len(problems))
 	}
-	fmt.Fprintf(out, "\nevery gated package reaches only what it admits (%d package(s), %d platform(s))\n",
+	_, _ = fmt.Fprintf(out, "\nevery gated package reaches only what it admits (%d package(s), %d platform(s))\n",
 		len(cfg.Packages), len(platforms))
 	return nil
 }

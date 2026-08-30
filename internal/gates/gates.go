@@ -69,7 +69,7 @@ func Hermetic(cfg config.Hermetic, goBin string, out io.Writer, run Exec) error 
 		return err
 	}
 	path := PathFor(dir, cfg.Allow)
-	fmt.Fprintf(out, "PATH=%s\n", path)
+	_, _ = fmt.Fprintf(out, "PATH=%s\n", path)
 	if _, err := run(envWithPath(os.Environ(), path), true, goBin, "test", "./..."); err != nil {
 		return fmt.Errorf("hermetic test run failed: %w", err)
 	}
@@ -114,11 +114,11 @@ func FmtCheck(out io.Writer, run Exec) error {
 	}
 	files := nonEmptyLines(string(listed))
 	if len(files) == 0 {
-		fmt.Fprintln(out, "every Go source is gofmt-formatted")
+		_, _ = fmt.Fprintln(out, "every Go source is gofmt-formatted")
 		return nil
 	}
 	for _, f := range files {
-		fmt.Fprintln(out, "  "+f)
+		_, _ = fmt.Fprintln(out, "  "+f)
 	}
 	return fmt.Errorf("%d file(s) are not gofmt-formatted; run gofmt -w . to fix", len(files))
 }
@@ -149,16 +149,16 @@ func Modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec) erro
 
 	patch, err := run(nil, false, goBin, args...)
 	if len(patch) > 0 {
-		out.Write(patch)
+		_, _ = out.Write(patch)
 		return fmt.Errorf("the diff above is already in the standard library; apply it with go fix")
 	}
 	if err != nil {
 		// An empty patch with a non-zero exit is a build error, and the build
 		// is another gate's job.
-		fmt.Fprintln(out, "no modernization found (go fix reported no patch)")
+		_, _ = fmt.Fprintln(out, "no modernization found (go fix reported no patch)")
 		return nil
 	}
-	fmt.Fprintln(out, "no modernization found")
+	_, _ = fmt.Fprintln(out, "no modernization found")
 	return nil
 }
 

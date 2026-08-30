@@ -48,7 +48,7 @@ type Spec struct {
 // the report, because a list of thirty is more useful than the first one.
 func Run(cfg config.Spec, root string, out io.Writer) error {
 	if cfg.Dir == "" {
-		fmt.Fprintln(out, "spec-lint: no spec.dir configured, nothing to check")
+		_, _ = fmt.Fprintln(out, "spec-lint: no spec.dir configured, nothing to check")
 		return nil
 	}
 	dir := filepath.Join(root, cfg.Dir)
@@ -87,12 +87,12 @@ func Run(cfg config.Spec, root string, out io.Writer) error {
 
 	sort.Strings(problems)
 	for _, p := range problems {
-		fmt.Fprintln(out, "  "+p)
+		_, _ = fmt.Fprintln(out, "  "+p)
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%d problem(s) in %s", len(problems), dir)
 	}
-	fmt.Fprintf(out, "%d specs consistent\n", len(specs))
+	_, _ = fmt.Fprintf(out, "%d specs consistent\n", len(specs))
 	return nil
 }
 
