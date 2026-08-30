@@ -160,7 +160,11 @@ func Modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec) erro
 			args = append(args, "-"+f+"=false")
 		}
 	}
-	args = append(args, "./...")
+	pkgs, err := ownPackages(goBin, run)
+	if err != nil {
+		return err
+	}
+	args = append(args, pkgs...)
 
 	patch, err := run(nil, false, goBin, args...)
 	if len(patch) > 0 {
@@ -176,6 +180,34 @@ func Modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec) erro
 	}
 	_, _ = fmt.Fprintln(out, "no modernization found")
 	return nil
+}
+
+// ownPackages lists the module's packages, minus anything under a
+// node_modules directory.
+//
+// `./...` reaches those. A JavaScript package is free to ship Go source, and a
+// repository with a frontend has a tree of them under frontend/node_modules
+// the moment anyone installs dependencies. Their code is not this
+// repository's to modernize and no patch here could be applied to it, so the
+// gate would fail on every workstation with the frontend set up. The
+// directory is excluded by name, the way the licence and cgo scans already
+// exclude it.
+func ownPackages(goBin string, run Exec) ([]string, error) {
+	listed, err := run(nil, false, goBin, "list", "./...")
+	if err != nil {
+		return nil, fmt.Errorf("listing the module packages: %w", err)
+	}
+	var pkgs []string
+	for _, p := range nonEmptyLines(string(listed)) {
+		if strings.Contains(p, "/node_modules/") {
+			continue
+		}
+		pkgs = append(pkgs, p)
+	}
+	if len(pkgs) == 0 {
+		return nil, fmt.Errorf("the module holds no packages to check")
+	}
+	return pkgs, nil
 }
 
 // hasFixer reports whether `go tool fix help` lists a fixer by that name. The

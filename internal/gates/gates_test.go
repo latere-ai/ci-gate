@@ -166,20 +166,58 @@ func TestFmtCheckFailsWhenGitListsNothing(t *testing.T) {
 	}
 }
 
+// pkgList is what `go list ./...` answers in these tests. The gate resolves
+// the package set and passes it to go fix rather than ./..., so every case
+// that reaches the fix call answers a list call first.
+const pkgList = "example.com/m\nexample.com/m/internal/a\n"
+
 func TestModernizePassesOnAnEmptyDiff(t *testing.T) {
 	var calls []call
-	if err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, "")); err != nil {
+	if err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, pkgList, "")); err != nil {
 		t.Fatalf("an empty diff must pass: %v", err)
 	}
-	if got := strings.Join(calls[0].args, " "); got != "fix -diff ./..." {
-		t.Errorf("ran go %q", got)
+	want := "fix -diff example.com/m example.com/m/internal/a"
+	if got := strings.Join(calls[1].args, " "); got != want {
+		t.Errorf("ran go %q, want %q", got, want)
+	}
+}
+
+// A JavaScript package may ship Go source, and a repository with a frontend
+// grows a tree of them the moment anyone installs dependencies. That code is
+// not this repository's to modernize and no patch here could be applied to
+// it, so ./... would fail the gate on every workstation with the frontend set
+// up.
+func TestModernizeLeavesNodeModulesAlone(t *testing.T) {
+	var calls []call
+	listed := "example.com/m\nexample.com/m/frontend/node_modules/flatted/golang/pkg/flatted\n"
+	if err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, listed, "")); err != nil {
+		t.Fatalf("an empty diff must pass: %v", err)
+	}
+	if got := strings.Join(calls[1].args, " "); strings.Contains(got, "node_modules") {
+		t.Errorf("a vendored JavaScript tree is not ours to fix, ran go %q", got)
+	}
+}
+
+func TestModernizeFailsWhenTheModuleHasNoPackages(t *testing.T) {
+	var calls []call
+	err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, "", ""))
+	if err == nil || !strings.Contains(err.Error(), "no packages") {
+		t.Fatalf("a gate with nothing to check has proven nothing, got %v", err)
+	}
+}
+
+func TestModernizeReportsAFailingPackageList(t *testing.T) {
+	var calls []call
+	err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, errors.New("boom")))
+	if err == nil || !strings.Contains(err.Error(), "listing the module packages") {
+		t.Fatalf("want a clear error, got %v", err)
 	}
 }
 
 func TestModernizeFailsOnANonEmptyDiff(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
-	err := Modernize(config.Modernize{}, "go", &sb, fake(t, &calls, "--- a.go\n+++ b.go\n"))
+	err := Modernize(config.Modernize{}, "go", &sb, fake(t, &calls, pkgList, "--- a.go\n+++ b.go\n"))
 	if err == nil {
 		t.Fatal("a non-empty diff must fail")
 	}
@@ -192,14 +230,15 @@ func TestModernizeDisablesTheConfiguredFixers(t *testing.T) {
 	var calls []call
 	help := "analyzers:\n    newexpr    rewrite new(T) forms\n    errorsastype  ...\n"
 	cfg := config.Modernize{Disable: []string{"newexpr", "errorsastype"}}
-	if err := Modernize(cfg, "go", &strings.Builder{}, fake(t, &calls, help, "")); err != nil {
+	if err := Modernize(cfg, "go", &strings.Builder{}, fake(t, &calls, help, pkgList, "")); err != nil {
 		t.Fatalf("disabled fixers should not fail the gate: %v", err)
 	}
-	if len(calls) != 2 {
-		t.Fatalf("want a help call then a fix call, got %d", len(calls))
+	if len(calls) != 3 {
+		t.Fatalf("want a help call, a list call and a fix call, got %d", len(calls))
 	}
-	if got := strings.Join(calls[1].args, " "); got != "fix -diff -newexpr=false -errorsastype=false ./..." {
-		t.Errorf("ran go %q", got)
+	want := "fix -diff -newexpr=false -errorsastype=false example.com/m example.com/m/internal/a"
+	if got := strings.Join(calls[2].args, " "); got != want {
+		t.Errorf("ran go %q, want %q", got, want)
 	}
 }
 
@@ -238,7 +277,7 @@ func TestModernizeReportsAFailingHelpCall(t *testing.T) {
 // error, and the build is another gate's job.
 func TestModernizeTreatsAnEmptyPatchWithAnErrorAsAPass(t *testing.T) {
 	var calls []call
-	if err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, errors.New("exit 1"))); err != nil {
+	if err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, pkgList, errors.New("exit 1"))); err != nil {
 		t.Fatalf("an empty patch must pass whatever the exit code: %v", err)
 	}
 }
