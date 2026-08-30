@@ -25,9 +25,21 @@ hermetic:
   allow: []
 
 modernize:
-  # No fixer is disabled here. An entry would need a reason in the commit that
-  # adds it.
-  disable: []
+  # Read by two gates: `go fix` through `make lint-modernize`, and the
+  # modernize linter in the generated .golangci.yml. They are the same
+  # analyzers, so a fixer turned off for one and left on for the other is this
+  # repository disagreeing with itself -- which it was, until generation made
+  # it visible.
+  disable:
+    # newexpr rewrites pointer helpers such as func ptr(v T) *T to new(v), then
+    # inlines call sites unevenly: the helper is left with no callers (which
+    # trips unused), and an untyped constant argument takes the wrong default
+    # type.
+    - newexpr
+    # errorsastype rewrites errors.As to errors.AsType[T], whose type parameter
+    # is constrained to [E error]. A local non-error interface target does not
+    # satisfy it, so the rewrite does not compile.
+    - errorsastype
 
 tempdir:
   # The suite is watched against an empty TMPDIR and nothing may survive it.

@@ -42,6 +42,12 @@ fmt-check:
 lint-modernize:
 	@$(GO) run ./cmd/lateregate modernize
 
+# .golangci.yml is generated: golangci-lint cannot inherit a shared config, so
+# it is rendered from this module and checked here. Regenerate with
+# `go run ./cmd/lateregate golangci -write`.
+lint-config:
+	@$(GO) run ./cmd/lateregate golangci
+
 # The spec tree checks: frontmatter, the closed status vocabulary, the index
 # rows, dependency edges and wikilinks. Conventions live in .lateregate.yaml.
 spec-lint:
