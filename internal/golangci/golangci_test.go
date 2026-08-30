@@ -173,3 +173,38 @@ func TestTheTestifyBanSurvivesAnEmptyDisableList(t *testing.T) {
 		t.Errorf("the testify ban is org policy, not per repo:\n%s", got)
 	}
 }
+
+// A repository with real policy of its own keeps its config, and says so. The
+// alternative is an exception nobody declared, which reads the same as one
+// nobody got around to.
+func TestAnOwnedConfigIsReportedAndNotOverwritten(t *testing.T) {
+	root := repo(t, map[string]string{Name: "version: \"2\"\n# hand written\n"})
+	cfg := &config.Config{Golangci: config.Golangci{Own: "a 50-word spelling policy"}}
+	reason, err := Own(root, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reason != "a 50-word spelling policy" {
+		t.Errorf("reason = %q", reason)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, Name))
+	if !strings.Contains(string(body), "hand written") {
+		t.Error("an owned config must not be touched")
+	}
+}
+
+// A declared exception pointing at nothing is a repository that lost its
+// config and did not notice.
+func TestAnOwnedConfigThatIsMissingFails(t *testing.T) {
+	cfg := &config.Config{Golangci: config.Golangci{Own: "reasons"}}
+	if _, err := Own(repo(t, nil), cfg); err == nil {
+		t.Fatal("claiming to own a file that does not exist must fail")
+	}
+}
+
+func TestNoClaimMeansGenerate(t *testing.T) {
+	reason, err := Own(repo(t, nil), &config.Config{})
+	if err != nil || reason != "" {
+		t.Errorf("Own = %q, %v; want the generate path", reason, err)
+	}
+}

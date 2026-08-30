@@ -102,6 +102,12 @@ func run(argv []string, out io.Writer) error {
 	case "tempdir":
 		return gates.TempDir(cfg.TempDir, fs.Args(), out, exec)
 	case "golangci":
+		if reason, err := golangci.Own(*root, cfg); err != nil {
+			return err
+		} else if reason != "" {
+			fmt.Fprintf(out, "%s is this repository's own, not generated: %s\n", golangci.Name, reason)
+			return nil
+		}
 		path, err := golangci.Write(*root, cfg, *goBin)
 		if err != nil {
 			return err

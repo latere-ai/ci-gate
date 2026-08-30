@@ -110,6 +110,20 @@ formatters:
 	return b.String()
 }
 
+// Own reports the reason a repository keeps its own configuration, having
+// checked that the file it claims to keep exists. A declared exception that
+// points at nothing is a repository that lost its config and did not notice.
+func Own(root string, cfg *config.Config) (string, error) {
+	reason := strings.TrimSpace(cfg.Golangci.Own)
+	if reason == "" {
+		return "", nil
+	}
+	if _, err := os.Stat(filepath.Join(root, Name)); err != nil {
+		return "", fmt.Errorf("golangci.own says this repository keeps its own %s, and there is none: %w", Name, err)
+	}
+	return reason, nil
+}
+
 // Write renders the file into the repository, replacing whatever is there.
 //
 // It refuses to write over a tracked file. A generated config that is also

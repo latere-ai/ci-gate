@@ -41,6 +41,7 @@ type Config struct {
 	Hermetic  Hermetic  `yaml:"hermetic"`
 	Modernize Modernize `yaml:"modernize"`
 	Depcheck  Depcheck  `yaml:"depcheck"`
+	Golangci  Golangci  `yaml:"golangci"`
 	CgoFree   CgoFree   `yaml:"cgo_free"`
 	TempDir   TempDir   `yaml:"tempdir"`
 }
@@ -189,6 +190,23 @@ type Gated struct {
 	// are its business, and pinning each would make an upstream refactor a
 	// failure here without any new dependency.
 	Allow map[string]string `yaml:"allow"`
+}
+
+// Golangci configures the lint-config gate.
+type Golangci struct {
+	// Own declares that this repository keeps its own .golangci.yml, and why.
+	//
+	// The shared config exists because most repositories had nothing
+	// repo-specific to say and four identical copies of saying it. A few do
+	// have something to say -- a revive rule set, a gosec exclusion with a
+	// reason, a spelling policy -- and rendering those from here would either
+	// lose them or turn this file into a second golangci-lint config.
+	//
+	// So the exception is allowed and declared. An undeclared exception is
+	// indistinguishable from nobody having got around to it, which is what
+	// this field fixes: the reason is in the repo, and lint-config checks the
+	// file is really there rather than silently doing nothing.
+	Own string `yaml:"own"`
 }
 
 // CgoFree configures the cgo-free gate.
