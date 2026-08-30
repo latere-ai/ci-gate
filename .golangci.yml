@@ -15,6 +15,18 @@ linters:
     # `make lint-modernize` runs the toolchain's own fixers on top of this;
     # they overlap but each carries checks the other does not.
     - modernize
+  settings:
+    modernize:
+      disable:
+        # newexpr rewrites pointer helpers such as func ptr(v T) *T to new(v),
+        # then inlines call sites unevenly: the helper is left with no callers
+        # (which trips unused), and an untyped constant argument takes the
+        # wrong default type.
+        - newexpr
+        # errorsastype rewrites errors.As to errors.AsType[T], whose type
+        # parameter is constrained to [E error]. A local non-error interface
+        # target does not satisfy it, so the rewrite does not compile.
+        - errorsastype
 
 formatters:
   enable:
