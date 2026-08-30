@@ -28,9 +28,15 @@ spec:
   settled: [complete]
 
 hermetic:
-  # The suite shells out to gofmt and go, both of which live in the toolchain
-  # directory. Nothing else, which is the setting every repo should aim at.
-  allow: []
+  # gofmt and go live in the toolchain directory and need nothing named here.
+  #
+  # git does. The fmt-check gate is defined as "the Go files this repository
+  # tracks", and it asks git for that list rather than walking the tree, which
+  # would descend into any nested checkout parked inside the repo and report
+  # files this repository cannot fix. So the gate's own test needs git, and
+  # naming the directory is how that dependency stays visible instead of
+  # ambient. That is what this key is for.
+  allow: [/usr/bin]
 
 modernize:
   # Read by two gates: `go fix` through `make lint-modernize`, and the
