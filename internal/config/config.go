@@ -66,23 +66,54 @@ type License struct {
 	// Extensions are the file types checked. Empty means Go only, which is
 	// what a Go repository needs and the only thing this tool can assume.
 	Extensions []string `yaml:"extensions"`
+	// Names are files checked by their whole name rather than an extension,
+	// for the ones that have none: Makefile, Dockerfile, a hook script.
+	Names []string `yaml:"names"`
 	// Skip names directories the scan does not enter, besides .git and
 	// node_modules. Generated output belongs here; source does not.
 	Skip []string `yaml:"skip"`
 }
 
-// LineComment holds the extensions the gate knows how to read a notice from.
-// All of them take // line comments. An extension outside this set is
-// rejected by Load rather than skipped at scan time, so a repository cannot
-// believe it is checking files that it is not.
-var LineComment = []string{".go", ".ts", ".tsx", ".js", ".mjs", ".cjs", ".jsx", ".rs", ".java", ".kt", ".swift", ".c", ".h", ".cc", ".cpp", ".hpp", ".proto"}
+// LineComment maps a file type to the marker its line comments start with.
+// A type outside this table is rejected by Load rather than skipped at scan
+// time, so a repository cannot believe it is checking files that it is not.
+var LineComment = map[string]string{
+	".go": "//", ".ts": "//", ".tsx": "//", ".js": "//", ".mjs": "//",
+	".cjs": "//", ".jsx": "//", ".rs": "//", ".java": "//", ".kt": "//",
+	".swift": "//", ".c": "//", ".h": "//", ".cc": "//", ".cpp": "//",
+	".hpp": "//", ".proto": "//", ".scss": "//",
+
+	".sh": "#", ".bash": "#", ".zsh": "#", ".py": "#", ".rb": "#",
+	".pl": "#", ".yaml": "#", ".yml": "#", ".toml": "#", ".tf": "#",
+	"Makefile": "#", "Dockerfile": "#", "Justfile": "#",
+}
 
 // Exts is the extension list with the Go default applied.
 func (l License) Exts() []string {
-	if len(l.Extensions) == 0 {
+	if len(l.Extensions) == 0 && len(l.Names) == 0 {
 		return []string{".go"}
 	}
 	return l.Extensions
+}
+
+// CommentFor reports the comment marker for a file name, and whether the file
+// is checked at all. A whole name is matched before an extension, so a
+// Dockerfile is found and a Dockerfile.dev is not unless it is listed too.
+func (l License) CommentFor(name string) (string, bool) {
+	if slices.Contains(l.Names, name) {
+		return LineComment[name], true
+	}
+	ext := filepath.Ext(name)
+	if !slices.Contains(l.Exts(), ext) {
+		return "", false
+	}
+	return LineComment[ext], true
+}
+
+// Checked names every file type the gate looks at, for the message it prints
+// when the scan matched nothing.
+func (l License) Checked() []string {
+	return append(slices.Clone(l.Exts()), l.Names...)
 }
 
 // Cover configures the per-package coverage gate.
@@ -413,16 +444,16 @@ func (c *Config) validate(path string) error {
 			path, strings.Join(unowned, ", "))
 	}
 	var unreadable []string
-	for _, ext := range c.License.Extensions {
-		if !slices.Contains(LineComment, ext) {
+	for _, ext := range append(slices.Clone(c.License.Extensions), c.License.Names...) {
+		if _, ok := LineComment[ext]; !ok {
 			unreadable = append(unreadable, ext)
 		}
 	}
 	if len(unreadable) > 0 {
 		sort.Strings(unreadable)
-		return fmt.Errorf("%s: license.extensions the gate cannot read a notice from: %s\n"+
-			"it looks for a // line comment at the top of the file; an extension "+
-			"whose comment syntax differs would be scanned and never match",
+		return fmt.Errorf("%s: license file types the gate cannot read a notice from: %s\n"+
+			"it looks for a line comment at the top of the file, and knows no "+
+			"marker for these; one scanned with the wrong marker never matches",
 			path, strings.Join(unreadable, ", "))
 	}
 	if t := c.Cover.Threshold; t < 0 || t > 100 {

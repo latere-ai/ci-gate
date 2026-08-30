@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"latere.ai/x/ci-gate/internal/config"
@@ -68,7 +69,8 @@ func Run(cfg config.License, root string, out io.Writer) error {
 			}
 			return nil
 		}
-		if !slices.Contains(cfg.Exts(), filepath.Ext(name)) {
+		prefix, ok := cfg.CommentFor(name)
+		if !ok {
 			return nil
 		}
 		scanned++
@@ -79,7 +81,7 @@ func Run(cfg config.License, root string, out io.Writer) error {
 		// WalkDir only ever yields paths under root, so trimming the prefix
 		// is exact and leaves no failure to invent a fallback for.
 		rel := strings.TrimPrefix(path, root+string(filepath.Separator))
-		if why := check(string(body), cfg); why != "" {
+		if why := check(string(body), prefix, cfg); why != "" {
 			bad = append(bad, rel+": "+why)
 		}
 		return nil
@@ -90,14 +92,14 @@ func Run(cfg config.License, root string, out io.Writer) error {
 	// A scan that read nothing proves nothing.
 	if scanned == 0 {
 		return fmt.Errorf("no %s file found under %s; the gate would pass vacuously",
-			strings.Join(cfg.Exts(), "/"), root)
+			strings.Join(cfg.Checked(), "/"), root)
 	}
 	if len(bad) > 0 {
 		for _, b := range bad {
 			_, _ = fmt.Fprintln(out, "  "+b)
 		}
 		return fmt.Errorf("%d file(s) without the declared %s notice\n%s",
-			len(bad), cfg.SPDX, Want(cfg))
+			len(bad), cfg.SPDX, Want(cfg, "//"))
 	}
 	_, _ = fmt.Fprintf(out, "%s declared on %d file(s)\n", cfg.SPDX, scanned)
 	return nil
@@ -105,22 +107,33 @@ func Run(cfg config.License, root string, out io.Writer) error {
 
 // Want renders the notice the repository declared, so a failure teaches the
 // shape rather than only rejecting the one that was there.
-func Want(cfg config.License) string {
-	return fmt.Sprintf("the notice is the first two lines, then a blank one:\n\n"+
-		"\t// %s <year> %s\n\t// %s %s\n\n",
-		CopyrightTag, cfg.Holder, IdentifierTag, cfg.SPDX)
+func Want(cfg config.License, prefix string) string {
+	return fmt.Sprintf("the notice is the first two lines, then a blank one, "+
+		"below a shebang if the file has one:\n\n"+
+		"\t%s %s <year> %s\n\t%s %s %s\n\n",
+		prefix, CopyrightTag, cfg.Holder, prefix, IdentifierTag, cfg.SPDX)
 }
 
 // check reports why a file's notice is wrong, or "" when it is right.
-func check(src string, cfg config.License) string {
+//
+// prefix is the file type's line-comment marker. The notice sits at the very
+// top except below a shebang, which the kernel only honours on line 1: a
+// script whose first line is a comment is not executable, so the notice moves
+// down rather than the file breaking.
+func check(src, prefix string, cfg config.License) string {
 	lines := strings.Split(src, "\n")
-	for len(lines) < 3 {
+	at := 0
+	if strings.HasPrefix(src, "#!") {
+		at = 1
+	}
+	for len(lines) < at+3 {
 		lines = append(lines, "")
 	}
+	lines = lines[at:]
 
-	first, ok := strings.CutPrefix(strings.TrimSpace(lines[0]), "// "+CopyrightTag)
+	first, ok := strings.CutPrefix(strings.TrimSpace(lines[0]), prefix+" "+CopyrightTag)
 	if !ok {
-		return "no " + CopyrightTag + " on line 1"
+		return "no " + CopyrightTag + " on line " + itoa(at+1)
 	}
 	fields := strings.Fields(first)
 	if len(fields) == 0 {
@@ -133,9 +146,9 @@ func check(src string, cfg config.License) string {
 		return "holder is " + quote(holder) + ", declared " + quote(cfg.Holder)
 	}
 
-	id, ok := strings.CutPrefix(strings.TrimSpace(lines[1]), "// "+IdentifierTag)
+	id, ok := strings.CutPrefix(strings.TrimSpace(lines[1]), prefix+" "+IdentifierTag)
 	if !ok {
-		return "no " + IdentifierTag + " on line 2"
+		return "no " + IdentifierTag + " on line " + itoa(at+2)
 	}
 	if got := strings.TrimSpace(id); got != cfg.SPDX {
 		return "identifier is " + quote(got) + ", declared " + quote(cfg.SPDX)
@@ -146,9 +159,11 @@ func check(src string, cfg config.License) string {
 	// doc. The mistake is invisible in review and permanent once it is in
 	// every file, which is why the separation is checked and not assumed.
 	if strings.TrimSpace(lines[2]) != "" {
-		return "line 3 is not blank, so the notice runs into the code below it"
+		return "line " + itoa(at+3) + " is not blank, so the notice runs into the code below it"
 	}
 	return ""
 }
 
 func quote(s string) string { return fmt.Sprintf("%q", s) }
+
+func itoa(n int) string { return strconv.Itoa(n) }

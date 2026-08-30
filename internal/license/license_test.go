@@ -282,3 +282,86 @@ func TestAnUnreadableFileFails(t *testing.T) {
 		t.Fatal("a file the gate cannot open should fail rather than be skipped")
 	}
 }
+
+const shNotice = "# SPDX-FileCopyrightText: 2026 Latere AI\n" +
+	"# SPDX-License-Identifier: AGPL-3.0-or-later\n\n"
+
+func shellCfg() config.License {
+	c := cfg()
+	c.Extensions = []string{".go", ".sh"}
+	return c
+}
+
+func TestAShellScriptUsesItsOwnCommentMarker(t *testing.T) {
+	out, err := run(t, shellCfg(), map[string]string{
+		"a.go":     notice + "package a\n",
+		"s/one.sh": shNotice + "set -e\n",
+	})
+	if err != nil {
+		t.Fatalf("a script with a # notice should pass: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "on 2 file(s)") {
+		t.Errorf("both file types should be counted:\n%s", out)
+	}
+}
+
+// The Go marker in a shell script is a comment there too, so nothing breaks
+// and nothing scans: exactly the silent pass the gate exists to refuse.
+func TestTheWrongMarkerForTheFileTypeFails(t *testing.T) {
+	out, err := run(t, shellCfg(), map[string]string{"s/one.sh": notice + "set -e\n"})
+	if err == nil {
+		t.Fatal("a // notice in a shell script should fail")
+	}
+	if !strings.Contains(out, "no "+CopyrightTag+" on line 1") {
+		t.Errorf("report:\n%s", out)
+	}
+}
+
+// The kernel only honours #! on line 1, so a notice pushed above it would
+// make the script unexecutable. It moves below instead.
+func TestTheNoticeSitsBelowAShebang(t *testing.T) {
+	if _, err := run(t, shellCfg(), map[string]string{
+		"s/one.sh": "#!/bin/sh\n" + shNotice + "set -e\n",
+	}); err != nil {
+		t.Errorf("a notice below a shebang should pass: %v", err)
+	}
+}
+
+func TestAShebangWithNoNoticeUnderItFails(t *testing.T) {
+	out, err := run(t, shellCfg(), map[string]string{"s/one.sh": "#!/bin/sh\nset -e\n"})
+	if err == nil {
+		t.Fatal("a script with a shebang and no notice should fail")
+	}
+	if !strings.Contains(out, "on line 2") {
+		t.Errorf("the failure should count from below the shebang:\n%s", out)
+	}
+}
+
+func TestAShebangShiftsTheBlankLineCheckToo(t *testing.T) {
+	out, err := run(t, shellCfg(), map[string]string{
+		"s/one.sh": "#!/bin/sh\n# SPDX-FileCopyrightText: 2026 Latere AI\n" +
+			"# SPDX-License-Identifier: AGPL-3.0-or-later\nset -e\n",
+	})
+	if err == nil {
+		t.Fatal("a notice running into the script below it should fail")
+	}
+	if !strings.Contains(out, "line 4 is not blank") {
+		t.Errorf("report:\n%s", out)
+	}
+}
+
+func TestAWholeNameIsCheckedAlongsideExtensions(t *testing.T) {
+	c := cfg()
+	c.Extensions = []string{".go"}
+	c.Names = []string{"Makefile"}
+	out, err := run(t, c, map[string]string{
+		"a.go":     notice + "package a\n",
+		"Makefile": shNotice + "all:\n\t@true\n",
+	})
+	if err != nil {
+		t.Fatalf("a named file with a notice should pass: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "on 2 file(s)") {
+		t.Errorf("the named file should be counted:\n%s", out)
+	}
+}

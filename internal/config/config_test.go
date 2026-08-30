@@ -248,14 +248,56 @@ func TestAnUnsetExtensionListIsGoOnly(t *testing.T) {
 	}
 }
 
-// An extension the scanner cannot read a notice from would be walked and
-// never matched, which reads as a clean pass over files nobody checked.
-func TestAnExtensionWithoutLineCommentsIsRejected(t *testing.T) {
-	_, err := Load(write(t, "license:\n  spdx: MIT\n  extensions: ['.go', '.css', '.py']\n"))
+// A file type the scanner has no comment marker for would be walked and never
+// matched, which reads as a clean pass over files nobody checked.
+func TestAFileTypeWithoutLineCommentsIsRejected(t *testing.T) {
+	_, err := Load(write(t, "license:\n  spdx: MIT\n  extensions: ['.go', '.css', '.html']\n"))
 	if err == nil {
-		t.Fatal("an extension the gate cannot read should be rejected at load")
+		t.Fatal("a file type the gate cannot read should be rejected at load")
 	}
-	if !strings.Contains(err.Error(), ".css") || !strings.Contains(err.Error(), ".py") {
-		t.Errorf("both bad extensions should be named: %v", err)
+	if !strings.Contains(err.Error(), ".css") || !strings.Contains(err.Error(), ".html") {
+		t.Errorf("both bad types should be named: %v", err)
+	}
+}
+
+// names go through the same table, so an unlisted one fails at load rather
+// than being walked past.
+func TestAnUnknownWholeNameIsRejected(t *testing.T) {
+	_, err := Load(write(t, "license:\n  spdx: MIT\n  names: [Makefile, Rakefile]\n"))
+	if err == nil {
+		t.Fatal("a whole name the gate cannot read should be rejected at load")
+	}
+	if !strings.Contains(err.Error(), "Rakefile") || strings.Contains(err.Error(), "Makefile") {
+		t.Errorf("only the unknown name should be rejected: %v", err)
+	}
+}
+
+// A repository that only names extension-less files still means those, not
+// the Go default.
+func TestNamesAloneDoNotFallBackToGo(t *testing.T) {
+	c, err := Load(write(t, "license:\n  spdx: MIT\n  names: [Makefile]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.License.Exts(); len(got) != 0 {
+		t.Errorf("extensions = %v, want none", got)
+	}
+	if p, ok := c.License.CommentFor("Makefile"); !ok || p != "#" {
+		t.Errorf("CommentFor(Makefile) = %q, %v", p, ok)
+	}
+	if _, ok := c.License.CommentFor("main.go"); ok {
+		t.Error("a .go file should not be checked when only names are listed")
+	}
+}
+
+func TestTheCommentMarkerFollowsTheFileType(t *testing.T) {
+	c, err := Load(write(t, "license:\n  spdx: MIT\n  extensions: ['.go', '.sh']\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"a.go": "//", "b.sh": "#"} {
+		if p, ok := c.License.CommentFor(name); !ok || p != want {
+			t.Errorf("CommentFor(%s) = %q, %v; want %q", name, p, ok, want)
+		}
 	}
 }
