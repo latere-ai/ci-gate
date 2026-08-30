@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: build test cover test-hermetic test-race fmt fmt-check lint-modernize spec-lint
+.PHONY: build test cover test-hermetic test-tempdir test-race fmt fmt-check lint-modernize spec-lint
 
 build:
 	$(GO) build ./...
@@ -21,6 +21,12 @@ cover:
 # worst order to find out.
 test-hermetic:
 	@$(GO) run ./cmd/lateregate hermetic
+
+# The suite against an empty TMPDIR, failing on anything left behind. A test
+# that makes a temporary directory and does not remove it leaks it for the life
+# of the machine, and nothing else in the suite ever goes red for it.
+test-tempdir:
+	@$(GO) run ./cmd/lateregate tempdir
 
 # The race detector needs cgo, which the shipped binary does not: this is
 # about finding a race in the tests, not about what we compile to.

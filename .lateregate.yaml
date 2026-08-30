@@ -28,3 +28,13 @@ modernize:
   # No fixer is disabled here. An entry would need a reason in the commit that
   # adds it.
   disable: []
+
+tempdir:
+  # The suite is watched against an empty TMPDIR and nothing may survive it.
+  # This repo's own tests make temporary directories and remove them, which is
+  # the state every consumer repo should be able to reach.
+  #
+  # command is unset, so the default `go test ./...` runs. A repo whose real
+  # coverage lives behind a build tag or a slower target names it here: a leak
+  # the gate never executes is a leak it reports as absent.
+  allow: {}
