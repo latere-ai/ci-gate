@@ -116,10 +116,18 @@ func Render(module string, disable []string, sl *config.Sloglint, extra map[stri
 	// Tests exercise error paths deliberately, read fixture files by
 	// constructed path, and marshal literals written a line earlier. None of
 	// that is a finding there, and replichai's config had already argued so.
+	//
+	// bodyclose is here for a different reason: it analyses the call site and
+	// does not follow into helpers, and a test suite is built out of helpers.
+	// Measured on service-template, all 33 of its findings were wrong -- 29
+	// were httptest recorder results, whose Body is a NopCloser over a byte
+	// slice with no connection to leak, and the other 4 were real client
+	// responses that the helper already closed with defer. A linter that is
+	// wrong every time it fires teaches people to stop reading it.
 	exclusionRules := []any{
 		map[string]any{
 			"path":    `_test\.go`,
-			"linters": []any{"errcheck", "noctx", "errchkjson"},
+			"linters": []any{"errcheck", "noctx", "errchkjson", "bodyclose"},
 		},
 	}
 

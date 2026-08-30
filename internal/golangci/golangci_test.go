@@ -70,6 +70,7 @@ func TestRenderCarriesTheSharedBar(t *testing.T) {
 	got := mustRender(t, "m", nil, nil)
 	for what, want := range map[string]string{
 		"repeated findings are not capped": "max-same-issues: 0",
+		"a test helper is not a leak":      "bodyclose",
 		"a linter's findings are not cut":  "max-issues-per-linter: 0",
 		"unchecked type assertions":        "check-type-assertions: true",
 		"every vet analyzer":               "enable-all: true",
