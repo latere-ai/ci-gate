@@ -83,6 +83,37 @@ func TestWaiverAdmitsAndExpiryFails(t *testing.T) {
 	}
 }
 
+// until names a day and covers all of it. An exemption that died at
+// midnight on the date it names would not cover the day it names, which is
+// not what anybody writing one means.
+func TestExpiryIsInclusiveOfTheDayItNames(t *testing.T) {
+	held := []string{"fmt-check", "test", "test-hermetic", "test-race", "lint", "lint-config", "lint-modernize", "spec-lint"}
+	cfg := config.Contract{Exempt: map[string]config.Waiver{
+		"cover": {Reason: "the suite needs Postgres beside it", Until: "2026-11-01"},
+	}}
+	e := canned(db(held...))
+
+	for _, tc := range []struct {
+		name string
+		now  time.Time
+		live bool
+	}{
+		{"the morning of the day named", time.Date(2026, 11, 1, 0, 0, 1, 0, time.UTC), true},
+		{"the last second of it", time.Date(2026, 11, 1, 23, 59, 59, 0, time.UTC), true},
+		{"the day after", time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Run(cfg, &strings.Builder{}, e, tc.now)
+			if tc.live && err != nil {
+				t.Fatalf("the exemption must still cover %s: %v", tc.now.Format(time.DateOnly), err)
+			}
+			if !tc.live && err == nil {
+				t.Fatalf("the exemption must be dead on %s", tc.now.Format(time.DateOnly))
+			}
+		})
+	}
+}
+
 func TestExemptionForUnknownGateFails(t *testing.T) {
 	cfg := config.Contract{Exempt: map[string]config.Waiver{
 		"convr": {Reason: "typo for cover", Until: "2026-11-01"},

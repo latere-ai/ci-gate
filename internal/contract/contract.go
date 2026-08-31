@@ -85,9 +85,11 @@ func Run(cfg config.Contract, out io.Writer, exec gates.Exec, now time.Time) err
 			missing = append(missing, t)
 			continue
 		}
-		// The date is validated at load, so it parses here.
+		// The date is validated at load, so it parses here. It names a day,
+		// not an instant, and it is inclusive: the exemption dies when the
+		// day after it begins.
 		until, _ := w.UntilDate()
-		if now.After(until) {
+		if !now.Before(until.AddDate(0, 0, 1)) {
 			expired = append(expired, fmt.Sprintf("%s (expired %s: %s)", t, w.Until, w.Reason))
 			continue
 		}

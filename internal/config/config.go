@@ -71,9 +71,13 @@ type Contract struct {
 // a time a thing the tool checks rather than a thing somebody remembers.
 type Waiver struct {
 	Reason string `yaml:"reason"`
-	// Until is the date the exemption stops working, as YYYY-MM-DD. Past it
-	// the gate fails as an expiry rather than as an absence, because the two
-	// call for different work: adopt the gate, or argue for more time.
+	// Until is the last day the exemption works, as YYYY-MM-DD, and it is
+	// inclusive: "until: 2026-11-01" covers all of 1 November. Somebody
+	// writing that means they have until then, and a date that quietly meant
+	// the day before would be read wrong by everyone who writes one.
+	//
+	// After it the gate fails as an expiry rather than as an absence, because
+	// the two call for different work: adopt the gate, or argue for more time.
 	Until string `yaml:"until"`
 }
 

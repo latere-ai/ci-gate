@@ -386,9 +386,10 @@ contract:
 
 Both fields are mandatory, and the date is the half that matters. A reason
 alone becomes wallpaper: seventeen well-argued exemptions is a bar written
-down and abandoned. Past the date the gate fails, and it says the
-exemption ran out rather than that the target is missing, because the two
-call for different work.
+down and abandoned. `until` is inclusive -- the exemption covers all of the
+day it names and dies the next morning. After that the gate fails, and it
+says the exemption ran out rather than that the target is missing, because
+the two call for different work.
 
 The probe reads make's rule database rather than running `make -n <target>`.
 That form succeeds when a *file* of the target's name exists, so a `test/`
