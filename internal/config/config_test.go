@@ -341,3 +341,54 @@ func TestReadinessLoadsWhenBothAreSet(t *testing.T) {
 		t.Errorf("the rule keys must survive the load, got %+v", c.Spec)
 	}
 }
+
+// Not holding a gate is a decision, so it carries its reason. D3.
+func TestAContractExemptionWithoutAReasonIsRejected(t *testing.T) {
+	dir := write(t, "contract:\n  exempt:\n    cover:\n      reason: \"\"\n      until: 2026-11-01\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("an exemption with no reason must fail the load")
+	}
+	for _, want := range []string{"cover", "does not hold it yet"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+// A reason alone becomes wallpaper. The date is what makes retiring the
+// exemptions one at a time something the tool checks.
+func TestAContractExemptionWithoutADateIsRejected(t *testing.T) {
+	for _, tc := range []struct{ name, until string }{
+		{"absent", ""},
+		{"not a date", "soon"},
+		{"wrong format", "01/11/2026"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := write(t, "contract:\n  exempt:\n    cover:\n      reason: needs Postgres\n      until: \""+tc.until+"\"\n")
+			if _, err := Load(dir); err == nil {
+				t.Fatalf("until %q must fail the load: an exemption with no end lowers the bar permanently", tc.until)
+			}
+		})
+	}
+}
+
+func TestContractExemptionIsRead(t *testing.T) {
+	c, err := Load(write(t, `
+contract:
+  exempt:
+    cover:
+      reason: the suite needs Postgres and MinIO beside it
+      until: 2026-11-01
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, ok := c.Contract.Exempt["cover"]
+	if !ok {
+		t.Fatal("the exemption must survive the load")
+	}
+	if _, ok := w.UntilDate(); !ok {
+		t.Errorf("until %q must parse", w.Until)
+	}
+}

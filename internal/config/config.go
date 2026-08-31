@@ -22,6 +22,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 )
@@ -47,6 +48,40 @@ type Config struct {
 	License   License   `yaml:"license"`
 
 	OtelClient OtelClient `yaml:"otel_client"`
+	Contract   Contract   `yaml:"contract"`
+}
+
+// Contract configures the gate-set check: which required gates this
+// repository does not hold yet.
+//
+// The required set itself is not here. It is a property of the organisation,
+// compiled into this tool, because a bar a consumer can lower is not a bar. A
+// consumer declares only the gates it is behind on, and every entry is
+// temporary by construction.
+type Contract struct {
+	// Exempt maps a required make target to the decision not to hold it yet.
+	Exempt map[string]Waiver `yaml:"exempt"`
+}
+
+// Waiver is one gate a repository does not hold yet.
+//
+// Both fields are mandatory and the reason is only half of it. A reason alone
+// becomes wallpaper: seventeen well-argued exemptions is not a bar, it is a
+// bar written down and abandoned. The date is what makes retiring them one at
+// a time a thing the tool checks rather than a thing somebody remembers.
+type Waiver struct {
+	Reason string `yaml:"reason"`
+	// Until is the date the exemption stops working, as YYYY-MM-DD. Past it
+	// the gate fails as an expiry rather than as an absence, because the two
+	// call for different work: adopt the gate, or argue for more time.
+	Until string `yaml:"until"`
+}
+
+// UntilDate parses Until. The zero time means it did not parse, which
+// validate rejects before any gate reads it.
+func (w Waiver) UntilDate() (time.Time, bool) {
+	t, err := time.Parse(time.DateOnly, strings.TrimSpace(w.Until))
+	return t, err == nil
 }
 
 // License configures the per-file licence notice gate.
@@ -453,6 +488,29 @@ func (c *Config) validate(path string) error {
 			"admitting a dependency is a decision: write why the build may reach "+
 			"it, or delete the entry",
 			path, strings.Join(noReason, ", "))
+	}
+	var noWhy, noDate []string
+	for target, w := range c.Contract.Exempt {
+		if strings.TrimSpace(w.Reason) == "" {
+			noWhy = append(noWhy, target)
+		}
+		if _, ok := w.UntilDate(); !ok {
+			noDate = append(noDate, target)
+		}
+	}
+	if len(noWhy) > 0 {
+		sort.Strings(noWhy)
+		return fmt.Errorf("%s: contract exemption without a reason: %s\n"+
+			"not holding a gate is a decision: write why this repository does "+
+			"not hold it yet, or delete the entry",
+			path, strings.Join(noWhy, ", "))
+	}
+	if len(noDate) > 0 {
+		sort.Strings(noDate)
+		return fmt.Errorf("%s: contract exemption without a usable until date: %s\n"+
+			"write the date the exemption stops working, as YYYY-MM-DD: an "+
+			"exemption with no end is the bar being lowered permanently",
+			path, strings.Join(noDate, ", "))
 	}
 	var unowned []string
 	for prefix, why := range c.TempDir.Allow {
