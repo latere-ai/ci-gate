@@ -20,8 +20,10 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
+	"latere.ai/x/ci-gate/internal/contract"
 	"latere.ai/x/ci-gate/internal/cover"
 	"latere.ai/x/ci-gate/internal/depcheck"
 	"latere.ai/x/ci-gate/internal/gates"
@@ -47,6 +49,7 @@ Commands:
 	license     fail on a source file without the declared SPDX notice
 	golangci    render the shared .golangci.yml (generated, gitignored)
 	tempdir     run the suite against an empty TMPDIR and fail on what survives
+	contract    fail on a required gate this repository neither holds nor waives
 
 Every command reads .lateregate.yaml from -C (default: the working
 directory). A missing file means defaults, so a repository can adopt the
@@ -142,6 +145,8 @@ func run(argv []string, out io.Writer) error {
 		}
 		_, _ = fmt.Fprintln(out, "wrote "+path)
 		return nil
+	case "contract":
+		return contract.Run(cfg.Contract, out, exec, time.Now())
 	case "depcheck":
 		return depcheck.Run(cfg.Depcheck, out, depcheck.GoLister(*goBin, *root))
 	default:

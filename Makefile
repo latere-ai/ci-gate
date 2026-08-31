@@ -72,3 +72,9 @@ spec-lint:
 # the repository; code travels by being pasted, vendored and scanned.
 license:
 	@$(GO) run ./cmd/lateregate license
+
+# The gate set itself. Every other target here checks this repository's code;
+# this one checks that the targets exist at all, because the shared pipeline
+# runs the ones it finds and silently skips the ones it does not.
+contract:
+	@$(GO) run ./cmd/lateregate contract
