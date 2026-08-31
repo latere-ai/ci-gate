@@ -1,6 +1,6 @@
 ---
 title: Declare the gate set, and fail a repository that is missing one
-status: draft
+status: partial
 depends_on:
   - 001-gate-principles.md
 affects:
@@ -132,13 +132,26 @@ A repository that is missing a target and has no exemption fails at the
 As of today. A gate joins the set when a repository can hold it now, or
 hold it behind an exemption someone intends to retire.
 
-| Required | Cost |
+| Required | Cost, measured with `lateregate contract` |
 |---|---|
 | `fmt-check`, `test`, `lint-modernize` | already required |
 | `test-hermetic`, `lint`, `lint-config` | free, 18 of 18 hold it |
-| `spec-lint` | 2 exemptions |
-| `test-race` | 7 exemptions |
-| `cover` | 13 exemptions, the expensive one |
+| `spec-lint` | 2 (managed-agents, pkg) |
+| `test-race` | 7 (auth, lectio, platform, latere-ai, replichai, sandbox, lux) |
+| `cover` | 8 (agents, drive, eval, lectio, platform, service-template, latere-cli, and the same seven overlap) |
+
+Four repositories -- topos, pay, llmops, tgo -- already hold the whole set.
+Twenty-two adoptions across the other fourteen, not the fifty-odd a gate
+set drawn up without measuring would have asked for.
+
+### What this gate does not check
+
+It checks that a target exists, not what the target does. `topos`, `pay`
+and `auth` hold `cover` with a hand-rolled repository-average gate, and
+this gate reports them as holding it. That is the right split: presence is
+a property of the Makefile and this gate can see it, whereas shape is a
+property of the check and belongs to the gate that runs. Replacing the
+hand-rolled gates is rollout work, not contract work.
 
 Two gates stay out, and the reasons are not the same:
 
@@ -165,5 +178,13 @@ Two gates stay out, and the reasons are not the same:
 4. A Makefile whose rule database is large is read to completion; the probe
    does not exit 141.
 5. `go-verify.yml` holds no required-target list, and its `probe` job runs
-   `lateregate contract` for the verdict.
+   `lateregate contract` for the verdict. **Open.** The workflow is shared
+   and unversioned while `lateregate` is pinned per repository, so the
+   moment the step lands it runs against whatever version each consumer
+   pins -- and the four repositories on v0.11.0 have no `contract`
+   subcommand at all. Flipping it before they carry it would fail every one
+   of them for the wrong reason, and making the step tolerate a missing
+   subcommand would reintroduce the vacuous pass this spec exists to
+   remove. So the flip is the last step of the rollout, after every
+   consumer carries the subcommand.
 6. This repository satisfies the set it declares, and exempts nothing.

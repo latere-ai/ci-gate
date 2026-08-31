@@ -60,6 +60,7 @@ license:
 | `depcheck` | no build reaches a dependency nobody admitted | the packages you gate |
 | `cgo-free` | no Go file imports `"C"` | no |
 | `otel-client` | no outbound HTTP client is built without a tracing transport | the directories you skip |
+| `contract` | this repository holds every gate the set requires | only what you waive |
 
 ### `cover` gates per package, not on average
 
@@ -360,6 +361,43 @@ golangci:
 A declared exception that points at no file fails, because a repository that
 lost its config and did not notice is the case the field exists to catch.
 
+### `contract` fails a gate that is missing rather than skipping it
+
+Every other gate here refuses to pass on nothing. `contract` applies that
+to the set of gates.
+
+The shared pipeline probes your `Makefile` and runs the targets it finds.
+A repository with no `cover` target is therefore not gated on coverage,
+and the run still reports success -- the absence goes into a step log
+nobody reads. Measured across eighteen repositories, nine had no coverage
+gate at all.
+
+The required set is compiled into this tool, not read from your config,
+because a bar you can edit is not a bar. What you can write down is which
+gates you do not hold **yet**:
+
+```yaml
+contract:
+  exempt:
+    cover:
+      reason: the suite needs Postgres and MinIO, so the floor lands with dr-31
+      until: 2026-11-01
+```
+
+Both fields are mandatory, and the date is the half that matters. A reason
+alone becomes wallpaper: seventeen well-argued exemptions is a bar written
+down and abandoned. Past the date the gate fails, and it says the
+exemption ran out rather than that the target is missing, because the two
+call for different work.
+
+The probe reads make's rule database rather than running `make -n <target>`.
+That form succeeds when a *file* of the target's name exists, so a `test/`
+directory answers for the `test` gate and a `LICENSE` file answers for
+`license` on a case-insensitive filesystem. Both were live here.
+
+It checks that a target exists, not what it does: a hand-rolled coverage
+gate still counts as holding `cover`.
+
 ### `modernize` will not pass silently
 
 Turning a fixer off is a decision:
@@ -464,6 +502,9 @@ spec:
 
 hermetic:
   allow: []                # directories kept on PATH besides the toolchain's
+
+contract:
+  exempt: {}               # required gate -> {reason, until: YYYY-MM-DD}
 
 modernize:
   disable: []              # fixers to turn off; each is verified to exist
