@@ -14,6 +14,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 003 | [Gate the temporary directories a test run leaves behind](003-tempdir-leaks.md) | complete | A `tempdir` subcommand: run the suite against an empty TMPDIR, fail on survivors |
 | 004 | [Gate the licence notice every source file carries](004-license-headers.md) | complete | A `license` subcommand: every source file carries the SPDX notice the repo declared |
 | 005 | [Merge the coverage tiers, and fail the packages no tier measured](005-cover-tiers-and-unmeasured-packages.md) | complete | `cover` takes repeated `-profile`, and a package no profile mentions fails |
+| 006 | [Declare the gate set, and fail a repository that is missing one](006-gate-set-contract.md) | draft | A `contract` subcommand: the required gate set is compiled in, absence fails, exemptions carry a reason and a date |
 
 ## Conventions
 
