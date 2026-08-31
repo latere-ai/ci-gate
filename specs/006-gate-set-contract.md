@@ -136,13 +136,41 @@ hold it behind an exemption someone intends to retire.
 |---|---|
 | `fmt-check`, `test`, `lint-modernize` | already required |
 | `test-hermetic`, `lint`, `lint-config` | free, 18 of 18 hold it |
-| `spec-lint` | 2 (managed-agents, pkg) |
+| `spec-lint` | 1 (managed-agents); `pkg` is not subject to it |
 | `test-race` | 7 (auth, lectio, platform, latere-ai, replichai, sandbox, lux) |
 | `cover` | 8 (agents, drive, eval, lectio, platform, service-template, latere-cli, and the same seven overlap) |
 
 Four repositories -- topos, pay, llmops, tgo -- already hold the whole set.
 Twenty-two adoptions across the other fourteen, not the fifty-odd a gate
 set drawn up without measuring would have asked for.
+
+### A gate whose subject can be absent
+
+An exemption says a repository is behind and names the day it stops being
+allowed to be. That is the wrong shape for a gate with nothing to check.
+
+`pkg` is public and carries client primitives only; its planning documents
+live in a private repository, and a `no-tracked-specs` target fails if a
+spec ever appears. Requiring `spec-lint` there would mean a dated
+exemption renewed forever for a decision nobody intends to change, and the
+day somebody forgot, the gate would fail permanently for a repository that
+was never wrong.
+
+So `spec-lint` carries a predicate: it applies to a repository that tracks
+files under `specs/`. The subject either exists or it does not, and the
+gate asks rather than being told. A repository that adds its first spec
+starts being gated the same day, with nobody to remember it.
+
+The predicate reads **git**, not `.lateregate.yaml`. Deriving it from
+whether a `spec:` section is configured would let any repository escape the
+gate by deleting six lines of YAML -- and `managed-agents` tracks two
+specs with no `spec:` section at all, which is precisely the gap this gate
+exists to report. Config-derived applicability would have turned a detected
+gap into an undetectable one.
+
+This stays narrow. `spec-lint` is the only gate here whose subject can be
+absent; `cover`, `test-race` and `lint` all have subjects that always
+exist. It is a predicate on one gate, not a precondition framework.
 
 ### What this gate does not check
 
@@ -169,6 +197,8 @@ Two gates stay out, and the reasons are not the same:
 
 1. `lateregate contract` fails a repository missing a required target, and
    names every missing target in one run rather than the first.
+1b. A repository that tracks no `specs/` files passes without an exemption,
+   and one that tracks specs but configures no `spec:` section still fails.
 2. An exemption with an empty reason fails. An exemption with no date
    fails. An exemption whose date has passed fails, and says so as an
    expiry rather than as an absence.

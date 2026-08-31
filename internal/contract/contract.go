@@ -27,7 +27,21 @@ import (
 	"latere.ai/x/ci-gate/internal/gates"
 )
 
-// Required is the gate set every consumer holds, as make targets.
+// Gate is one required gate.
+type Gate struct {
+	// Target is the make target the shared pipeline runs.
+	Target string
+	// Applies reports whether this repository is subject to the gate at all,
+	// and if not, why not. A nil Applies means it always does.
+	//
+	// This is not an exemption. An exemption says a repository is behind and
+	// names the day it stops being allowed to be; a gate that does not apply
+	// has no subject here, and dating that would mean renewing a decision
+	// nobody intends to change.
+	Applies func(exec gates.Exec) (bool, string, error)
+}
+
+// Required is the gate set every consumer holds.
 //
 // It is compiled in rather than configured because the bar belongs to the
 // organisation: a consumer that can edit the list can lower it, and then the
@@ -40,16 +54,46 @@ import (
 // content is per repository -- an instrumented-transport grep in one,
 // something else in the next -- so requiring the target would not mean the
 // repositories run the same check.
-var Required = []string{
-	"fmt-check",
-	"test",
-	"test-hermetic",
-	"test-race",
-	"cover",
-	"lint",
-	"lint-config",
-	"lint-modernize",
-	"spec-lint",
+var Required = []Gate{
+	{Target: "fmt-check"},
+	{Target: "test"},
+	{Target: "test-hermetic"},
+	{Target: "test-race"},
+	{Target: "cover"},
+	{Target: "lint"},
+	{Target: "lint-config"},
+	{Target: "lint-modernize"},
+	{Target: "spec-lint", Applies: tracksSpecs},
+}
+
+// specDir is where a spec tree lives. The directory is fixed rather than read
+// from spec.dir on purpose: see tracksSpecs.
+const specDir = "specs"
+
+// tracksSpecs reports whether this repository has a spec tree to lint.
+//
+// A repository with no specs cannot spec-lint, and a dated exemption would be
+// a decision renewed forever for something nobody intends to change. So the
+// gate asks the repository instead: the subject either exists or it does not.
+//
+// It asks git, not .lateregate.yaml. Deriving this from whether spec.dir is
+// configured would let a repository escape the gate by deleting six lines of
+// config -- and one repository here has a real spec tree and no spec section,
+// which is precisely the gap this gate exists to report.
+func tracksSpecs(exec gates.Exec) (bool, string, error) {
+	out, err := exec(nil, false, "git", "ls-files", "--", specDir)
+	if err != nil {
+		// Applicability that cannot be determined must not resolve to "does
+		// not apply": that is the vacuous pass this gate exists to refuse.
+		return false, "", fmt.Errorf("cannot list %s/ with git: %w\n"+
+			"this gate decides whether a repository has specs to lint by asking "+
+			"git what it tracks, so it needs to run inside a git repository",
+			specDir, err)
+	}
+	if strings.TrimSpace(string(out)) == "" {
+		return false, "this repository tracks no " + specDir + "/ files", nil
+	}
+	return true, "", nil
 }
 
 // target matches a rule in make's database: a target at the start of a line.
@@ -64,21 +108,36 @@ func Run(cfg config.Contract, out io.Writer, exec gates.Exec, now time.Time) err
 		return err
 	}
 
+	names := make([]string, len(Required))
+	for i, g := range Required {
+		names[i] = g.Target
+	}
 	for t := range cfg.Exempt {
-		if !slices.Contains(Required, t) {
+		if !slices.Contains(names, t) {
 			return fmt.Errorf("%s: contract exempts %q, which is not a required gate\n"+
 				"required: %s\n"+
 				"an exemption for a gate nobody requires hides a typo in the name "+
 				"of a gate somebody does",
-				config.Name, t, strings.Join(Required, ", "))
+				config.Name, t, strings.Join(names, ", "))
 		}
 	}
 
-	var missing, expired []string
+	var missing, expired, na []string
 	waived := map[string]config.Waiver{}
-	for _, t := range Required {
+	for _, g := range Required {
+		t := g.Target
 		if held[t] {
 			continue
+		}
+		if g.Applies != nil {
+			applies, why, err := g.Applies(exec)
+			if err != nil {
+				return err
+			}
+			if !applies {
+				na = append(na, fmt.Sprintf("%s (%s)", t, why))
+				continue
+			}
 		}
 		w, ok := cfg.Exempt[t]
 		if !ok {
@@ -96,6 +155,10 @@ func Run(cfg config.Contract, out io.Writer, exec gates.Exec, now time.Time) err
 		waived[t] = w
 	}
 
+	sort.Strings(na)
+	for _, n := range na {
+		_, _ = fmt.Fprintf(out, "not applicable: %s\n", n)
+	}
 	for _, t := range sortedKeys(waived) {
 		_, _ = fmt.Fprintf(out, "waived: %s until %s (%s)\n", t, waived[t].Until, waived[t].Reason)
 	}
@@ -118,7 +181,8 @@ func Run(cfg config.Contract, out io.Writer, exec gates.Exec, now time.Time) err
 			strings.Join(problems, "\n"), config.Name)
 	}
 
-	_, _ = fmt.Fprintf(out, "%d required gates held, %d waived\n", len(Required)-len(waived), len(waived))
+	_, _ = fmt.Fprintf(out, "%d required gates held, %d waived, %d not applicable\n",
+		len(Required)-len(waived)-len(na), len(waived), len(na))
 	return nil
 }
 

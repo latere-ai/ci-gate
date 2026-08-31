@@ -25,20 +25,43 @@ func db(targets ...string) string {
 	return b.String()
 }
 
+// canned replays a make database, and answers git ls-files as a repository
+// that tracks specs. Tests that care about the spec predicate override it.
 func canned(out string) gates.Exec {
-	return func(_ []string, _ bool, _ string, _ ...string) ([]byte, error) {
+	return func(_ []string, _ bool, name string, _ ...string) ([]byte, error) {
+		if name == "git" {
+			return []byte("specs/001-a.md\n"), nil
+		}
 		return []byte(out), nil
 	}
+}
+
+// noSpecs is a repository that tracks no specs at all.
+func noSpecs(out string) gates.Exec {
+	return func(_ []string, _ bool, name string, _ ...string) ([]byte, error) {
+		if name == "git" {
+			return nil, nil
+		}
+		return []byte(out), nil
+	}
+}
+
+func names() []string {
+	n := make([]string, len(Required))
+	for i, g := range Required {
+		n[i] = g.Target
+	}
+	return n
 }
 
 var day = time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
 
 func TestAllHeld(t *testing.T) {
 	var b strings.Builder
-	if err := Run(config.Contract{}, &b, canned(db(Required...)), day); err != nil {
+	if err := Run(config.Contract{}, &b, canned(db(names()...)), day); err != nil {
 		t.Fatalf("a repository holding every gate must pass: %v", err)
 	}
-	if !strings.Contains(b.String(), "9 required gates held, 0 waived") {
+	if !strings.Contains(b.String(), "9 required gates held, 0 waived, 0 not applicable") {
 		t.Errorf("want the held count, got %q", b.String())
 	}
 }
@@ -118,7 +141,7 @@ func TestExemptionForUnknownGateFails(t *testing.T) {
 	cfg := config.Contract{Exempt: map[string]config.Waiver{
 		"convr": {Reason: "typo for cover", Until: "2026-11-01"},
 	}}
-	err := Run(cfg, &strings.Builder{}, canned(db(Required...)), day)
+	err := Run(cfg, &strings.Builder{}, canned(db(names()...)), day)
 	if err == nil || !strings.Contains(err.Error(), "not a required gate") {
 		t.Fatalf("a misspelt gate name must fail rather than silently do nothing, got %v", err)
 	}
@@ -141,6 +164,7 @@ func TestFileDoesNotSatisfyATarget(t *testing.T) {
 		t.Skip("make is not installed")
 	}
 	dir := t.TempDir()
+	gitInit(t, dir)
 	write(t, dir, "Makefile", "fmt-check:\n\t@true\n")
 	// Two required gate names, neither defined as a target: one a directory,
 	// one a plain file.
@@ -183,7 +207,7 @@ func TestLargeDatabaseIsReadWhole(t *testing.T) {
 	}
 	dir := t.TempDir()
 	var mk strings.Builder
-	for _, g := range Required {
+	for _, g := range names() {
 		mk.WriteString(g + ":\n\t@true\n")
 	}
 	// Enough rules that the database does not fit one pipe buffer.
@@ -191,6 +215,7 @@ func TestLargeDatabaseIsReadWhole(t *testing.T) {
 		mk.WriteString("filler" + itoa(i) + ":\n\t@true\n")
 	}
 	write(t, dir, "Makefile", mk.String())
+	gitInit(t, dir)
 
 	var b strings.Builder
 	if err := Run(config.Contract{}, &b, gates.OSExec(dir, &b), day); err != nil {
@@ -210,9 +235,54 @@ func itoa(i int) string {
 	return string(d)
 }
 
+// gitInit makes dir a repository, because the spec predicate asks git what
+// it tracks and a directory that is not one cannot answer.
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func write(t *testing.T, dir, name, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A repository that tracks no specs is not behind on spec-lint; it has
+// nothing to lint. Dating that would mean renewing a decision nobody intends
+// to change.
+func TestSpecLintDoesNotApplyWithoutASpecTree(t *testing.T) {
+	held := []string{"fmt-check", "test", "test-hermetic", "test-race", "cover", "lint", "lint-config", "lint-modernize"}
+	var b strings.Builder
+	if err := Run(config.Contract{}, &b, noSpecs(db(held...)), day); err != nil {
+		t.Fatalf("a repository with no specs/ must pass without an exemption: %v", err)
+	}
+	if !strings.Contains(b.String(), "not applicable: spec-lint") {
+		t.Errorf("the gate must say why it did not apply, got %q", b.String())
+	}
+}
+
+// The case that decides whether the predicate is a fix or a loophole. This
+// repository has a real spec tree and no spec: section in its config, which
+// is the gap the gate exists to report. Deriving applicability from the
+// config rather than from git would make that gap disappear silently, and
+// would let any repository dodge the gate by deleting six lines of YAML.
+func TestSpecLintAppliesToATrackedTreeWithNoConfig(t *testing.T) {
+	held := []string{"fmt-check", "test", "test-hermetic", "test-race", "cover", "lint", "lint-config", "lint-modernize"}
+	// cfg is empty: no spec section, exactly as managed-agents ships it.
+	err := Run(config.Contract{}, &strings.Builder{}, canned(db(held...)), day)
+	if err == nil {
+		t.Fatal("a tracked spec tree with no spec-lint target must fail, config or no config")
+	}
+	if !strings.Contains(err.Error(), "spec-lint") {
+		t.Errorf("want spec-lint reported missing, got %v", err)
 	}
 }

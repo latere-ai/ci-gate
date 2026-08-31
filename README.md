@@ -396,6 +396,11 @@ That form succeeds when a *file* of the target's name exists, so a `test/`
 directory answers for the `test` gate and a `LICENSE` file answers for
 `license` on a case-insensitive filesystem. Both were live here.
 
+`spec-lint` is required only of a repository that tracks files under
+`specs/`, asked of git rather than of your config. A repository with no
+specs has nothing to lint, and a dated exemption for that would be a
+decision renewed forever. Add your first spec and the gate turns itself on.
+
 It checks that a target exists, not what it does: a hand-rolled coverage
 gate still counts as holding `cover`.
 
