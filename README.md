@@ -1,11 +1,11 @@
 # latere-ai/ci-gate
 
-The per-push quality gates every Latere Go repository shares, as one binary
-you pin in `go.mod` and run from `make`.
+The per-push quality bar every Latere Go repository shares, as one binary
+you pin in `go.mod` and run with no arguments.
 
-`latere-ai/ci` owns the workflow that orders these gates in CI. This repo owns
-what each gate actually asserts, so the two version independently and a gate
-runs the same on your laptop as it does on a runner.
+`latere-ai/ci` owns the workflow that runs it on a runner. This repo owns
+what the bar asserts, so the two version independently and a gate runs the
+same on your laptop as it does in CI.
 
 That last part is the point. Every gate here exists because something passed
 locally and failed in CI, or passed in CI and meant nothing.
@@ -14,53 +14,134 @@ locally and failed in CI, or passed in CI and meant nothing.
 
 ```sh
 go get -tool latere.ai/x/ci-gate/cmd/lateregate
+go tool lateregate init      # the workflow caller, the pre-commit hook, two gitignore lines
+go tool lateregate           # the whole bar
 ```
 
-Add the targets you want to your `Makefile`:
+That is the adoption. There is no Makefile contract and no config to write
+for the gates themselves: the binary decides which gates apply by looking at
+the tree, and runs them all. A `Makefile` target is a convenience:
 
 ```make
-fmt-check:
-	@go tool lateregate fmt-check
-
-lint-modernize:
-	@go tool lateregate modernize
-
-cover:
-	go test ./... -coverprofile=coverage.out -coverpkg=./...
-	@go tool lateregate cover
-
-test-hermetic:
-	@go tool lateregate hermetic
-
-spec-lint:
-	@go tool lateregate spec-lint
-
-test-tempdir:
-	@go tool lateregate tempdir
-
-license:
-	@go tool lateregate license
+check:
+	@go tool lateregate
 ```
 
-`fmt-check` and `modernize` need no configuration. The rest read
-`.lateregate.yaml` from your repository root.
+## The bar
 
-## The gates
+`lateregate` with no arguments runs every gate below that applies, does not
+stop at the first failure, and puts the summary last:
 
-| Command | What it asserts | Needs config |
+```
+PASS fmt-check
+PASS modernize
+FAIL cover        3 package(s) below 90%
+SKIP spec-lint    tracks no specs/ files
+WAIV race         until 2026-11-15: the suite is not race-clean in runner
+lateregate: 1 of 13 gates failed: cover
+```
+
+| Gate | What it asserts | Applies when |
 | --- | --- | --- |
-| `fmt-check` | no Go source is unformatted | no |
-| `modernize` | no code that a standard library call already covers | no |
-| `cover` | **every package** clears the floor, not the repository average | threshold and exemptions |
-| `hermetic` | the suite passes with only the toolchain on `PATH` | the directories you allow |
-| `spec-lint` | the spec tree agrees with itself and with its index | your spec conventions |
-| `tempdir` | the suite leaves nothing behind under `TMPDIR` | the prefixes you allow |
-| `license` | every source file carries the SPDX notice the repo declared | the identifier and holder |
-| `golangci` | renders the shared `.golangci.yml`, so no repo keeps its own | no |
-| `depcheck` | no build reaches a dependency nobody admitted | the packages you gate |
-| `cgo-free` | no Go file imports `"C"` | no |
-| `otel-client` | no outbound HTTP client is built without a tracing transport | the directories you skip |
-| `contract` | this repository holds every gate the set requires | only what you waive |
+| `fmt-check` | no tracked Go source is unformatted | always |
+| `modernize` | no code that a standard library call already covers | always |
+| `cgo-free` | no Go file imports `"C"` | always |
+| `otel-client` | no outbound HTTP client is built without a tracing transport | always |
+| `license` | every source file carries the SPDX notice the repo declared | always; needs `license.spdx` |
+| `spec-lint` | the spec tree agrees with itself and with its index | git tracks `specs/` |
+| `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
+| `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
+| `vuln` | govulncheck at the pinned version finds no reachable vulnerability | always |
+| `test` | `go vet` and the suite | always |
+| `race` | the suite under the race detector | always |
+| `hermetic` | the suite passes with only the toolchain on `PATH` | always |
+| `tempdir` | the suite leaves nothing behind under `TMPDIR` | always |
+| `cover` | **every package** clears the floor, not the repository average | always |
+
+The recipes are in the binary. `test` is `go vet ./...` then `go test
+./...`; `race` sets `CGO_ENABLED=1`; `cover` collects with `-coverpkg=./...
+-covermode=atomic`; `lint` and `vuln` run their tools through `go run` at a
+version pinned here, so one commit moves every repository. Four
+repositories used to hold four `cover` recipes, one of which wrote the
+profile to a name the gate never read.
+
+`lateregate <gate>` runs one, for a CI job or a developer chasing a single
+failure. `lateregate list` prints the plan, and `list -json` is what the
+pipeline builds its job matrix from.
+
+### Waivers
+
+A gate that applies runs unless the repository has written down that it is
+behind, and by when:
+
+```yaml
+waive:
+  cover:
+    reason: the tree is at 82.2% and the gap is in handler and runner
+    until: 2026-11-15
+```
+
+Both fields are mandatory, and the date is the half that matters. A reason
+alone becomes wallpaper: seventeen well-argued waivers is a bar written down
+and abandoned. `until` is inclusive. After it, the gate runs and fails on its
+own terms, and the summary says the waiver ran out.
+
+A waiver keyed on a name that is not a gate fails the load: a waiver for a
+gate nobody runs hides a typo in the name of a gate somebody does.
+
+### What `.lateregate.yaml` is for
+
+Decisions, each with its reason. Every value the tool can decide for a
+repository it decides by default, so a key in this file is one somebody
+chose: a coverage exemption, a spec vocabulary, a hermetic allowance, a
+dependency allowlist, a licence, a waiver. A key that restates its default
+is reported by `contract` with "delete it": a restated default is the line
+the next default change makes wrong.
+
+The defaults:
+
+| Key | Default |
+| --- | --- |
+| `cover.threshold` | 90 |
+| `modernize.disable` | `[newexpr, errorsastype]`: both fixers emit code that does not compile or half-applies |
+| `spec.dir` | `specs` |
+| `spec.require` | `[title, status]` |
+| `spec.index` | `specs/README.md` when the file exists |
+| `golangci.sloglint` | `context: scope`, every package: where a context is in hand, the `*Context` variant is right |
+
+An unknown key is an error rather than a silently ignored one, because a
+typo that disables a gate is the failure this whole repository is against.
+
+## The wiring: `contract`, `init`, `hook`
+
+Four files connect the binary to the places it is invoked from, and each is
+a place to drift. `lateregate contract` reads all of them and names every
+difference in one run:
+
+- exactly one workflow calls `latere-ai/ci/.github/workflows/lateregate.yml@v1`,
+  on push to `main` and on pull requests
+- `.githooks/pre-commit` is executable and runs `lateregate hook`
+- `.golangci.yml` is not tracked, unless `golangci.own` declares it with a reason
+- `.gitignore` lists `.golangci.yml` and `coverage.out`
+- `.lateregate.yaml` restates no default
+- a `Makefile` target named for a gate (`cover`, `test-race`, `lint`, ...)
+  delegates to `lateregate`, or does not exist
+- `go.mod` carries the `tool` line
+
+Nothing here is waivable. A waiver says a repository is behind on a gate;
+wiring is fixed in the commit that notices it.
+
+`lateregate init` writes what `contract` checks: the caller, the hook, the
+gitignore lines, and `git config core.hooksPath .githooks`. It never touches
+`Makefile` or `.lateregate.yaml`, because those hold decisions.
+
+`lateregate hook` is the pre-commit: gofmt over the staged Go files, and the
+modernizers over the packages holding them, reading `modernize.disable` from
+the same config the full gate reads. The hook script is one line that calls
+it. golangci-lint is deliberately not in the hook: it takes a global lock,
+and a hook that serialises every commit on a machine is one people bypass.
+
+## The gates in detail
 
 ### `cover` gates per package, not on average
 
@@ -399,49 +480,6 @@ golangci:
 A declared exception that points at no file fails, because a repository that
 lost its config and did not notice is the case the field exists to catch.
 
-### `contract` fails a gate that is missing rather than skipping it
-
-Every other gate here refuses to pass on nothing. `contract` applies that
-to the set of gates.
-
-The shared pipeline probes your `Makefile` and runs the targets it finds.
-A repository with no `cover` target is therefore not gated on coverage,
-and the run still reports success -- the absence goes into a step log
-nobody reads. Measured across eighteen repositories, nine had no coverage
-gate at all.
-
-The required set is compiled into this tool, not read from your config,
-because a bar you can edit is not a bar. What you can write down is which
-gates you do not hold **yet**:
-
-```yaml
-contract:
-  exempt:
-    cover:
-      reason: the suite needs Postgres and MinIO, so the floor lands with dr-31
-      until: 2026-11-01
-```
-
-Both fields are mandatory, and the date is the half that matters. A reason
-alone becomes wallpaper: seventeen well-argued exemptions is a bar written
-down and abandoned. `until` is inclusive -- the exemption covers all of the
-day it names and dies the next morning. After that the gate fails, and it
-says the exemption ran out rather than that the target is missing, because
-the two call for different work.
-
-The probe reads make's rule database rather than running `make -n <target>`.
-That form succeeds when a *file* of the target's name exists, so a `test/`
-directory answers for the `test` gate and a `LICENSE` file answers for
-`license` on a case-insensitive filesystem. Both were live here.
-
-`spec-lint` is required only of a repository that tracks files under
-`specs/`, asked of git rather than of your config. A repository with no
-specs has nothing to lint, and a dated exemption for that would be a
-decision renewed forever. Add your first spec and the gate turns itself on.
-
-It checks that a target exists, not what it does: a hand-rolled coverage
-gate still counts as holding `cover`.
-
 ### `modernize` will not pass silently
 
 Turning a fixer off is a decision:
@@ -496,24 +534,18 @@ otel_client:
 Keep that list short. A directory skipped here is one whose outbound calls
 nobody is asserting anything about.
 
-## Running the gates in CI
+## Running the bar in CI
 
-Use the reusable workflow in `latere-ai/ci`, which orders these across an OS
-matrix and skips the targets your repository does not have:
+The reusable workflow in `latere-ai/ci` asks the binary for its plan and
+runs one job per gate:
 
 ```yaml
 jobs:
-  verify:
-    uses: latere-ai/ci/.github/workflows/go-verify.yml@v1
-    with:
-      hermetic: true
-      cover: true
-      tempdir: true
+  gate:
+    uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
 ```
 
-See `ci/README.md` for the full contract. `tempdir` needs a runner input in
-`latere-ai/ci` before that flag does anything; until it lands, call the target
-from your own job.
+`lateregate init` writes that file. See `ci/README.md` for the inputs.
 
 ## Contributing
 
@@ -524,22 +556,23 @@ decisions every gate here has to hold. The tree is linted by this repo's own
 
 ## Configuration reference
 
-Every section is optional; a repository that only wants `fmt-check`, `test`
-and `modernize` needs no `.lateregate.yaml` at all.
+Every section is optional; a repository that has made no decisions needs no
+`.lateregate.yaml` at all.
 
 ```yaml
+waive: {}                  # gate -> {reason, until: YYYY-MM-DD}; the only way an applicable gate does not run
+
 cover:
-  threshold: 90.0          # default 90.0
+  threshold: 90.0          # the default; do not restate it
   trim_prefix: ""          # dropped from package paths in the report
   exempt: {}               # package suffix -> the reason it is exempt
 
-spec:
-  dir: ""                  # empty disables spec-lint
+spec:                      # applies when git tracks specs/
   status: []               # closed vocabulary; empty allows anything
-  require: []              # frontmatter keys that must be present and non-empty
-  index: ""                # empty disables the index checks
+  require: [title, status] # the default; do not restate it
+  index: specs/README.md   # the default when the file exists
   wikilinks: false
-  exclude: []              # file names in dir that are not specs
+  exclude: []              # file names in specs/ that are not specs
   numbered: false          # require NNN-name.md, and no number used twice
   started: []              # statuses at which work on a spec has begun
   settled: []              # statuses at which a dependency stops blocking
@@ -550,12 +583,29 @@ spec:
 hermetic:
   allow: []                # directories kept on PATH besides the toolchain's
 
-contract:
-  exempt: {}               # required gate -> {reason, until: YYYY-MM-DD}
-
 modernize:
-  disable: []              # fixers to turn off; each is verified to exist
-```
+  disable: [newexpr, errorsastype]   # the default; [] runs every fixer
 
-An unknown key is an error rather than a silently ignored one, because a typo
-that disables a gate is the failure this whole repository is against.
+golangci:
+  sloglint: {context: scope}         # the default; request_paths scopes it
+  extra: {}                          # merged over the shared config; enable appends
+  own: ""                            # keep a committed .golangci.yml, and why
+
+license:
+  spdx: ""                 # no default; the gate fails until it is declared
+  holder: ""
+  extensions: ['.go']
+  names: []
+  skip: []
+
+tempdir:
+  command: []              # default: go test ./...
+  allow: {}                # surviving-entry prefix -> the reason
+
+depcheck:
+  platforms: []
+  packages: {}             # import path -> {decision, allow: {prefix: reason}}
+
+cgo_free: {skip: []}
+otel_client: {skip: []}
+```
