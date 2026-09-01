@@ -290,9 +290,41 @@ that never happened. Both vocabularies are yours, since where work begins is a
 repository's own decision; `started` without `settled` is refused at load,
 because no dependency could ever close and the gate would fail on everything.
 
-A row in the index that links into a subdirectory is left alone. An archive
-is outside the linted set, so the index cannot be asked to agree with it, the
-same way a `depends_on` edge into another repository is.
+A third rule files the specs that are finished:
+
+```yaml
+spec:
+  archive:
+    dir: .archive
+    statuses: [complete, superseded, abandoned]
+```
+
+A spec at a terminal status belongs in `specs/.archive/`, and a spec at any
+other status belongs beside the ones still being written. Both directions,
+because that is what makes the pair exhaustive: the first catches the spec
+that finished and nobody moved, the second the spec retired while its work was
+still open.
+
+Turning it on is also what makes the archive visible at all. Without it a
+subdirectory is never read, which is how one tree accumulated fifteen distinct
+archived statuses, one of them a sentence, while its root held three. Archived
+specs are parsed, held to `require` and to the same `status` vocabulary,
+resolved for `depends_on` and `numbered`, and required to appear in the index.
+They are not held to the rules that describe work in progress — sections,
+markers, registers — because a record written before a rule existed cannot
+satisfy it without rewriting history.
+
+`statuses` must be a non-empty subset of `status`, refused at load like a
+`started` value the vocabulary does not list. There is no default: what is
+terminal is your tree's decision, and `implemented` means "shipped, follow-on
+work outstanding" in one repository here and "done" in another.
+
+An index row into the archive is checked for resolution and membership, not
+for its status cell. That cell says where the spec went — `archived
+(superseded)` against a frontmatter that says `superseded` — which is a
+different claim, and comparing them would force every tree onto one label
+vocabulary to catch no error. A row linking into any other subdirectory is
+still left alone, the same way a `depends_on` edge into another repository is.
 
 Conventions beyond that — decision records, layers, outcome rules — stay in
 your repository. This checks the parts every spec tree needs.
@@ -505,6 +537,9 @@ spec:
   numbered: false          # require NNN-name.md, and no number used twice
   started: []              # statuses at which work on a spec has begun
   settled: []              # statuses at which a dependency stops blocking
+  archive:
+    dir: ""                # empty disables the archive checks
+    statuses: []           # statuses that send a spec to the archive
 
 hermetic:
   allow: []                # directories kept on PATH besides the toolchain's

@@ -392,3 +392,57 @@ contract:
 		t.Errorf("until %q must parse", w.Until)
 	}
 }
+
+// An archive nobody can be sent to is read on every run and files nothing,
+// which reports green while every finished spec sits at the root.
+func TestAnArchiveWithNoTerminalStatusIsRefused(t *testing.T) {
+	dir := write(t, "spec:\n  dir: specs\n  archive:\n    dir: .archive\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("an archive with no terminal status must not load")
+	}
+	if !strings.Contains(err.Error(), "spec.archive.statuses is empty") {
+		t.Errorf("the error must name the missing key, got %q", err)
+	}
+}
+
+// The mirror: statuses declared terminal with no archive to send them to.
+func TestTerminalStatusesWithoutAnArchiveDirAreRefused(t *testing.T) {
+	dir := write(t, "spec:\n  dir: specs\n  status: [draft, complete]\n"+
+		"  archive:\n    statuses: [complete]\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("terminal statuses with no archive dir must not load")
+	}
+	if !strings.Contains(err.Error(), "spec.archive.dir is empty") {
+		t.Errorf("the error must name the missing key, got %q", err)
+	}
+}
+
+// A terminal status no spec can hold sends nothing to the archive.
+func TestATerminalStatusOutsideTheVocabularyIsRefused(t *testing.T) {
+	dir := write(t, "spec:\n  dir: specs\n  status: [draft, complete]\n"+
+		"  archive:\n    dir: .archive\n    statuses: [retired]\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("a terminal status outside the vocabulary must not load")
+	}
+	if !strings.Contains(err.Error(), "retired") {
+		t.Errorf("the error must name the unknown status, got %q", err)
+	}
+}
+
+func TestTheArchiveRuleLoadsWhenBothAreSet(t *testing.T) {
+	dir := write(t, "spec:\n  dir: specs\n  status: [draft, complete, superseded]\n"+
+		"  archive:\n    dir: .archive\n    statuses: [complete, superseded]\n")
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Spec.Archive.Enabled() || !c.Spec.Archive.IsTerminal("superseded") {
+		t.Errorf("the archive keys must survive the load, got %+v", c.Spec.Archive)
+	}
+	if c.Spec.Archive.IsTerminal("draft") {
+		t.Error("a working status must not read as terminal")
+	}
+}

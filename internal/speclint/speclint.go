@@ -39,6 +39,7 @@ type Spec struct {
 	Title       string
 	Status      string
 	DependsOn   []string
+	Archived    bool // sits in the tree's archive rather than beside it
 	frontmatter map[string]any
 	body        string
 }
@@ -60,8 +61,18 @@ func Run(cfg config.Spec, root string, out io.Writer) error {
 		return fmt.Errorf("%s holds no specs; a lint that checks nothing reports green forever", dir)
 	}
 
-	var problems []string
-	problems = append(problems, CheckFrontmatter(cfg, specs)...)
+	archived, problems, err := LoadArchive(cfg, dir)
+	if err != nil {
+		return err
+	}
+	// Specs on both sides of the boundary, for the rules that are about the
+	// tree rather than about work in progress. A number, a dependency edge and
+	// a wikilink all have to resolve across the whole tree, or retiring a spec
+	// would break every citation of it.
+	tree := append(append([]Spec{}, specs...), archived...)
+
+	problems = append(problems, CheckArchive(cfg, specs, archived)...)
+	problems = append(problems, CheckFrontmatter(cfg, tree)...)
 	problems = append(problems, CheckVocabulary(cfg, specs)...)
 	problems = append(problems, CheckStatusRequires(cfg, specs)...)
 	problems = append(problems, CheckSections(cfg, specs)...)
@@ -69,18 +80,20 @@ func Run(cfg config.Spec, root string, out io.Writer) error {
 	problems = append(problems, CheckRegister(cfg, specs)...)
 	problems = append(problems, CheckStatusLinked(cfg, specs)...)
 	problems = append(problems, CheckMarker(cfg, specs)...)
-	problems = append(problems, CheckDependencies(specs)...)
-	problems = append(problems, CheckAcyclic(specs)...)
-	problems = append(problems, CheckNumbering(cfg, specs)...)
+	problems = append(problems, CheckDependencies(cfg, tree)...)
+	problems = append(problems, CheckAcyclic(tree)...)
+	problems = append(problems, CheckNumbering(cfg, tree)...)
 	problems = append(problems, CheckReadiness(cfg, specs)...)
 	if cfg.Tables {
 		problems = append(problems, CheckTables(specs)...)
 	}
 	if cfg.Wikilinks {
-		problems = append(problems, CheckWikilinks(specs)...)
+		// Cited across the whole tree, checked only on the specs still being
+		// written: an archived spec's links are a record of what it pointed at.
+		problems = append(problems, CheckWikilinks(specs, tree)...)
 	}
 	if cfg.Index != "" {
-		p, err := CheckIndex(cfg, root, specs)
+		p, err := CheckIndex(cfg, root, specs, archived)
 		if err != nil {
 			return err
 		}
@@ -93,6 +106,10 @@ func Run(cfg config.Spec, root string, out io.Writer) error {
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%d problem(s) in %s", len(problems), dir)
+	}
+	if len(archived) > 0 {
+		_, _ = fmt.Fprintf(out, "%d specs consistent, %d archived\n", len(specs), len(archived))
+		return nil
 	}
 	_, _ = fmt.Fprintf(out, "%d specs consistent\n", len(specs))
 	return nil
@@ -187,19 +204,39 @@ func CheckFrontmatter(cfg config.Spec, specs []Spec) []string {
 // the tree. An edge to a path outside the tree is left alone: a spec may
 // legitimately depend on one in another repository, and this check cannot see
 // that repository.
-func CheckDependencies(specs []Spec) []string {
+//
+// An edge into this tree's own archive is inside it, though, and is resolved.
+// Retiring a spec rewrites every edge that named it, which is exactly when a
+// path is mistyped and exactly what nothing was checking.
+func CheckDependencies(cfg config.Spec, specs []Spec) []string {
 	known := map[string]bool{}
+	archived := map[string]bool{}
 	for _, s := range specs {
+		if s.Archived {
+			archived[s.Name] = true
+			continue
+		}
 		known[s.Name] = true
 	}
 	var out []string
 	for _, s := range specs {
+		where := s.Name
+		if s.Archived {
+			where = cfg.Archive.Dir + "/" + s.Name
+		}
 		for _, d := range s.DependsOn {
+			if name, ok := archiveHref(cfg, d); ok {
+				if !archived[name] {
+					out = append(out, fmt.Sprintf("%s: depends_on %s, which is not in %s/",
+						where, d, cfg.Archive.Dir))
+				}
+				continue
+			}
 			if strings.Contains(d, "/") {
 				continue // another repository's tree
 			}
-			if !known[d] {
-				out = append(out, fmt.Sprintf("%s: depends_on %s, which does not exist", s.Name, d))
+			if !known[d] && !archived[d] {
+				out = append(out, fmt.Sprintf("%s: depends_on %s, which does not exist", where, d))
 			}
 		}
 	}
@@ -261,9 +298,9 @@ var wikilinkRe = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
 // CheckWikilinks reports [[name]] references that resolve to nothing. These
 // get checked by hand otherwise, which is exactly the work that stops
 // happening.
-func CheckWikilinks(specs []Spec) []string {
+func CheckWikilinks(specs, tree []Spec) []string {
 	known := map[string]bool{}
-	for _, s := range specs {
+	for _, s := range tree {
 		known[strings.TrimSuffix(s.Name, ".md")] = true
 	}
 	var out []string
@@ -297,7 +334,13 @@ var linkRe = regexp.MustCompile(`\[[^\]]*\]\(([^)]+\.md)\)`)
 // and then gives its status, so the link comes before the Status column. A
 // legend row is about the status itself and mentions a spec afterwards. That
 // also allows a tree to split its index across several tables, which tgo does.
-func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
+//
+// Archive rows are checked for membership and resolution, not for their status
+// cell. An index writes that cell as a location -- `archived (superseded)`
+// where the frontmatter says `superseded` -- which is a different claim from
+// the one the frontmatter makes. Comparing them would force every tree onto
+// one label vocabulary and catch no error.
+func CheckIndex(cfg config.Spec, root string, specs, archived []Spec) ([]string, error) {
 	path := filepath.Join(root, cfg.Index)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -306,6 +349,10 @@ func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
 	byName := map[string]Spec{}
 	for _, s := range specs {
 		byName[s.Name] = s
+	}
+	inArchive := map[string]bool{}
+	for _, s := range archived {
+		inArchive[s.Name] = true
 	}
 
 	var out []string
@@ -332,10 +379,20 @@ func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
 		if linkCol < 0 || linkCol >= statusCol {
 			continue // prose citation, or a legend row about the status itself
 		}
-		// A row pointing into a subdirectory is pointing outside the linted
-		// set -- an archive, or another tree. Load never reads those, so the
-		// index cannot be asked to agree with them, the same way a depends_on
-		// edge into another repository is left alone.
+		if name, ok := archiveHref(cfg, href); ok {
+			rows++
+			if !inArchive[name] {
+				out = append(out, fmt.Sprintf("%s: row links to %s/%s, which is not there",
+					cfg.Index, cfg.Archive.Dir, name))
+				continue
+			}
+			listed[name] = true
+			continue
+		}
+		// A row pointing into a subdirectory other than the archive is pointing
+		// outside the linted set. Load never reads those, so the index cannot
+		// be asked to agree with them, the same way a depends_on edge into
+		// another repository is left alone.
 		if strings.Contains(href, "/") {
 			continue
 		}
@@ -365,6 +422,11 @@ func CheckIndex(cfg config.Spec, root string, specs []Spec) ([]string, error) {
 	for _, s := range specs {
 		if !listed[s.Name] {
 			out = append(out, fmt.Sprintf("%s: %s is not listed", cfg.Index, s.Name))
+		}
+	}
+	for _, s := range archived {
+		if !listed[s.Name] {
+			out = append(out, fmt.Sprintf("%s: %s/%s is not listed", cfg.Index, cfg.Archive.Dir, s.Name))
 		}
 	}
 	return out, nil

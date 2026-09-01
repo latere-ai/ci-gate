@@ -15,6 +15,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 004 | [Gate the licence notice every source file carries](004-license-headers.md) | complete | A `license` subcommand: every source file carries the SPDX notice the repo declared |
 | 005 | [Merge the coverage tiers, and fail the packages no tier measured](005-cover-tiers-and-unmeasured-packages.md) | complete | `cover` takes repeated `-profile`, and a package no profile mentions fails |
 | 006 | [Declare the gate set, and fail a repository that is missing one](006-gate-set-contract.md) | partial | A `contract` subcommand: the required gate set is compiled in, absence fails, exemptions carry a reason and a date |
+| 007 | [Lint the archive, and fail a terminal spec that never moved into it](007-archive-placement.md) | complete | `spec.archive`: finished specs belong in `.archive/`, and the specs already there are parsed and held to the vocabulary |
 
 ## Conventions
 
@@ -34,3 +35,8 @@ status comes from the vocabulary above, that `depends_on` edges resolve and
 form no cycle, that every spec appears in the table with the status it
 claims, and that every wikilink points at something. The rules live in
 `.lateregate.yaml`.
+
+This tree files nothing under `specs/.archive/`. Every spec here is still the
+live record of a gate that runs, so none of the three statuses is terminal and
+`spec.archive` is unset. A tree that retires finished specs sets it; see
+[[007-archive-placement]] for what the rule then asserts.

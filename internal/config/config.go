@@ -232,6 +232,37 @@ type Spec struct {
 	// superseded spec settles because its work moved to the spec that
 	// replaced it, which carries its own edges.
 	Settled []string `yaml:"settled"`
+	// Archive describes where finished specs go and which statuses send them
+	// there.
+	Archive Archive `yaml:"archive"`
+}
+
+// Archive describes the subdirectory a tree retires finished specs into.
+//
+// Every tree here already has one and no rule ever reached it: Load globs
+// Dir/*.md, so a subdirectory is invisible, and the statuses inside drifted
+// into free text because the vocabulary check never saw them. One tree holds
+// fifteen distinct archived statuses, one of them a sentence.
+type Archive struct {
+	// Dir is the archive, relative to Dir. Empty disables the archive rules,
+	// the way an empty Index disables the index rules.
+	Dir string `yaml:"dir"`
+	// Statuses are the ones that mean the work is over, so the spec belongs
+	// in the archive rather than beside the specs still being built.
+	//
+	// There is no default. What is terminal is a property of the tree's own
+	// vocabulary: `implemented` means "shipped, follow-on work outstanding"
+	// in one tree here and "done" in another, and a guess would move specs
+	// somebody deliberately kept at the root.
+	Statuses []string `yaml:"statuses"`
+}
+
+// Enabled reports whether the archive rules run.
+func (a Archive) Enabled() bool { return a.Dir != "" }
+
+// IsTerminal reports whether a status means the spec belongs in the archive.
+func (a Archive) IsTerminal(status string) bool {
+	return slices.Contains(a.Statuses, status)
 }
 
 // Marker gates a paragraph that a status must carry, and what it must say.
@@ -537,6 +568,19 @@ func (c *Config) validate(path string) error {
 			"dependency could ever be closed and every started spec would fail\n"+
 			"name the statuses at which a dependency stops blocking", path)
 	}
+	// An archive nobody can be sent to is a directory the lint reads and never
+	// files anything into, which reports green while every finished spec sits
+	// at the root.
+	if c.Spec.Archive.Dir != "" && len(c.Spec.Archive.Statuses) == 0 {
+		return fmt.Errorf("%s: spec.archive.dir is set and spec.archive.statuses is empty, "+
+			"so no spec could ever belong in the archive\n"+
+			"name the statuses that mean the work is over", path)
+	}
+	if c.Spec.Archive.Dir == "" && len(c.Spec.Archive.Statuses) > 0 {
+		return fmt.Errorf("%s: spec.archive.statuses is set and spec.archive.dir is empty, "+
+			"so the archive rules never run\n"+
+			"name the directory finished specs retire into", path)
+	}
 	// A status listed here that the vocabulary does not have never matches,
 	// so the rule silently covers fewer specs than it reads as covering.
 	if len(c.Spec.Status) > 0 {
@@ -552,6 +596,19 @@ func (c *Config) validate(path string) error {
 				"does not list\na status no spec can hold matches nothing, so the rule "+
 				"would cover less than it appears to",
 				path, strings.Join(slices.Compact(unknown), ", "))
+		}
+		var notInVocab []string
+		for _, s := range c.Spec.Archive.Statuses {
+			if !slices.Contains(c.Spec.Status, s) {
+				notInVocab = append(notInVocab, s)
+			}
+		}
+		if len(notInVocab) > 0 {
+			sort.Strings(notInVocab)
+			return fmt.Errorf("%s: spec.archive.statuses name %s, which spec.status does "+
+				"not list\na terminal status no spec can hold sends nothing to the "+
+				"archive, so the rule would cover less than it appears to",
+				path, strings.Join(slices.Compact(notInVocab), ", "))
 		}
 	}
 	var unreadable []string
