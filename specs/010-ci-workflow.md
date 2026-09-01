@@ -1,6 +1,6 @@
 ---
 title: A reusable workflow that runs lateregate and nothing else
-status: draft
+status: complete
 depends_on:
   - 008-one-bar.md
 affects:
