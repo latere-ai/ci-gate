@@ -329,3 +329,29 @@ func TestATerminalSpecFailsEvenWithNoArchiveDirectory(t *testing.T) {
 		t.Errorf("the report should name where it belongs:\n%s", out)
 	}
 }
+
+// Another repository has an archive too, and its path ends in the same
+// segment. Reading it as this tree's would report a file that is not missing.
+func TestAnotherRepositorysArchiveIsNotThisOne(t *testing.T) {
+	root := tree(t, map[string]string{
+		"001-a.md":  spec("draft", "depends_on:\n  - ../../terraform/specs/.archive/009-x.md"),
+		"README.md": index("| 001 | [A](001-a.md) | draft | x |"),
+	})
+	archived(t, root, nil)
+	if out, err := run(t, archiveCfg(), root); err != nil {
+		t.Fatalf("an edge into another repository's archive should be left alone: %v\n%s", err, out)
+	}
+}
+
+// Both shapes the trees use: relative to the index, and relative to the root.
+func TestBothArchivePathShapesResolve(t *testing.T) {
+	root := tree(t, map[string]string{
+		"001-a.md":  spec("draft", "depends_on:\n  - specs/.archive/002-b.md"),
+		"003-c.md":  spec("draft", "depends_on:\n  - .archive/002-b.md"),
+		"README.md": index("| 001 | [A](001-a.md) | draft | x |", "| 002 | [B](.archive/002-b.md) | archived | y |", "| 003 | [C](003-c.md) | draft | z |"),
+	})
+	archived(t, root, map[string]string{"002-b.md": spec("complete")})
+	if out, err := run(t, archiveCfg(), root); err != nil {
+		t.Fatalf("both path shapes should resolve: %v\n%s", err, out)
+	}
+}

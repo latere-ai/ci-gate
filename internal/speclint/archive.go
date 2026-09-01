@@ -98,19 +98,28 @@ func CheckArchive(cfg config.Spec, active, archived []Spec) []string {
 	return out
 }
 
-// archiveHref reports whether an index link points into this tree's archive,
-// and the file's base name.
+// archiveHref reports whether a link or a depends_on edge points into this
+// tree's archive, and the file's base name.
 //
-// The match is on the directory the link's last segment sits in, so both
-// `.archive/019-x.md` and `../specs/.archive/019-x.md` resolve, and a link
-// into some other subdirectory does not.
+// Matching the last directory alone is not enough. Another repository has an
+// archive too, and `../../terraform/specs/.archive/x.md` ends in the same
+// segment while naming a file this tree cannot see. So the path must be the
+// archive relative to the spec directory or to the repository root, and a
+// `..` anywhere means it left the tree.
 func archiveHref(cfg config.Spec, href string) (string, bool) {
 	if !cfg.Archive.Enabled() {
 		return "", false
 	}
-	dir, name := filepath.Split(filepath.Clean(href))
-	if filepath.Base(filepath.Clean(dir)) != filepath.Base(cfg.Archive.Dir) {
+	clean := filepath.Clean(href)
+	if strings.HasPrefix(clean, "..") {
 		return "", false
 	}
-	return name, true
+	dir, name := filepath.Split(clean)
+	dir = filepath.Clean(dir)
+	switch dir {
+	case filepath.Clean(cfg.Archive.Dir),
+		filepath.Clean(filepath.Join(cfg.Dir, cfg.Archive.Dir)):
+		return name, true
+	}
+	return "", false
 }

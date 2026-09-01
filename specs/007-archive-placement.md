@@ -156,8 +156,12 @@ for nothing.
    aborting the run, so one bad file does not hide the rest of the report.
 5. `archive.statuses` naming a status outside `spec.status` is rejected by
    `config.Load`, before any gate reads it.
-6. A `depends_on` edge written as `specs/.archive/NNN-name.md` resolves
-   against the archive, and one naming a file that is not there fails.
+6. A `depends_on` edge written as `specs/.archive/NNN-name.md` or
+   `.archive/NNN-name.md` resolves against the archive, and one naming a file
+   that is not there fails. An edge into another repository's archive
+   (`../../other/specs/.archive/NNN-name.md`) is left alone: matching the
+   last directory alone would read it as this tree's and report a file that
+   is not missing.
 7. Two specs sharing a number across the boundary fail when `numbered` is on.
 8. A tree with no `archive.dir` behaves exactly as it does today.
 9. A configured `archive.dir` that does not exist yet passes, and a terminal
