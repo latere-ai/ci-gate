@@ -1,6 +1,6 @@
 ---
 title: contract reports the ways a repository has drifted from the shared shape
-status: draft
+status: complete
 depends_on:
   - 008-one-bar.md
 affects:

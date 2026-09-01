@@ -1,6 +1,6 @@
 ---
 title: The binary is the whole bar, and a repository runs it with no arguments
-status: draft
+status: complete
 depends_on:
   - 001-gate-principles.md
   - 006-gate-set-contract.md

@@ -16,8 +16,8 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 005 | [Merge the coverage tiers, and fail the packages no tier measured](005-cover-tiers-and-unmeasured-packages.md) | complete | `cover` takes repeated `-profile`, and a package no profile mentions fails |
 | 006 | [Declare the gate set, and fail a repository that is missing one](006-gate-set-contract.md) | complete | A `contract` subcommand: the required gate set is compiled in, absence fails, exemptions carry a reason and a date |
 | 007 | [Lint the archive, and fail a terminal spec that never moved into it](007-archive-placement.md) | complete | `spec.archive`: finished specs belong in `.archive/`, and the specs already there are parsed and held to the vocabulary |
-| 008 | [The binary is the whole bar, and a repository runs it with no arguments](008-one-bar.md) | draft | `lateregate` runs every gate; recipes, pins and defaults move into the binary; waivers replace per-repo targets |
-| 009 | [contract reports the ways a repository has drifted from the shared shape](009-contract-reports-drift.md) | draft | `contract` checks the wiring files, `hook` and `init` write and run them |
+| 008 | [The binary is the whole bar, and a repository runs it with no arguments](008-one-bar.md) | complete | `lateregate` runs every gate; recipes, pins and defaults move into the binary; waivers replace per-repo targets |
+| 009 | [contract reports the ways a repository has drifted from the shared shape](009-contract-reports-drift.md) | complete | `contract` checks the wiring files, `hook` and `init` write and run them |
 | 010 | [A reusable workflow that runs lateregate and nothing else](010-ci-workflow.md) | draft | `lateregate.yml` in latere-ai/ci builds its matrix from `lateregate list -json` |
 
 ## Conventions
