@@ -26,9 +26,12 @@ func LoadArchive(cfg config.Spec, dir string) ([]Spec, []string, error) {
 	}
 	adir := filepath.Join(dir, cfg.Archive.Dir)
 	info, err := os.Stat(adir)
+	// A tree that has retired nothing yet has no directory, and git cannot
+	// track an empty one. The forward half of the rule still holds -- a
+	// terminal spec at the root is reported and told where it belongs -- so
+	// the absence is the empty archive rather than a misconfiguration.
 	if os.IsNotExist(err) {
-		return nil, nil, fmt.Errorf("%s does not exist; spec.archive.dir names the "+
-			"directory finished specs retire into", adir)
+		return nil, nil, nil
 	}
 	if err != nil {
 		return nil, nil, err

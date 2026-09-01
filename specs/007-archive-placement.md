@@ -107,6 +107,12 @@ spec:
 no archive yet adopts nothing, the way an empty `index` disables the index
 rules.
 
+A configured `dir` that does not exist is the empty archive, not an error.
+git cannot track an empty directory, so requiring one would make adoption
+wait on inventing a file to put in it. The forward half of the rule still
+holds without it: a terminal spec at the root is reported and told where it
+belongs, so a tree cannot adopt the rule and have it assert nothing.
+
 `statuses` must be a non-empty subset of `spec.status`. `validate` rejects a
 terminal status the vocabulary does not list, for the reason it already
 rejects one in `started`/`settled`: a status no spec can hold matches
@@ -143,3 +149,5 @@ archived spec has a row.
    against the archive, and one naming a file that is not there fails.
 7. Two specs sharing a number across the boundary fail when `numbered` is on.
 8. A tree with no `archive.dir` behaves exactly as it does today.
+9. A configured `archive.dir` that does not exist yet passes, and a terminal
+   spec at the root still fails against it.

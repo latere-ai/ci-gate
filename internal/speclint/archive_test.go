@@ -280,16 +280,31 @@ func TestAnUnconfiguredArchiveIsNotRead(t *testing.T) {
 	}
 }
 
-func TestAMissingArchiveDirectoryIsAnError(t *testing.T) {
+// A tree that has retired nothing has no directory, because git cannot track
+// an empty one. Adoption must not require inventing a file to put in it.
+func TestAMissingArchiveDirectoryIsTheEmptyArchive(t *testing.T) {
 	root := tree(t, map[string]string{
 		"001-a.md":  spec("draft"),
 		"README.md": index("| 001 | [A](001-a.md) | draft | x |"),
 	})
-	_, err := run(t, archiveCfg(), root)
-	if err == nil {
-		t.Fatal("a configured archive that is not there should be an error")
+	out, err := run(t, archiveCfg(), root)
+	if err != nil {
+		t.Fatalf("an archive nothing has been filed into yet should pass: %v\n%s", err, out)
 	}
-	if !strings.Contains(err.Error(), "does not exist") {
-		t.Errorf("the error should say the directory is missing: %v", err)
+}
+
+// The forward half still holds without the directory, so a tree cannot adopt
+// the rule and have it quietly assert nothing.
+func TestATerminalSpecFailsEvenWithNoArchiveDirectory(t *testing.T) {
+	root := tree(t, map[string]string{
+		"001-a.md":  spec("complete"),
+		"README.md": index("| 001 | [A](001-a.md) | complete | x |"),
+	})
+	out, err := run(t, archiveCfg(), root)
+	if err == nil {
+		t.Fatalf("a terminal spec should fail whether or not the archive exists:\n%s", out)
+	}
+	if !strings.Contains(out, "belongs in .archive/") {
+		t.Errorf("the report should name where it belongs:\n%s", out)
 	}
 }
