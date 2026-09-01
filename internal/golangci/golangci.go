@@ -134,10 +134,15 @@ func Render(module string, disable []string, sl *config.Sloglint, extra map[stri
 	if sl != nil {
 		enable = append(enable, "sloglint")
 		settings["sloglint"] = map[string]any{"context": sl.Context}
-		exclusionRules = append(exclusionRules, map[string]any{
-			"path-except": sl.RequestPaths,
-			"linters":     []any{"sloglint"},
-		})
+		// Unscoped is the default: every package. An empty path-except
+		// would be rejected by golangci-lint at load, which fails the gate
+		// on a config nobody wrote.
+		if sl.RequestPaths != "" {
+			exclusionRules = append(exclusionRules, map[string]any{
+				"path-except": sl.RequestPaths,
+				"linters":     []any{"sloglint"},
+			})
+		}
 		for _, e := range sl.Exempt {
 			exclusionRules = append(exclusionRules,
 				map[string]any{"path": e, "linters": []any{"sloglint"}})

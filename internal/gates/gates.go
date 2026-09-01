@@ -145,6 +145,13 @@ func FmtCheck(out io.Writer, run Exec) error {
 // and the check would then pass silently, which is the one outcome worse than
 // failing.
 func Modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec) error {
+	return modernize(cfg, goBin, out, run, nil, func() ([]string, error) { return ownPackages(goBin, run) })
+}
+
+// modernize is the gate over whichever packages list names. hint, when
+// non-empty, is printed with the fix so a reader can apply it to the same
+// scope the check ran on.
+func modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec, hint []string, list func() ([]string, error)) error {
 	args := []string{"fix", "-diff"}
 	if len(cfg.Disable) > 0 {
 		help, err := run(nil, false, goBin, "tool", "fix", "help")
@@ -160,7 +167,7 @@ func Modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec) erro
 			args = append(args, "-"+f+"=false")
 		}
 	}
-	pkgs, err := ownPackages(goBin, run)
+	pkgs, err := list()
 	if err != nil {
 		return err
 	}
@@ -169,6 +176,10 @@ func Modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec) erro
 	patch, err := run(nil, false, goBin, args...)
 	if len(patch) > 0 {
 		_, _ = out.Write(patch)
+		if len(hint) > 0 {
+			return fmt.Errorf("the diff above is already in the standard library; apply it with go fix %s and re-stage",
+				strings.Join(append(args[1:len(args)-len(pkgs)], pkgs...), " "))
+		}
 		return fmt.Errorf("the diff above is already in the standard library; apply it with go fix")
 	}
 	if err != nil {

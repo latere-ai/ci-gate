@@ -48,27 +48,47 @@ type Config struct {
 	License   License   `yaml:"license"`
 
 	OtelClient OtelClient `yaml:"otel_client"`
-	Contract   Contract   `yaml:"contract"`
+
+	// Waive maps a gate name to the decision not to run it yet. It is the
+	// only way a gate that applies to this repository does not run, and
+	// every entry is temporary by construction.
+	Waive map[string]Waiver `yaml:"waive"`
+
+	// Restated lists the keys the file set to their own default. A key that
+	// restates a default is a line the next default change makes wrong, so
+	// the drift report names it. Computed by Load; not part of the file.
+	Restated []string `yaml:"-"`
 }
 
-// Contract configures the gate-set check: which required gates this
-// repository does not hold yet.
-//
-// The required set itself is not here. It is a property of the organisation,
-// compiled into this tool, because a bar a consumer can lower is not a bar. A
-// consumer declares only the gates it is behind on, and every entry is
-// temporary by construction.
-type Contract struct {
-	// Exempt maps a required make target to the decision not to hold it yet.
-	Exempt map[string]Waiver `yaml:"exempt"`
-}
+// DefaultDisabledFixers are the go fix modernizers every repository turns
+// off. newexpr rewrites pointer helpers to new(v) and inlines call sites
+// unevenly, leaving the helper unused and giving an untyped constant the
+// wrong type; errorsastype rewrites errors.As to errors.AsType[T], whose
+// constraint a local non-error interface target does not satisfy, so the
+// result does not compile. Both re-propose on every run.
+var DefaultDisabledFixers = []string{"newexpr", "errorsastype"}
 
-// Waiver is one gate a repository does not hold yet.
+// DefaultSpecDir is where a spec tree lives. The gate applies when git
+// tracks files under it.
+const DefaultSpecDir = "specs"
+
+// DefaultSpecRequire are the frontmatter keys every spec carries.
+var DefaultSpecRequire = []string{"title", "status"}
+
+// DefaultSpecIndex is the index a tree keeps when it keeps one.
+const DefaultSpecIndex = "specs/README.md"
+
+// DefaultSloglintContext is sloglint's setting for every package: where a
+// context is in hand, the *Context variant is right whether or not the
+// package serves requests, so the default is unscoped.
+const DefaultSloglintContext = "scope"
+
+// Waiver is one gate a repository does not run yet.
 //
 // Both fields are mandatory and the reason is only half of it. A reason alone
-// becomes wallpaper: seventeen well-argued exemptions is not a bar, it is a
-// bar written down and abandoned. The date is what makes retiring them one at
-// a time a thing the tool checks rather than a thing somebody remembers.
+// becomes wallpaper: seventeen well-argued waivers is not a bar, it is a bar
+// written down and abandoned. The date is what makes retiring them one at a
+// time a thing the tool checks rather than a thing somebody remembers.
 type Waiver struct {
 	Reason string `yaml:"reason"`
 	// Until is the last day the exemption works, as YYYY-MM-DD, and it is
@@ -76,8 +96,8 @@ type Waiver struct {
 	// writing that means they have until then, and a date that quietly meant
 	// the day before would be read wrong by everyone who writes one.
 	//
-	// After it the gate fails as an expiry rather than as an absence, because
-	// the two call for different work: adopt the gate, or argue for more time.
+	// After it the gate runs and fails on its own terms, so the reason for
+	// the work is in the gate's own output rather than in a date.
 	Until string `yaml:"until"`
 }
 
@@ -472,26 +492,81 @@ func Load(dir string) (*Config, error) {
 	path := filepath.Join(dir, Name)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return defaults(&Config{}), nil
+		return defaults(&Config{}, dir), nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	var c Config
 	if err := yaml.UnmarshalWithOptions(data, &c, yaml.Strict()); err != nil {
+		// The waiver map used to live under contract.exempt. A repository
+		// still carrying it is told where it went rather than only that the
+		// key is unknown.
+		if strings.Contains(err.Error(), `unknown field "contract"`) {
+			return nil, fmt.Errorf("%s: %w\ncontract.exempt is now the top-level waive map, keyed by gate name (cover, race, lint, ...)", path, err)
+		}
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := c.validate(path); err != nil {
 		return nil, err
 	}
-	return defaults(&c), nil
+	return defaults(&c, dir), nil
 }
 
-func defaults(c *Config) *Config {
+// defaults fills in every value a repository does not have to decide, and
+// records the ones the file decided anyway.
+//
+// A nil slice is a key the file did not write; an empty one is a key set to
+// nothing. The two differ: `modernize.disable: []` is a decision to run every
+// fixer, and unset is the shared default.
+func defaults(c *Config, dir string) *Config {
+	if c.Cover.Threshold == DefaultThreshold {
+		c.Restated = append(c.Restated, "cover.threshold")
+	}
 	if c.Cover.Threshold == 0 {
 		c.Cover.Threshold = DefaultThreshold
 	}
+	if c.Modernize.Disable == nil {
+		c.Modernize.Disable = slices.Clone(DefaultDisabledFixers)
+	} else if sameSet(c.Modernize.Disable, DefaultDisabledFixers) {
+		c.Restated = append(c.Restated, "modernize.disable")
+	}
+	if c.Spec.Dir == DefaultSpecDir {
+		c.Restated = append(c.Restated, "spec.dir")
+	}
+	if c.Spec.Dir == "" {
+		c.Spec.Dir = DefaultSpecDir
+	}
+	if c.Spec.Require == nil {
+		c.Spec.Require = slices.Clone(DefaultSpecRequire)
+	} else if sameSet(c.Spec.Require, DefaultSpecRequire) {
+		c.Restated = append(c.Restated, "spec.require")
+	}
+	if c.Spec.Index == DefaultSpecIndex {
+		c.Restated = append(c.Restated, "spec.index")
+	}
+	if c.Spec.Index == "" {
+		if _, err := os.Stat(filepath.Join(dir, DefaultSpecIndex)); err == nil {
+			c.Spec.Index = DefaultSpecIndex
+		}
+	}
+	if sl := c.Golangci.Sloglint; sl == nil {
+		c.Golangci.Sloglint = &Sloglint{Context: DefaultSloglintContext}
+	} else if sl.Context == DefaultSloglintContext && sl.RequestPaths == "" && len(sl.Exempt) == 0 {
+		c.Restated = append(c.Restated, "golangci.sloglint")
+	}
 	return c
+}
+
+// sameSet reports whether two lists hold the same names in any order.
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	x, y := slices.Clone(a), slices.Clone(b)
+	sort.Strings(x)
+	sort.Strings(y)
+	return slices.Equal(x, y)
 }
 
 // validate rejects a config that would make a gate weaker than it looks.
@@ -525,26 +600,26 @@ func (c *Config) validate(path string) error {
 			path, strings.Join(noReason, ", "))
 	}
 	var noWhy, noDate []string
-	for target, w := range c.Contract.Exempt {
+	for gate, w := range c.Waive {
 		if strings.TrimSpace(w.Reason) == "" {
-			noWhy = append(noWhy, target)
+			noWhy = append(noWhy, gate)
 		}
 		if _, ok := w.UntilDate(); !ok {
-			noDate = append(noDate, target)
+			noDate = append(noDate, gate)
 		}
 	}
 	if len(noWhy) > 0 {
 		sort.Strings(noWhy)
-		return fmt.Errorf("%s: contract exemption without a reason: %s\n"+
-			"not holding a gate is a decision: write why this repository does "+
-			"not hold it yet, or delete the entry",
+		return fmt.Errorf("%s: waiver without a reason: %s\n"+
+			"not running a gate is a decision: write why this repository does "+
+			"not run it yet, or delete the entry",
 			path, strings.Join(noWhy, ", "))
 	}
 	if len(noDate) > 0 {
 		sort.Strings(noDate)
-		return fmt.Errorf("%s: contract exemption without a usable until date: %s\n"+
-			"write the date the exemption stops working, as YYYY-MM-DD: an "+
-			"exemption with no end is the bar being lowered permanently",
+		return fmt.Errorf("%s: waiver without a usable until date: %s\n"+
+			"write the date the waiver stops working, as YYYY-MM-DD: a "+
+			"waiver with no end is the bar being lowered permanently",
 			path, strings.Join(noDate, ", "))
 	}
 	var unowned []string

@@ -405,3 +405,22 @@ func TestTestFilesAreExcludedFromTheDeliberateErrorLinters(t *testing.T) {
 		}
 	}
 }
+
+// The default sloglint is every package. A scope of "" must not render as
+// an empty path-except, which golangci-lint refuses to load.
+func TestUnscopedSloglintRendersNoPathExcept(t *testing.T) {
+	got, err := Render("example.com/m", nil, &config.Sloglint{Context: "scope"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "sloglint") || strings.Contains(got, "path-except") {
+		t.Errorf("unscoped sloglint must enable the linter and add no path rule:\n%s", got)
+	}
+	got, err = Render("example.com/m", nil, &config.Sloglint{Context: "scope", RequestPaths: "internal/api/"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "path-except: internal/api/") {
+		t.Errorf("a scoped sloglint keeps its scope:\n%s", got)
+	}
+}

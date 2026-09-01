@@ -5,6 +5,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,13 +18,21 @@ func out(t *testing.T, argv ...string) (string, error) {
 	return sb.String(), err
 }
 
-func TestNoCommandPrintsUsageAndFails(t *testing.T) {
-	s, err := out(t)
-	if err == nil {
-		t.Fatal("no command must fail")
+// No command is the whole bar. The plan is validated before any gate runs,
+// so a bad waiver stops it there; that is what makes this testable without
+// running fourteen gates against a temp directory.
+func TestNoCommandRunsCheck(t *testing.T) {
+	dir := t.TempDir()
+	body := "waive:\n  test-race:\n    reason: r\n    until: 2026-12-01\n"
+	if err := os.WriteFile(filepath.Join(dir, ".lateregate.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(s, "Usage:") {
-		t.Errorf("usage should be printed:\n%s", s)
+	_, err := out(t, "-C", dir)
+	if err == nil || !strings.Contains(err.Error(), "is not a gate") {
+		t.Fatalf("no command must run check, which validates the plan first: %v", err)
+	}
+	if _, err := out(t, "check", "-C", dir); err == nil || !strings.Contains(err.Error(), "is not a gate") {
+		t.Fatalf("check by name is the same: %v", err)
 	}
 }
 
@@ -89,14 +98,73 @@ func TestCoverReadsTheProfileAndTheConfig(t *testing.T) {
 	}
 }
 
-func TestSpecLintIsANoopWithoutConfig(t *testing.T) {
-	s, err := out(t, "spec-lint", "-C", t.TempDir())
+// Whether spec-lint applies is decided by check and list, which ask git. A
+// direct call on a tree with no specs measures nothing, and nothing is not
+// a pass.
+func TestSpecLintFailsOnATreeWithNoSpecs(t *testing.T) {
+	_, err := out(t, "spec-lint", "-C", t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "holds no specs") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// A fresh checkout: git answers, so the plan can be made, and it says
+// spec-lint has no subject here.
+func TestListPlansAgainstACheckout(t *testing.T) {
+	dir := checkout(t)
+	s, err := out(t, "list", "-C", dir, "-json")
 	if err != nil {
-		t.Fatalf("an unconfigured spec tree should not fail: %v", err)
+		t.Fatalf("list: %v\n%s", err, s)
 	}
-	if !strings.Contains(s, "nothing to check") {
-		t.Errorf("report:\n%s", s)
+	if !strings.Contains(s, `"name":"spec-lint","status":"skip"`) {
+		t.Errorf("plan:\n%s", s)
 	}
+	s, err = out(t, "list", "-C", dir)
+	if err != nil || !strings.Contains(s, "RUN  fmt-check") {
+		t.Errorf("text plan: %v\n%s", err, s)
+	}
+}
+
+// init then contract: the wiring init writes is the wiring contract wants,
+// apart from the pin, which is a `go get`.
+func TestInitThenContract(t *testing.T) {
+	dir := checkout(t)
+	if _, err := out(t, "init", "-C", dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module m\n\ngo 1.27\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := out(t, "contract", "-C", dir); err != nil {
+		t.Fatalf("contract after init: %v\n%s", err, s)
+	}
+}
+
+func TestHookFailsOutsideACheckout(t *testing.T) {
+	if _, err := out(t, "hook", "-C", t.TempDir()); err == nil {
+		t.Error("git cannot list staged files outside a checkout")
+	}
+}
+
+// The repository gates itself with its own binary. contract is the wiring
+// check, and this tree is the reference for the shape it checks.
+func TestContractPassesOnThisRepository(t *testing.T) {
+	if s, err := out(t, "contract", "-C", "../.."); err != nil {
+		t.Errorf("this repository must be in shape: %v\n%s", err, s)
+	}
+}
+
+func checkout(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@example.com"}, {"config", "user.name", "t"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if outb, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("git %v: %v\n%s", args, err, outb)
+		}
+	}
+	return dir
 }
 
 // The gates that shell out are wired to a real toolchain here, which is what

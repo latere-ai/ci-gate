@@ -4,285 +4,372 @@
 package contract
 
 import (
+	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
 )
 
-// db renders a make rule database holding exactly the named targets.
-func db(targets ...string) string {
-	var b strings.Builder
-	b.WriteString("# GNU Make 3.81\n# Files\n\n")
-	for _, t := range targets {
-		b.WriteString(t + ":\n#  Phony target.\n\n")
-	}
-	return b.String()
+// repo is a tree in shape: caller, hook, gitignore, pin, and no Makefile.
+// Each test breaks one thing.
+func repo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	must(t, os.MkdirAll(filepath.Join(dir, ".github", "workflows"), 0o755))
+	must(t, os.WriteFile(filepath.Join(dir, ".github", "workflows", "ci.yml"), []byte(Caller), 0o644))
+	must(t, os.MkdirAll(filepath.Join(dir, ".githooks"), 0o755))
+	must(t, os.WriteFile(filepath.Join(dir, ".githooks", "pre-commit"), []byte(gates.Staged), 0o755))
+	must(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("coverage.out\n.golangci.yml\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/m\n\ngo 1.27\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n"), 0o644))
+	return dir
 }
 
-// canned replays a make database, and answers git ls-files as a repository
-// that tracks specs. Tests that care about the spec predicate override it.
-func canned(out string) gates.Exec {
-	return func(_ []string, _ bool, name string, _ ...string) ([]byte, error) {
-		if name == "git" {
-			return []byte("specs/001-a.md\n"), nil
-		}
-		return []byte(out), nil
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
-// noSpecs is a repository that tracks no specs at all.
-func noSpecs(out string) gates.Exec {
-	return func(_ []string, _ bool, name string, _ ...string) ([]byte, error) {
-		if name == "git" {
+func write(t *testing.T, dir, rel, body string) {
+	t.Helper()
+	must(t, os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755))
+	must(t, os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644))
+}
+
+// untracked answers git ls-files as "not tracked", and replays a make
+// database when asked for one.
+func untracked(db string) gates.Exec {
+	return func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "git":
+			if len(args) > 0 && args[0] == "ls-files" {
+				return nil, errors.New("exit 1")
+			}
 			return nil, nil
+		case "make":
+			return []byte(db), nil
 		}
-		return []byte(out), nil
+		return nil, nil
 	}
 }
 
-func names() []string {
-	n := make([]string, len(Required))
-	for i, g := range Required {
-		n[i] = g.Target
-	}
-	return n
-}
-
-var day = time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
-
-func TestAllHeld(t *testing.T) {
-	var b strings.Builder
-	if err := Run(config.Contract{}, &b, canned(db(names()...)), day); err != nil {
-		t.Fatalf("a repository holding every gate must pass: %v", err)
-	}
-	if !strings.Contains(b.String(), "9 required gates held, 0 waived, 0 not applicable") {
-		t.Errorf("want the held count, got %q", b.String())
+func tracked(db string) gates.Exec {
+	return func(_ []string, _ bool, name string, _ ...string) ([]byte, error) {
+		if name == "make" {
+			return []byte(db), nil
+		}
+		return nil, nil
 	}
 }
 
-func TestMissingReportsEveryGateAtOnce(t *testing.T) {
-	held := []string{"fmt-check", "test", "lint", "lint-config", "lint-modernize"}
-	err := Run(config.Contract{}, &strings.Builder{}, canned(db(held...)), day)
+func load(t *testing.T, dir string) *config.Config {
+	t.Helper()
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func check(t *testing.T, dir string, exec gates.Exec) (string, error) {
+	t.Helper()
+	var sb strings.Builder
+	err := Run(dir, load(t, dir), &sb, exec)
+	return sb.String(), err
+}
+
+func TestInShapePasses(t *testing.T) {
+	dir := repo(t)
+	out, err := check(t, dir, untracked(""))
+	if err != nil {
+		t.Fatalf("a tree in shape must pass: %v", err)
+	}
+	if !strings.Contains(out, "in shape") {
+		t.Errorf("output:\n%s", out)
+	}
+}
+
+// Every drift in one run, not one per push.
+func TestEveryDriftIsReportedAtOnce(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "Makefile", "cover:\n\tgo tool cover -func=coverage.out\n")
+	db := "cover:\n#  Phony target.\n\tgo tool cover -func=coverage.out\n\n"
+	_, err := check(t, dir, untracked(db))
 	if err == nil {
-		t.Fatal("a repository missing four gates must fail")
+		t.Fatal("an empty tree drifts in every way")
 	}
-	// One run has to name all of them: a gate per push is four pushes.
-	for _, want := range []string{"test-hermetic", "test-race", "cover", "spec-lint"} {
+	for _, want := range []string{
+		"no workflow calls", "pre-commit is missing", ".gitignore is missing",
+		"hand-rolls a gate: cover", "go.mod is missing",
+	} {
 		if !strings.Contains(err.Error(), want) {
-			t.Errorf("want %q named in one run, got %v", want, err)
+			t.Errorf("want %q in one run, got:\n%v", want, err)
 		}
 	}
 }
 
-func TestWaiverAdmitsAndExpiryFails(t *testing.T) {
-	held := []string{"fmt-check", "test", "test-hermetic", "test-race", "lint", "lint-config", "lint-modernize", "spec-lint"}
-	cfg := config.Contract{Exempt: map[string]config.Waiver{
-		"cover": {Reason: "the suite needs Postgres beside it", Until: "2026-11-01"},
-	}}
-
-	var b strings.Builder
-	if err := Run(cfg, &b, canned(db(held...)), day); err != nil {
-		t.Fatalf("a live waiver must admit the gate: %v", err)
-	}
-	if !strings.Contains(b.String(), "waived: cover until 2026-11-01") {
-		t.Errorf("a waiver must be visible in the log, got %q", b.String())
-	}
-
-	// The same config, one day past the date.
-	past := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
-	err := Run(cfg, &strings.Builder{}, canned(db(held...)), past)
-	if err == nil {
-		t.Fatal("an expired waiver must fail: a warning is a reason to write the next one")
-	}
-	// Expiry and absence call for different work, so they read differently.
-	if !strings.Contains(err.Error(), "exemption ran out") {
-		t.Errorf("want an expiry, not an absence, got %v", err)
+func TestACallerStillOnGoVerifyIsNamedAsSuch(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, ".github/workflows/ci.yml", "on: {push: {branches: [main]}, pull_request: {}}\njobs:\n  v:\n    uses: latere-ai/ci/.github/workflows/go-verify.yml@v1\n")
+	_, err := check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "still calls go-verify.yml") {
+		t.Fatalf("the fix for an old caller differs from the fix for none, got %v", err)
 	}
 }
 
-// until names a day and covers all of it. An exemption that died at
-// midnight on the date it names would not cover the day it names, which is
-// not what anybody writing one means.
-func TestExpiryIsInclusiveOfTheDayItNames(t *testing.T) {
-	held := []string{"fmt-check", "test", "test-hermetic", "test-race", "lint", "lint-config", "lint-modernize", "spec-lint"}
-	cfg := config.Contract{Exempt: map[string]config.Waiver{
-		"cover": {Reason: "the suite needs Postgres beside it", Until: "2026-11-01"},
-	}}
-	e := canned(db(held...))
+func TestTwoCallersFail(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, ".github/workflows/other.yml", Caller)
+	_, err := check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "2 workflows call") {
+		t.Fatalf("got %v", err)
+	}
+}
 
-	for _, tc := range []struct {
-		name string
-		now  time.Time
-		live bool
-	}{
-		{"the morning of the day named", time.Date(2026, 11, 1, 0, 0, 1, 0, time.UTC), true},
-		{"the last second of it", time.Date(2026, 11, 1, 23, 59, 59, 0, time.UTC), true},
-		{"the day after", time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), false},
+func TestTheCallerMustRunOnPushToMainAndPullRequest(t *testing.T) {
+	for _, tc := range []struct{ name, on, want string }{
+		{"no on block", "jobs:\n  g:\n    uses: " + Workflow + "\n", "no `on:` block"},
+		{"push only", "on:\n  push:\n    branches: [main]\njobs:\n  g:\n    uses: " + Workflow + "\n", "must trigger on push to main and on pull_request"},
+		{"wrong branch", "on:\n  push:\n    branches: [release]\n  pull_request:\njobs:\n  g:\n    uses: " + Workflow + "\n", "does not include main"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := Run(cfg, &strings.Builder{}, e, tc.now)
-			if tc.live && err != nil {
-				t.Fatalf("the exemption must still cover %s: %v", tc.now.Format(time.DateOnly), err)
+			dir := repo(t)
+			write(t, dir, ".github/workflows/ci.yml", tc.on)
+			_, err := check(t, dir, untracked(""))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want %q, got %v", tc.want, err)
 			}
-			if !tc.live && err == nil {
-				t.Fatalf("the exemption must be dead on %s", tc.now.Format(time.DateOnly))
+		})
+	}
+	// `on` may parse as the boolean true; the flow style is accepted too.
+	dir := repo(t)
+	write(t, dir, ".github/workflows/ci.yml", "on: {push: {branches: [main]}, pull_request: {}}\njobs:\n  g:\n    uses: "+Workflow+"\n")
+	if _, err := check(t, dir, untracked("")); err != nil {
+		t.Fatalf("flow-style triggers are triggers: %v", err)
+	}
+}
+
+func TestTheHookMustDelegate(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, ".githooks/pre-commit", "#!/bin/sh\ngofmt -l .\n")
+	must(t, os.Chmod(filepath.Join(dir, ".githooks", "pre-commit"), 0o755))
+	_, err := check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "does not run `lateregate hook`") {
+		t.Fatalf("got %v", err)
+	}
+
+	// Extra lines are the repository's own.
+	write(t, dir, ".githooks/pre-commit", "#!/bin/sh\n./own.sh\nexec go tool lateregate hook\n")
+	must(t, os.Chmod(filepath.Join(dir, ".githooks", "pre-commit"), 0o755))
+	if _, err := check(t, dir, untracked("")); err != nil {
+		t.Fatalf("a hook that delegates and does more is in shape: %v", err)
+	}
+
+	must(t, os.Chmod(filepath.Join(dir, ".githooks", "pre-commit"), 0o644))
+	_, err = check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "not executable") {
+		t.Fatalf("a hook git cannot run is no hook, got %v", err)
+	}
+}
+
+func TestATrackedGolangciConfigFailsUnlessDeclared(t *testing.T) {
+	dir := repo(t)
+	_, err := check(t, dir, tracked(""))
+	if err == nil || !strings.Contains(err.Error(), ".golangci.yml is tracked") {
+		t.Fatalf("got %v", err)
+	}
+
+	write(t, dir, ".lateregate.yaml", "golangci:\n  own: a vendored tree with its own lint history\n")
+	_, err = check(t, dir, tracked(""))
+	if err == nil || !strings.Contains(err.Error(), "and there is none") {
+		t.Fatalf("a declared own config that is not there is a lost config, got %v", err)
+	}
+
+	write(t, dir, ".golangci.yml", "linters:\n  enable: [govet]\n")
+	if _, err := check(t, dir, tracked("")); err != nil {
+		t.Fatalf("declared and present is in shape: %v", err)
+	}
+}
+
+func TestGitignoreMustListTheGeneratedFiles(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, ".gitignore", "/coverage.out\n")
+	_, err := check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "does not list .golangci.yml") {
+		t.Fatalf("got %v", err)
+	}
+	write(t, dir, ".gitignore", "/coverage.out\n/.golangci.yml\n")
+	if _, err := check(t, dir, untracked("")); err != nil {
+		t.Fatalf("a leading slash still ignores the file: %v", err)
+	}
+}
+
+func TestARestatedDefaultIsNamed(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, ".lateregate.yaml", "modernize:\n  disable: [newexpr, errorsastype]\n")
+	_, err := check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "restates a default: modernize.disable") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// A target named for a gate delegates or is deleted. One that runs its own
+// tiers and then delegates is delegating.
+func TestAGateNamedTargetMustDelegate(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, "Makefile", "x:\n")
+	for _, tc := range []struct {
+		name string
+		db   string
+		want string
+	}{
+		{"hand-rolled cover", "cover:\n#  Phony target.\n\tgo test -coverprofile=c.out ./...\n\tgo tool cover -func=c.out\n\n", "hand-rolls a gate: cover (runs the cover gate itself)"},
+		{"hand-rolled race under the old name", "test-race:\n\tCGO_ENABLED=1 go test -race ./...\n\n", "test-race (runs the race gate itself)"},
+		{"lint via a system binary", "lint: lint-config\n\tgolangci-lint run ./...\n\nlint-config:\n\t@go tool lateregate golangci\n\n", "lint (runs the lint gate itself)"},
+		{"tiers then delegate", "cover:\n\tgo test -tags=integration -coverprofile=i.out ./...\n\t@go tool lateregate cover -profile=i.out\n\n", ""},
+		{"delegating everything", "check:\n\t@go tool lateregate\n\ntest:\n\t@go tool lateregate test\n\n", ""},
+		{"no gate targets", "build:\n\tgo build ./...\n\nvalidate: lint-otel\n\n", ""},
+		{"this repository's own form", "cover:\n\t@$(GO) run ./cmd/lateregate cover\n\n", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := check(t, dir, untracked(tc.db))
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("must pass: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want %q, got %v", tc.want, err)
 			}
 		})
 	}
 }
 
-func TestExemptionForUnknownGateFails(t *testing.T) {
-	cfg := config.Contract{Exempt: map[string]config.Waiver{
-		"convr": {Reason: "typo for cover", Until: "2026-11-01"},
-	}}
-	err := Run(cfg, &strings.Builder{}, canned(db(names()...)), day)
-	if err == nil || !strings.Contains(err.Error(), "not a required gate") {
-		t.Fatalf("a misspelt gate name must fail rather than silently do nothing, got %v", err)
+func TestAnEmptyMakeDatabaseIsAnError(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, "Makefile", "x:\n")
+	_, err := check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "no rule database") {
+		t.Fatalf("make failing to run must not read as a Makefile with no targets, got %v", err)
 	}
 }
 
-func TestEmptyDatabaseFails(t *testing.T) {
-	err := Run(config.Contract{}, &strings.Builder{}, canned(""), day)
-	if err == nil || !strings.Contains(err.Error(), "vacuously") {
-		t.Fatalf("make failing to run must not read as a repository with no targets, got %v", err)
+func TestTheToolMustBePinned(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, "go.mod", "module example.com/m\n\ngo 1.27\n\nrequire latere.ai/x/ci-gate v0.25.2\n")
+	_, err := check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "does not pin the tool") {
+		t.Fatalf("a require is not a tool line, got %v", err)
+	}
+	// Inside a block.
+	write(t, dir, "go.mod", "module example.com/m\n\ngo 1.27\n\ntool (\n\tlatere.ai/x/ci-gate/cmd/lateregate\n\tgolang.org/x/tools/cmd/stringer\n)\n")
+	if _, err := check(t, dir, untracked("")); err != nil {
+		t.Fatalf("a tool block pins it: %v", err)
 	}
 }
 
-// A file named like a required gate must not answer for it. `make -n test`
-// succeeds when a test/ directory exists, and `make -n cover` when a cover
-// file does -- both are ordinary things to have in a Go repository. The same
-// shape was live in this organisation with a LICENSE file answering for a
-// `license` target on a case-insensitive filesystem.
-func TestFileDoesNotSatisfyATarget(t *testing.T) {
-	if _, err := exec.LookPath("make"); err != nil {
-		t.Skip("make is not installed")
-	}
+// init writes the wiring, and never a file already in shape.
+func TestInitWritesTheWiringOnce(t *testing.T) {
 	dir := t.TempDir()
-	gitInit(t, dir)
-	write(t, dir, "Makefile", "fmt-check:\n\t@true\n")
-	// Two required gate names, neither defined as a target: one a directory,
-	// one a plain file.
-	if err := os.Mkdir(filepath.Join(dir, "test"), 0o755); err != nil {
+	write(t, dir, ".gitignore", "coverage.out")
+	var configured []string
+	exec := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && len(args) > 0 && args[0] == "config" {
+			configured = append(configured, strings.Join(args, " "))
+		}
+		if name == "git" && len(args) > 0 && args[0] == "ls-files" {
+			return nil, errors.New("exit 1")
+		}
+		return nil, nil
+	}
+	var sb strings.Builder
+	if err := Init(dir, &sb, exec); err != nil {
 		t.Fatal(err)
 	}
-	write(t, dir, "cover", "not a gate\n")
-
-	held, err := targets(gates.OSExec(dir, &strings.Builder{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !held["fmt-check"] {
-		t.Error("the one real target must be found")
-	}
-	for _, shadow := range []string{"test", "cover"} {
-		if held[shadow] {
-			t.Errorf("%q is a file or directory, not a make target", shadow)
+	for _, want := range []string{"wrote .github/workflows/ci.yml", "wrote .githooks/pre-commit", "added .golangci.yml to .gitignore"} {
+		if !strings.Contains(sb.String(), want) {
+			t.Errorf("want %q:\n%s", want, sb.String())
 		}
 	}
-
-	// And the gate built on it must fail, naming both.
-	err = Run(config.Contract{}, &strings.Builder{}, gates.OSExec(dir, &strings.Builder{}), day)
-	if err == nil {
-		t.Fatal("a repository whose only target is fmt-check must fail")
+	if len(configured) != 1 || configured[0] != "config core.hooksPath .githooks" {
+		t.Errorf("hooksPath must be set: %v", configured)
 	}
-	for _, want := range []string{"test", "cover"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("want %q reported missing, got %v", want, err)
+	body, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if !strings.HasPrefix(string(body), "coverage.out\n") || !ignores(string(body), ".golangci.yml") {
+		t.Errorf("gitignore after init:\n%s", body)
+	}
+	hook, _ := os.Stat(filepath.Join(dir, ".githooks", "pre-commit"))
+	if hook.Mode()&0o111 == 0 {
+		t.Error("the hook must be executable")
+	}
+
+	// The pin is the one thing init does not write, so it says so.
+	if !strings.Contains(sb.String(), "go get -tool") {
+		t.Errorf("init must name the next step:\n%s", sb.String())
+	}
+
+	// Now in shape apart from go.mod: nothing to write.
+	write(t, dir, "go.mod", "module m\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n")
+	sb.Reset()
+	if err := Init(dir, &sb, exec); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sb.String(), "nothing to write") {
+		t.Errorf("a second init must write nothing:\n%s", sb.String())
+	}
+	if _, err := check(t, dir, exec); err != nil {
+		t.Fatalf("after init the tree is in shape: %v", err)
+	}
+}
+
+// An old caller carries inputs somebody chose, so init leaves it to be
+// edited by hand and Run keeps reporting it.
+func TestInitDoesNotRewriteAnOldCaller(t *testing.T) {
+	dir := repo(t)
+	old := "on: {push: {branches: [main]}, pull_request: {}}\njobs:\n  v:\n    uses: latere-ai/ci/.github/workflows/go-verify.yml@v1\n    with:\n      test_os: '[\"ubuntu-latest\"]'\n"
+	write(t, dir, ".github/workflows/ci.yml", old)
+	if err := Init(dir, &strings.Builder{}, untracked("")); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(dir, ".github", "workflows", "ci.yml"))
+	if string(body) != old {
+		t.Error("init must not rewrite a caller that carries chosen inputs")
+	}
+}
+
+func TestInitReplacesAHandRolledHook(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, ".githooks/pre-commit", "#!/bin/sh\ngofmt -l .\n")
+	if err := Init(dir, &strings.Builder{}, untracked("")); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(dir, ".githooks", "pre-commit"))
+	if string(body) != gates.Staged {
+		t.Error("a hook holding its own copy of the checks is replaced by the delegating one")
+	}
+}
+
+func TestInitReportsAFailingHooksPath(t *testing.T) {
+	dir := repo(t)
+	exec := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && len(args) > 0 && args[0] == "config" {
+			return nil, errors.New("not a git repository")
 		}
+		return nil, errors.New("exit 1")
+	}
+	if err := Init(dir, &strings.Builder{}, exec); err == nil || !strings.Contains(err.Error(), "core.hooksPath") {
+		t.Fatalf("got %v", err)
 	}
 }
 
-// The rule database of a real Makefile is large. Matching it through a pipe
-// that closes early kills make with SIGPIPE, which exits 141 and reads as a
-// repository with no targets at all.
-func TestLargeDatabaseIsReadWhole(t *testing.T) {
-	if _, err := exec.LookPath("make"); err != nil {
-		t.Skip("make is not installed")
-	}
-	dir := t.TempDir()
-	var mk strings.Builder
-	for _, g := range names() {
-		mk.WriteString(g + ":\n\t@true\n")
-	}
-	// Enough rules that the database does not fit one pipe buffer.
-	for i := range 4000 {
-		mk.WriteString("filler" + itoa(i) + ":\n\t@true\n")
-	}
-	write(t, dir, "Makefile", mk.String())
-	gitInit(t, dir)
-
-	var b strings.Builder
-	if err := Run(config.Contract{}, &b, gates.OSExec(dir, &b), day); err != nil {
-		t.Fatalf("every required gate is defined, so this must pass: %v", err)
-	}
-}
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var d []byte
-	for i > 0 {
-		d = append([]byte{byte('0' + i%10)}, d...)
-		i /= 10
-	}
-	return string(d)
-}
-
-// gitInit makes dir a repository, because the spec predicate asks git what
-// it tracks and a directory that is not one cannot answer.
-func gitInit(t *testing.T, dir string) {
-	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
-	cmd := exec.Command("git", "init", "-q")
-	cmd.Dir = dir
-	if err := cmd.Run(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func write(t *testing.T, dir, name, body string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// A repository that tracks no specs is not behind on spec-lint; it has
-// nothing to lint. Dating that would mean renewing a decision nobody intends
-// to change.
-func TestSpecLintDoesNotApplyWithoutASpecTree(t *testing.T) {
-	held := []string{"fmt-check", "test", "test-hermetic", "test-race", "cover", "lint", "lint-config", "lint-modernize"}
-	var b strings.Builder
-	if err := Run(config.Contract{}, &b, noSpecs(db(held...)), day); err != nil {
-		t.Fatalf("a repository with no specs/ must pass without an exemption: %v", err)
-	}
-	if !strings.Contains(b.String(), "not applicable: spec-lint") {
-		t.Errorf("the gate must say why it did not apply, got %q", b.String())
-	}
-}
-
-// The case that decides whether the predicate is a fix or a loophole. This
-// repository has a real spec tree and no spec: section in its config, which
-// is the gap the gate exists to report. Deriving applicability from the
-// config rather than from git would make that gap disappear silently, and
-// would let any repository dodge the gate by deleting six lines of YAML.
-func TestSpecLintAppliesToATrackedTreeWithNoConfig(t *testing.T) {
-	held := []string{"fmt-check", "test", "test-hermetic", "test-race", "cover", "lint", "lint-config", "lint-modernize"}
-	// cfg is empty: no spec section, exactly as managed-agents ships it.
-	err := Run(config.Contract{}, &strings.Builder{}, canned(db(held...)), day)
-	if err == nil {
-		t.Fatal("a tracked spec tree with no spec-lint target must fail, config or no config")
-	}
-	if !strings.Contains(err.Error(), "spec-lint") {
-		t.Errorf("want spec-lint reported missing, got %v", err)
+func TestRequiredListsTheGates(t *testing.T) {
+	if len(Required()) == 0 {
+		t.Error("the required set is the gate set")
 	}
 }

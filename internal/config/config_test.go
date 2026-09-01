@@ -29,8 +29,8 @@ func TestAMissingFileIsTheDefaults(t *testing.T) {
 	if c.Cover.Threshold != DefaultThreshold {
 		t.Errorf("threshold = %v, want %v", c.Cover.Threshold, DefaultThreshold)
 	}
-	if c.Spec.Dir != "" {
-		t.Errorf("spec.dir = %q, want empty so spec-lint stays off", c.Spec.Dir)
+	if c.Spec.Dir != DefaultSpecDir {
+		t.Errorf("spec.dir = %q, want %q; whether the gate applies is asked of git, not of this", c.Spec.Dir, DefaultSpecDir)
 	}
 }
 
@@ -342,14 +342,14 @@ func TestReadinessLoadsWhenBothAreSet(t *testing.T) {
 	}
 }
 
-// Not holding a gate is a decision, so it carries its reason. D3.
-func TestAContractExemptionWithoutAReasonIsRejected(t *testing.T) {
-	dir := write(t, "contract:\n  exempt:\n    cover:\n      reason: \"\"\n      until: 2026-11-01\n")
+// Not running a gate is a decision, so it carries its reason. D3.
+func TestAWaiverWithoutAReasonIsRejected(t *testing.T) {
+	dir := write(t, "waive:\n  cover:\n    reason: \"\"\n    until: 2026-11-01\n")
 	_, err := Load(dir)
 	if err == nil {
-		t.Fatal("an exemption with no reason must fail the load")
+		t.Fatal("a waiver with no reason must fail the load")
 	}
-	for _, want := range []string{"cover", "does not hold it yet"} {
+	for _, want := range []string{"cover", "does not run it yet"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
@@ -357,39 +357,143 @@ func TestAContractExemptionWithoutAReasonIsRejected(t *testing.T) {
 }
 
 // A reason alone becomes wallpaper. The date is what makes retiring the
-// exemptions one at a time something the tool checks.
-func TestAContractExemptionWithoutADateIsRejected(t *testing.T) {
+// waivers one at a time something the tool checks.
+func TestAWaiverWithoutADateIsRejected(t *testing.T) {
 	for _, tc := range []struct{ name, until string }{
 		{"absent", ""},
 		{"not a date", "soon"},
 		{"wrong format", "01/11/2026"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := write(t, "contract:\n  exempt:\n    cover:\n      reason: needs Postgres\n      until: \""+tc.until+"\"\n")
+			dir := write(t, "waive:\n  cover:\n    reason: needs Postgres\n    until: \""+tc.until+"\"\n")
 			if _, err := Load(dir); err == nil {
-				t.Fatalf("until %q must fail the load: an exemption with no end lowers the bar permanently", tc.until)
+				t.Fatalf("until %q must fail the load: a waiver with no end lowers the bar permanently", tc.until)
 			}
 		})
 	}
 }
 
-func TestContractExemptionIsRead(t *testing.T) {
+func TestAWaiverIsRead(t *testing.T) {
 	c, err := Load(write(t, `
-contract:
-  exempt:
-    cover:
-      reason: the suite needs Postgres and MinIO beside it
-      until: 2026-11-01
+waive:
+  cover:
+    reason: the suite needs Postgres and MinIO beside it
+    until: 2026-11-01
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
-	w, ok := c.Contract.Exempt["cover"]
+	w, ok := c.Waive["cover"]
 	if !ok {
-		t.Fatal("the exemption must survive the load")
+		t.Fatal("the waiver must survive the load")
 	}
 	if _, ok := w.UntilDate(); !ok {
 		t.Errorf("until %q must parse", w.Until)
+	}
+}
+
+// The old key. A repository still carrying it must be told, not silently
+// run with the waiver dropped.
+func TestTheOldContractKeyIsRejected(t *testing.T) {
+	dir := write(t, "contract:\n  exempt:\n    cover:\n      reason: x\n      until: 2026-11-01\n")
+	_, err := Load(dir)
+	if err == nil {
+		t.Fatal("contract.exempt was renamed to waive; the old key must fail the load")
+	}
+	if !strings.Contains(err.Error(), "top-level waive map") {
+		t.Errorf("the error must say where the key went, got %v", err)
+	}
+}
+
+// A nil slice is a key the file did not write; an empty one is a key set to
+// nothing. Unset takes the shared default and [] is a decision to run every
+// fixer. The two must stay distinguishable.
+func TestModernizeDisableDefaultsWhenUnsetAndNotWhenEmpty(t *testing.T) {
+	unset, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameSet(unset.Modernize.Disable, DefaultDisabledFixers) {
+		t.Errorf("unset disable = %v, want the default %v", unset.Modernize.Disable, DefaultDisabledFixers)
+	}
+	empty, err := Load(write(t, "modernize:\n  disable: []\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty.Modernize.Disable) != 0 {
+		t.Errorf("disable: [] must run every fixer, got %v", empty.Modernize.Disable)
+	}
+	if len(empty.Restated) != 0 {
+		t.Errorf("[] is not the default, so nothing is restated, got %v", empty.Restated)
+	}
+}
+
+// Every consumer wrote the same five lines. They are defaults now, and a
+// file that still writes them is reported so the line goes away before the
+// next default change makes it wrong.
+func TestARestatedDefaultIsRecorded(t *testing.T) {
+	dir := write(t, `
+cover:
+  threshold: 90.0
+modernize:
+  disable: [errorsastype, newexpr]
+spec:
+  dir: specs
+  require: [status, title]
+  index: specs/README.md
+golangci:
+  sloglint:
+    context: scope
+`)
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"cover.threshold", "modernize.disable", "spec.dir", "spec.require", "spec.index", "golangci.sloglint"}
+	if !sameSet(c.Restated, want) {
+		t.Errorf("restated = %v, want %v", c.Restated, want)
+	}
+
+	// A decision that differs from the default is not restating it.
+	c, err = Load(write(t, "spec:\n  require: [title, status, created]\ngolangci:\n  sloglint:\n    context: all\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Restated) != 0 {
+		t.Errorf("a value that differs from the default is not restated, got %v", c.Restated)
+	}
+}
+
+// The spec defaults apply so a tree with specs needs no spec section; the
+// index defaults only when the file exists, because an index that is
+// configured and absent fails the lint.
+func TestSpecDefaults(t *testing.T) {
+	c, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Spec.Dir != DefaultSpecDir || !sameSet(c.Spec.Require, DefaultSpecRequire) {
+		t.Errorf("spec defaults = dir %q require %v", c.Spec.Dir, c.Spec.Require)
+	}
+	if c.Spec.Index != "" {
+		t.Errorf("no README exists, so no index defaults; got %q", c.Spec.Index)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "specs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, DefaultSpecIndex), []byte("# Specs\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err = Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Spec.Index != DefaultSpecIndex {
+		t.Errorf("index = %q, want %q when the file exists", c.Spec.Index, DefaultSpecIndex)
+	}
+	if c.Golangci.Sloglint == nil || c.Golangci.Sloglint.Context != DefaultSloglintContext {
+		t.Errorf("sloglint must default to %q everywhere, got %+v", DefaultSloglintContext, c.Golangci.Sloglint)
 	}
 }
 
