@@ -308,8 +308,8 @@ still open.
 Turning it on is also what makes the archive visible at all. Without it a
 subdirectory is never read, which is how one tree accumulated fifteen distinct
 archived statuses, one of them a sentence, while its root held three. Archived
-specs are parsed, held to `require` and to the same `status` vocabulary,
-resolved for `depends_on` and `numbered`, and required to appear in the index.
+specs are parsed, held to `require` and to the same `status` vocabulary, and
+resolved for `depends_on` and `numbered`.
 They are not held to the rules that describe work in progress — sections,
 markers, registers — because a record written before a rule existed cannot
 satisfy it without rewriting history.
@@ -319,8 +319,14 @@ satisfy it without rewriting history.
 terminal is your tree's decision, and `implemented` means "shipped, follow-on
 work outstanding" in one repository here and "done" in another.
 
-An index row into the archive is checked for resolution and membership, not
-for its status cell. That cell says where the spec went — `archived
+Whether the index covers the archive is read off the table rather than
+configured. An index holding at least one archive row is an index of the whole
+tree and must hold them all; one holding none is an index of the live work and
+is asked for nothing. Both conventions exist in the fleet and both are
+defensible, so the tool takes the index's own word for which it is.
+
+An index row into the archive is checked for resolution, not for its status
+cell. That cell says where the spec went — `archived
 (superseded)` against a frontmatter that says `superseded` — which is a
 different claim, and comparing them would force every tree onto one label
 vocabulary to catch no error. A row linking into any other subdirectory is

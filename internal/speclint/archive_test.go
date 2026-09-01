@@ -142,18 +142,39 @@ func TestAnUnparseableArchivedSpecIsReportedNotFatal(t *testing.T) {
 	}
 }
 
-func TestAnArchivedSpecMustBeListedInTheIndex(t *testing.T) {
+// An index that lists archived specs is an index of the whole tree, so a gap
+// in it means a reader cannot tell a retired spec from one never written down.
+func TestAnIndexThatCoversTheArchiveMustCoverAllOfIt(t *testing.T) {
+	root := tree(t, map[string]string{
+		"001-a.md":  spec("draft"),
+		"README.md": index("| 001 | [A](001-a.md) | draft | x |", "| 002 | [B](.archive/002-b.md) | archived | y |"),
+	})
+	archived(t, root, map[string]string{
+		"002-b.md": spec("complete"),
+		"003-c.md": spec("complete"),
+	})
+	out, err := run(t, archiveCfg(), root)
+	if err == nil {
+		t.Fatalf("a half-covered archive should fail:\n%s", out)
+	}
+	if !strings.Contains(out, ".archive/003-c.md is not listed") {
+		t.Errorf("the report should name the unlisted spec:\n%s", out)
+	}
+	if strings.Contains(out, ".archive/002-b.md is not listed") {
+		t.Errorf("the listed spec should not be reported:\n%s", out)
+	}
+}
+
+// An index that lists none is an index of the live work. Asking it for the
+// archive would be this tool choosing between two defensible conventions.
+func TestAnIndexOfTheLiveWorkIsNotAskedForTheArchive(t *testing.T) {
 	root := tree(t, map[string]string{
 		"001-a.md":  spec("draft"),
 		"README.md": index("| 001 | [A](001-a.md) | draft | x |"),
 	})
 	archived(t, root, map[string]string{"002-b.md": spec("complete")})
-	out, err := run(t, archiveCfg(), root)
-	if err == nil {
-		t.Fatalf("an archived spec nobody can find should fail:\n%s", out)
-	}
-	if !strings.Contains(out, ".archive/002-b.md is not listed") {
-		t.Errorf("the report should name the unlisted spec:\n%s", out)
+	if out, err := run(t, archiveCfg(), root); err != nil {
+		t.Fatalf("an index of the live work should pass: %v\n%s", err, out)
 	}
 }
 

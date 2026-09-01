@@ -354,6 +354,9 @@ func CheckIndex(cfg config.Spec, root string, specs, archived []Spec) ([]string,
 	for _, s := range archived {
 		inArchive[s.Name] = true
 	}
+	// archiveRows counts the rows pointing into the archive, which is how the
+	// index says whether it covers one.
+	archiveRows := 0
 
 	var out []string
 	listed := map[string]bool{}
@@ -381,6 +384,7 @@ func CheckIndex(cfg config.Spec, root string, specs, archived []Spec) ([]string,
 		}
 		if name, ok := archiveHref(cfg, href); ok {
 			rows++
+			archiveRows++
 			if !inArchive[name] {
 				out = append(out, fmt.Sprintf("%s: row links to %s/%s, which is not there",
 					cfg.Index, cfg.Archive.Dir, name))
@@ -424,9 +428,18 @@ func CheckIndex(cfg config.Spec, root string, specs, archived []Spec) ([]string,
 			out = append(out, fmt.Sprintf("%s: %s is not listed", cfg.Index, s.Name))
 		}
 	}
-	for _, s := range archived {
-		if !listed[s.Name] {
-			out = append(out, fmt.Sprintf("%s: %s/%s is not listed", cfg.Index, cfg.Archive.Dir, s.Name))
+	// Whether an index covers the archive is the tree's own decision, and the
+	// index states it by what it holds. One that lists archived specs is an
+	// index of the whole tree and has to be complete, or a reader cannot tell
+	// a retired spec from one that was never written down. One that lists none
+	// is an index of the live work, and asking it for the archive would be
+	// this tool choosing between two defensible conventions.
+	if archiveRows > 0 {
+		for _, s := range archived {
+			if !listed[s.Name] {
+				out = append(out, fmt.Sprintf("%s: %s/%s is not listed, and this index "+
+					"lists %d other archived spec(s)", cfg.Index, cfg.Archive.Dir, s.Name, archiveRows))
+			}
 		}
 	}
 	return out, nil

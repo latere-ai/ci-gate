@@ -88,7 +88,7 @@ The checks archived specs are held to:
 | `require` keys present | yes | the same keys the root needs to be citable |
 | status in `spec.status` | yes | this is the drift the rule exists to stop |
 | status in `archive.statuses` | yes | placement, above |
-| listed in the index | yes | a spec absent from the index is invisible |
+| listed in the index | if the index lists any | see *Index labels* |
 | index row status matches | **no** | see *Index labels* |
 | number is unique tree-wide | yes | the number is what citations resolve through |
 | `depends_on` resolves | yes | including edges into the archive |
@@ -131,8 +131,17 @@ An index writes the archive row as a location: auth's table says
 row is telling a reader where the spec went, which is a different claim from
 what the frontmatter says about it. A linter that compared the two would
 force every tree onto one label vocabulary and catch no error, so it checks
-the claim it can check: the row points at a file that exists, and every
-archived spec has a row.
+the claim it can check: the row points at a file that exists.
+
+Whether the index covers the archive at all is the tree's decision, and the
+index states it by what it holds. auth's says it "lists **every** spec —
+active and archived — in one number space"; agents' is a view of where the
+platform is now and names retired specs only in prose. Both are defensible,
+so the rule is read off the table rather than configured: an index holding at
+least one archive row is an index of the whole tree and must hold them all,
+because otherwise a reader cannot tell a retired spec from one that was never
+written down. An index holding none is an index of the live work and is asked
+for nothing.
 
 ## Acceptance
 
@@ -140,7 +149,9 @@ archived spec has a row.
    the directory it belongs in.
 2. A tree with an archived spec at a non-terminal status fails.
 3. An archived spec missing a required frontmatter key, or carrying a status
-   outside the vocabulary, or absent from the index, fails.
+   outside the vocabulary, fails.
+10. An archived spec absent from an index that lists other archived specs
+    fails; an index that lists none is asked for nothing.
 4. An unparseable archived spec is reported as a problem rather than
    aborting the run, so one bad file does not hide the rest of the report.
 5. `archive.statuses` naming a status outside `spec.status` is rejected by
