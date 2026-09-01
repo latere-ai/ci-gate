@@ -1,7 +1,7 @@
 name: ci
 
-# ci-gate gates itself with its own binary and its own .lateregate.yaml. If the
-# config cannot express this repo's gates it will not express anyone else's.
+# Every gate lives in lateregate, pinned in go.mod. The reusable workflow
+# asks the binary which gates apply and runs one job per gate.
 
 on:
   push:
@@ -12,5 +12,5 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    uses: latere-ai/ci/.github/workflows/go-verify.yml@v1
+  gate:
+    uses: latere-ai/ci/.github/workflows/lateregate.yml@v1

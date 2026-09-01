@@ -1,9 +1,8 @@
-# The gate configuration for this repository. Every consumer repo carries one
-# of these; this is the tool gating itself with it, which is the only way the
-# schema stays honest.
+# The decisions this repository has made, each with its reason. Everything
+# the tool can decide for a repository it decides by default, so a key here
+# is one somebody chose. This is the tool gating itself with its own file,
+# which is the only way the schema stays honest.
 cover:
-  threshold: 90.0
-  trim_prefix: latere.ai/x/ci-gate/
   exempt:
     # The value is the reason. lateregate rejects an empty one.
     cmd/lateregate: >-
@@ -11,12 +10,8 @@ cover:
       directly; every command it dispatches to is covered in its own package
 
 spec:
-  # This repository lints its own spec tree with its own binary. A gate whose
-  # only consumer is a repo that does not run it is a gate nobody checks.
-  dir: specs
+  # A closed vocabulary; the index row and the frontmatter must agree.
   status: [draft, partial, complete]
-  require: [title, status]
-  index: specs/README.md
   wikilinks: true
   # Every spec here is NNN-name.md, and the number is what the index rows, the
   # wikilinks and the commit messages all cite.
@@ -29,50 +24,16 @@ spec:
 
 hermetic:
   # gofmt and go live in the toolchain directory and need nothing named here.
-  #
-  # git does. The fmt-check gate is defined as "the Go files this repository
-  # tracks", and it asks git for that list rather than walking the tree, which
-  # would descend into any nested checkout parked inside the repo and report
-  # files this repository cannot fix. So the gate's own test needs git, and
-  # naming the directory is how that dependency stays visible instead of
-  # ambient. That is what this key is for.
+  # git does: fmt-check asks git which Go files the repository tracks, so the
+  # gate's own test needs it, and naming the directory is how that dependency
+  # stays visible instead of ambient.
   allow: [/usr/bin]
 
-modernize:
-  # Read by two gates: `go fix` through `make lint-modernize`, and the
-  # modernize linter in the generated .golangci.yml. They are the same
-  # analyzers, so a fixer turned off for one and left on for the other is this
-  # repository disagreeing with itself -- which it was, until generation made
-  # it visible.
-  disable:
-    # newexpr rewrites pointer helpers such as func ptr(v T) *T to new(v), then
-    # inlines call sites unevenly: the helper is left with no callers (which
-    # trips unused), and an untyped constant argument takes the wrong default
-    # type.
-    - newexpr
-    # errorsastype rewrites errors.As to errors.AsType[T], whose type parameter
-    # is constrained to [E error]. A local non-error interface target does not
-    # satisfy it, so the rewrite does not compile.
-    - errorsastype
-
-tempdir:
-  # The suite is watched against an empty TMPDIR and nothing may survive it.
-  # This repo's own tests make temporary directories and remove them, which is
-  # the state every consumer repo should be able to reach.
-  #
-  # command is unset, so the default `go test ./...` runs. A repo whose real
-  # coverage lives behind a build tag or a slower target names it here: a leak
-  # the gate never executes is a leak it reports as absent.
-  allow: {}
-
 license:
-  # The identifier every source file carries, and the holder it names. There
-  # is no default: an identifier guessed on a repository's behalf would be
-  # printed into every file it has. Declaring it here is what the gate checks
-  # the tree against.
+  # No default: an identifier guessed on a repository's behalf would be
+  # printed into every file it has. Declaring it is the decision the gate
+  # checks the tree against.
   spdx: MIT
   holder: Latere AI
-  # The Makefile is where every gate is actually invoked, so it is part of
-  # the work rather than packaging around it.
   extensions: ['.go']
   names: [Makefile]
