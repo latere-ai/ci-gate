@@ -1,6 +1,6 @@
 ---
 title: Declare the gate set, and fail a repository that is missing one
-status: partial
+status: complete
 depends_on:
   - 001-gate-principles.md
 affects:
@@ -9,7 +9,7 @@ affects:
   - internal/contract/
 effort: medium
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-01
 author: changkun
 dispatched_task_id: null
 ---
@@ -217,4 +217,7 @@ Two gates stay out, and the reasons are not the same:
    subcommand would reintroduce the vacuous pass this spec exists to
    remove. So the flip is the last step of the rollout, after every
    consumer carries the subcommand.
+   **Closed by [[008-one-bar]]**: the probe list is not flipped but
+   replaced. The gates leave the Makefile altogether, so there is no
+   target list in either repository to keep in step.
 6. This repository satisfies the set it declares, and exempts nothing.
