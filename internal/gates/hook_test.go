@@ -108,3 +108,23 @@ func TestIsSharedHook(t *testing.T) {
 		}
 	}
 }
+
+// A generator under testdata is outside ./..., which the full gate reads;
+// the hook holds it to gofmt and nothing more.
+func TestHookLeavesTestdataPackagesToGofmtOnly(t *testing.T) {
+	var calls []call
+	var sb strings.Builder
+	err := Hook(config.Modernize{}, "go", &sb, fake(t, &calls,
+		"tok/testdata/gen/main.go\x00", // staged
+		"",                             // gofmt -l: clean
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 {
+		t.Errorf("go fix must not run on a testdata package; ran %v", calls)
+	}
+	if !strings.Contains(sb.String(), "under testdata") {
+		t.Errorf("report:\n%s", sb.String())
+	}
+}

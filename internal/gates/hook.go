@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -49,11 +50,20 @@ func Hook(cfg config.Modernize, goBin string, out io.Writer, run Exec) error {
 	pkgs := map[string]bool{}
 	for _, f := range files {
 		dir := path.Dir(f)
+		// A package under testdata is outside ./..., so the full gate never
+		// reads it and the hook must not hold it to more.
+		if slices.Contains(strings.Split(dir, "/"), "testdata") {
+			continue
+		}
 		if dir == "." {
 			pkgs["."] = true
 			continue
 		}
 		pkgs["./"+dir] = true
+	}
+	if len(pkgs) == 0 {
+		_, _ = fmt.Fprintln(out, "the staged Go files are formatted and sit under testdata")
+		return nil
 	}
 	patterns := make([]string, 0, len(pkgs))
 	for p := range pkgs {
