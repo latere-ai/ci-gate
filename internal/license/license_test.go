@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -363,5 +364,62 @@ func TestAWholeNameIsCheckedAlongsideExtensions(t *testing.T) {
 	}
 	if !strings.Contains(out, "on 2 file(s)") {
 		t.Errorf("the named file should be counted:\n%s", out)
+	}
+}
+
+// Write puts the notice on files that have none, below a shebang, and leaves
+// a file whose notice disagrees with the declaration to a person.
+func TestWriteAddsTheNoticeWhereItIsMissing(t *testing.T) {
+	c := cfg()
+	c.Extensions = []string{".go", ".sh"}
+	root := repo(t, map[string]string{
+		"a/a.go":     "package a\n",
+		"run.sh":     "#!/bin/sh\nset -eu\n",
+		"b/ok.go":    "// SPDX-FileCopyrightText: 2025 Latere AI\n// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage b\n",
+		"c/wrong.go": "// SPDX-FileCopyrightText: 2025 Someone Else\n// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage c\n",
+	})
+	var sb strings.Builder
+	now := time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC)
+	err := Write(c, root, &sb, now)
+	if err == nil || !strings.Contains(err.Error(), "disagrees with the declaration") {
+		t.Fatalf("a wrong notice is reported, not rewritten: %v", err)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, "a", "a.go"))
+	want := "// SPDX-FileCopyrightText: 2026 Latere AI\n// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage a\n"
+	if string(got) != want {
+		t.Errorf("a.go after write:\n%s", got)
+	}
+	got, _ = os.ReadFile(filepath.Join(root, "run.sh"))
+	want = "#!/bin/sh\n# SPDX-FileCopyrightText: 2026 Latere AI\n# SPDX-License-Identifier: AGPL-3.0-or-later\n\nset -eu\n"
+	if string(got) != want {
+		t.Errorf("run.sh keeps its shebang on line 1:\n%s", got)
+	}
+	got, _ = os.ReadFile(filepath.Join(root, "c", "wrong.go"))
+	if !strings.Contains(string(got), "Someone Else") {
+		t.Error("a wrong holder must not be rewritten")
+	}
+	if !strings.Contains(sb.String(), "written on 2 file(s)") {
+		t.Errorf("report:\n%s", sb.String())
+	}
+
+	// Fix the wrong one by hand, and the gate passes on the tree Write made.
+	if err := os.WriteFile(filepath.Join(root, "c", "wrong.go"), []byte("// SPDX-FileCopyrightText: 2025 Latere AI\n// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage c\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(c, root, &strings.Builder{}); err != nil {
+		t.Fatalf("after write the gate passes: %v", err)
+	}
+	// A second write changes nothing.
+	sb.Reset()
+	if err := Write(c, root, &sb, now); err != nil || !strings.Contains(sb.String(), "written on 0 file(s)") {
+		t.Errorf("second write: %v\n%s", err, sb.String())
+	}
+}
+
+func TestWriteNeedsBothDeclarations(t *testing.T) {
+	for _, c := range []config.License{{SPDX: "MIT"}, {Holder: "Latere AI"}} {
+		if err := Write(c, t.TempDir(), &strings.Builder{}, time.Now()); err == nil {
+			t.Errorf("%+v must be refused: nothing here is guessed", c)
+		}
 	}
 }

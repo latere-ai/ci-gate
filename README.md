@@ -309,6 +309,11 @@ there, and the notice moves below:
 set -eu
 ```
 
+`lateregate license -w` writes the notice on every checked file that has
+none, from the declaration and nothing else, and leaves a file whose notice
+disagrees with the declaration to a person. Adoption is the declaration, one
+run of `-w`, and one commit.
+
 `spdx` has no default, and a repository that runs the gate without one gets an
 error rather than a pass. That is the opposite of every other gate here, and
 it has to be: an identifier guessed on your behalf and printed into 300 files

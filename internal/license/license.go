@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -167,3 +168,80 @@ func check(src, prefix string, cfg config.License) string {
 func quote(s string) string { return fmt.Sprintf("%q", s) }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// Write puts the declared notice on every checked file that has none, and
+// reports the ones whose notice is present but wrong rather than rewriting
+// them: replacing a holder or an identifier somebody wrote is a legal edit,
+// not a mechanical one.
+//
+// It is deterministic given the config, which is what makes it safe as a
+// tool: nothing is guessed, the identifier and holder are the ones the
+// repository declared, and the year is the one the notice is written in.
+func Write(cfg config.License, root string, out io.Writer, now time.Time) error {
+	if strings.TrimSpace(cfg.SPDX) == "" || strings.TrimSpace(cfg.Holder) == "" {
+		return fmt.Errorf("license.spdx and license.holder must both be set in %s before a notice can be written", config.Name)
+	}
+	var wrong []string
+	written := 0
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if name == ".git" || name == "node_modules" || slices.Contains(cfg.Skip, name) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		prefix, ok := cfg.CommentFor(name)
+		if !ok {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel := strings.TrimPrefix(path, root+string(filepath.Separator))
+		why := check(string(body), prefix, cfg)
+		switch {
+		case why == "":
+			return nil
+		case !strings.HasPrefix(why, "no "+CopyrightTag):
+			wrong = append(wrong, rel+": "+why)
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, []byte(withNotice(string(body), prefix, cfg, now)), info.Mode().Perm()); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintln(out, "  "+rel)
+		written++
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("writing licence notices: %w", err)
+	}
+	_, _ = fmt.Fprintf(out, "%s written on %d file(s)\n", cfg.SPDX, written)
+	if len(wrong) > 0 {
+		for _, w := range wrong {
+			_, _ = fmt.Fprintln(out, "  "+w)
+		}
+		return fmt.Errorf("%d file(s) carry a notice that disagrees with the declaration; those are edited by hand", len(wrong))
+	}
+	return nil
+}
+
+// withNotice prepends the notice, below a shebang if the file has one.
+func withNotice(src, prefix string, cfg config.License, now time.Time) string {
+	notice := fmt.Sprintf("%s %s %d %s\n%s %s %s\n\n",
+		prefix, CopyrightTag, now.Year(), cfg.Holder, prefix, IdentifierTag, cfg.SPDX)
+	if strings.HasPrefix(src, "#!") {
+		first, rest, _ := strings.Cut(src, "\n")
+		return first + "\n" + notice + rest
+	}
+	return notice + src
+}

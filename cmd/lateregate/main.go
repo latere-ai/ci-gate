@@ -26,6 +26,7 @@ import (
 	"latere.ai/x/ci-gate/internal/contract"
 	"latere.ai/x/ci-gate/internal/gates"
 	"latere.ai/x/ci-gate/internal/golangci"
+	"latere.ai/x/ci-gate/internal/license"
 )
 
 const usage = `lateregate is the shared per-push quality bar for a Go repository.
@@ -48,10 +49,12 @@ without writing config. The file holds decisions, each with a reason: a
 coverage exemption, a spec vocabulary, a licence, a dated waiver.
 
 cover takes -profile for a repository that runs its own tiers; otherwise it
-collects one. tempdir takes the command to watch after --:
+collects one. tempdir takes the command to watch after --. license -w writes
+the declared notice on every file that has none:
 
 	lateregate cover -profile=out/unit.out -profile=out/integration.out
 	lateregate tempdir -- go test -tags corpus ./...
+	lateregate license -w
 `
 
 // profileList collects a repeatable -profile flag.
@@ -98,6 +101,7 @@ func run(argv []string, out io.Writer) error {
 	root := fs.String("C", ".", "repository root holding "+config.Name)
 	goBin := fs.String("go", "go", "Go toolchain to run")
 	asJSON := fs.Bool("json", false, "print the plan as JSON (list)")
+	write := fs.Bool("w", false, "write the declared notice on every file that has none (license)")
 	var profiles profileList
 	fs.Var(&profiles, "profile",
 		"coverage profile to read (cover); repeat the flag for each test tier")
@@ -121,6 +125,10 @@ func run(argv []string, out io.Writer) error {
 	}
 
 	switch cmd {
+	case "license":
+		if *write {
+			return license.Write(cfg.License, *root, out, time.Now())
+		}
 	case "check":
 		return bar.Check(ctx)
 	case "list":
