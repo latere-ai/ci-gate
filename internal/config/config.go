@@ -557,7 +557,11 @@ func defaults(c *Config, dir string) *Config {
 	if c.Spec.Index == DefaultSpecIndex {
 		c.Restated = append(c.Restated, "spec.index")
 	}
-	if c.Spec.Index == "" {
+	// The index defaults when the file exists and the tree has not said it
+	// is something else: a README listed in spec.exclude is a README the
+	// tree keeps as prose, and holding it to the table shape would fail a
+	// tree for a file it never claimed as an index.
+	if c.Spec.Index == "" && !slices.Contains(c.Spec.Exclude, filepath.Base(DefaultSpecIndex)) {
 		if _, err := os.Stat(filepath.Join(dir, DefaultSpecIndex)); err == nil {
 			c.Spec.Index = DefaultSpecIndex
 		}

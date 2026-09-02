@@ -565,3 +565,22 @@ func TestRaceTimeoutMustBeAPositiveDuration(t *testing.T) {
 		t.Errorf("timeout = %q", c.Race.Timeout)
 	}
 }
+
+// A README the tree lists in spec.exclude is prose, not an index; the
+// default must not turn it into one.
+func TestAnExcludedReadmeIsNotTheDefaultIndex(t *testing.T) {
+	dir := write(t, "spec:\n  exclude: [README.md]\n")
+	if err := os.MkdirAll(filepath.Join(dir, "specs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, DefaultSpecIndex), []byte("# prose\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Spec.Index != "" {
+		t.Errorf("index = %q, want none for an excluded README", c.Spec.Index)
+	}
+}
