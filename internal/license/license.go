@@ -14,9 +14,11 @@
 package license
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -59,6 +61,7 @@ func Run(cfg config.License, root string, out io.Writer) error {
 
 	var bad []string
 	scanned := 0
+	skip := untracked(root)
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -71,7 +74,7 @@ func Run(cfg config.License, root string, out io.Writer) error {
 			return nil
 		}
 		prefix, ok := cfg.CommentFor(name)
-		if !ok {
+		if !ok || skip[path] {
 			return nil
 		}
 		scanned++
@@ -183,6 +186,7 @@ func Write(cfg config.License, root string, out io.Writer, now time.Time) error 
 	}
 	var wrong []string
 	written := 0
+	skip := untracked(root)
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -195,7 +199,7 @@ func Write(cfg config.License, root string, out io.Writer, now time.Time) error 
 			return nil
 		}
 		prefix, ok := cfg.CommentFor(name)
-		if !ok {
+		if !ok || skip[path] {
 			return nil
 		}
 		body, err := os.ReadFile(path)
@@ -244,4 +248,25 @@ func withNotice(src, prefix string, cfg config.License, now time.Time) string {
 		return first + "\n" + notice + rest
 	}
 	return notice + src
+}
+
+// untracked lists the files git does not track under root, keyed by the
+// path WalkDir will hand back. A file that is not in the repository is not
+// the repository's to notice: a work-in-progress test from another change
+// sitting in the tree fails nothing here, and never reaches a runner. When
+// root is not a git checkout there is nothing to exclude.
+func untracked(root string) map[string]bool {
+	cmd := exec.CommandContext(context.Background(), "git", "ls-files", "-z", "--others", "--exclude-standard")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	skip := map[string]bool{}
+	for p := range strings.SplitSeq(string(out), "\x00") {
+		if p != "" {
+			skip[filepath.Join(root, p)] = true
+		}
+	}
+	return skip
 }

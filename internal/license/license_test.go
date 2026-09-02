@@ -5,6 +5,7 @@ package license
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -421,5 +422,38 @@ func TestWriteNeedsBothDeclarations(t *testing.T) {
 		if err := Write(c, t.TempDir(), &strings.Builder{}, time.Now()); err == nil {
 			t.Errorf("%+v must be refused: nothing here is guessed", c)
 		}
+	}
+}
+
+// A file git does not track is not the repository's to notice: another
+// change's work in progress sitting in the tree fails nothing.
+func TestAnUntrackedFileIsNotChecked(t *testing.T) {
+	root := repo(t, map[string]string{
+		"a/a.go": "// SPDX-FileCopyrightText: 2026 Latere AI\n// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage a\n",
+	})
+	for _, args := range [][]string{{"init", "-q"}, {"add", "a/a.go", "LICENSE"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if outb, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("git %v: %v\n%s", args, err, outb)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "a", "wip_test.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	if err := Run(cfg(), root, &sb); err != nil {
+		t.Fatalf("an untracked file must not fail the gate: %v\n%s", err, sb.String())
+	}
+	if !strings.Contains(sb.String(), "declared on 1 file(s)") {
+		t.Errorf("only the tracked file is counted:\n%s", sb.String())
+	}
+	// Write leaves it alone too.
+	if err := Write(cfg(), root, &strings.Builder{}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, "a", "wip_test.go"))
+	if string(body) != "package a\n" {
+		t.Error("write must not touch an untracked file")
 	}
 }
