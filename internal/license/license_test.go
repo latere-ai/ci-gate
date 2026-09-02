@@ -457,3 +457,49 @@ func TestAnUntrackedFileIsNotChecked(t *testing.T) {
 		t.Error("write must not touch an untracked file")
 	}
 }
+
+// git lists an untracked directory once, not its files, and a nested
+// checkout is another tree entirely. Neither is written into.
+func TestUntrackedDirectoriesAndNestedCheckoutsAreLeftAlone(t *testing.T) {
+	root := repo(t, map[string]string{
+		"a/a.go": "// SPDX-FileCopyrightText: 2026 Latere AI\n// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage a\n",
+	})
+	git := func(dir string, args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if outb, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("git %v: %v\n%s", args, err, outb)
+		}
+	}
+	git(root, "init", "-q")
+	git(root, "add", "a/a.go", "LICENSE")
+	// An untracked directory holding a Go file.
+	if err := os.MkdirAll(filepath.Join(root, "scratch", "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "scratch", "x", "x.go"), []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A nested checkout, tracked or not, is a different tree.
+	nested := filepath.Join(root, ".claude", "worktrees", "wt")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(nested, "init", "-q")
+	if err := os.WriteFile(filepath.Join(nested, "n.go"), []byte("package n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(cfg(), root, &strings.Builder{}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{filepath.Join(root, "scratch", "x", "x.go"), filepath.Join(nested, "n.go")} {
+		body, _ := os.ReadFile(p)
+		if strings.Contains(string(body), "SPDX") {
+			t.Errorf("%s must not be written into", p)
+		}
+	}
+	var sb strings.Builder
+	if err := Run(cfg(), root, &sb); err != nil {
+		t.Fatalf("neither file is the repository's: %v\n%s", err, sb.String())
+	}
+}

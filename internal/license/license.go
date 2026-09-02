@@ -68,13 +68,13 @@ func Run(cfg config.License, root string, out io.Writer) error {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if name == ".git" || name == "node_modules" || slices.Contains(cfg.Skip, name) {
+			if name == ".git" || name == "node_modules" || slices.Contains(cfg.Skip, name) || skipped(root, path, d, skip) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		prefix, ok := cfg.CommentFor(name)
-		if !ok || skip[path] {
+		if !ok || skipped(root, path, d, skip) {
 			return nil
 		}
 		scanned++
@@ -193,13 +193,13 @@ func Write(cfg config.License, root string, out io.Writer, now time.Time) error 
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if name == ".git" || name == "node_modules" || slices.Contains(cfg.Skip, name) {
+			if name == ".git" || name == "node_modules" || slices.Contains(cfg.Skip, name) || skipped(root, path, d, skip) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		prefix, ok := cfg.CommentFor(name)
-		if !ok || skip[path] {
+		if !ok || skipped(root, path, d, skip) {
 			return nil
 		}
 		body, err := os.ReadFile(path)
@@ -269,4 +269,21 @@ func untracked(root string) map[string]bool {
 		}
 	}
 	return skip
+}
+
+// skipped reports whether a walk entry is outside the repository's own
+// files: an untracked file, anything under an untracked directory (git
+// lists the directory once, not its contents), or a nested checkout such as
+// an agent worktree parked under .claude, which is a whole other tree with
+// its own history.
+func skipped(root, path string, d os.DirEntry, untracked map[string]bool) bool {
+	if untracked[path] {
+		return true
+	}
+	if d.IsDir() && path != root {
+		if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
+			return true
+		}
+	}
+	return false
 }
