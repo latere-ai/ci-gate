@@ -55,7 +55,7 @@ func TestTestReportsASuiteFailure(t *testing.T) {
 func TestRaceForcesCgoOnForTheRun(t *testing.T) {
 	t.Setenv("CGO_ENABLED", "0")
 	var calls []call
-	if err := Race("go", &strings.Builder{}, fake(t, &calls)); err != nil {
+	if err := Race(config.Race{}, "go", &strings.Builder{}, fake(t, &calls)); err != nil {
 		t.Fatal(err)
 	}
 	if len(calls) != 1 || joined(calls[0]) != "go test -race ./..." {
