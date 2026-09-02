@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"latere.ai/x/ci-gate/internal/config"
 )
 
 func joined(c call) string { return c.name + " " + strings.Join(c.args, " ") }
@@ -71,7 +73,7 @@ func TestRaceForcesCgoOnForTheRun(t *testing.T) {
 
 func TestRaceReportsAFailure(t *testing.T) {
 	var calls []call
-	err := Race("go", &strings.Builder{}, fake(t, &calls, errors.New("race detected")))
+	err := Race(config.Race{}, "go", &strings.Builder{}, fake(t, &calls, errors.New("race detected")))
 	if err == nil || !strings.Contains(err.Error(), "not race-clean") {
 		t.Fatalf("want the race failure, got %v", err)
 	}
@@ -105,5 +107,17 @@ func TestWithoutKeyDropsEveryMatch(t *testing.T) {
 	got := withoutKey([]string{"A=1", "CGO_ENABLED=0", "B=2", "CGO_ENABLED=1", "CGO_ENABLEDX=3"}, "CGO_ENABLED")
 	if strings.Join(got, " ") != "A=1 B=2 CGO_ENABLEDX=3" {
 		t.Errorf("got %v", got)
+	}
+}
+
+// A repository that budgets more time for the detector says so in config,
+// and the budget reaches go test as -timeout.
+func TestRacePassesTheConfiguredTimeout(t *testing.T) {
+	var calls []call
+	if err := Race(config.Race{Timeout: "45m"}, "go", &strings.Builder{}, fake(t, &calls)); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || joined(calls[0]) != "go test -race -timeout 45m ./..." {
+		t.Errorf("ran %v", calls)
 	}
 }

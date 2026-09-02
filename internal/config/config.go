@@ -40,6 +40,7 @@ type Config struct {
 	Cover     Cover     `yaml:"cover"`
 	Spec      Spec      `yaml:"spec"`
 	Hermetic  Hermetic  `yaml:"hermetic"`
+	Race      Race      `yaml:"race"`
 	Modernize Modernize `yaml:"modernize"`
 	Depcheck  Depcheck  `yaml:"depcheck"`
 	Golangci  Golangci  `yaml:"golangci"`
@@ -342,6 +343,17 @@ type Hermetic struct {
 	// legitimately need a system tool names the directory here, which makes
 	// the dependency visible instead of ambient.
 	Allow []string `yaml:"allow"`
+}
+
+// Race configures the race-detector run.
+type Race struct {
+	// Timeout is the go test -timeout for the race run, as a duration such as
+	// 45m. Empty leaves the toolchain's default. It is a budget a repository
+	// sets for itself rather than a guard against a hung test: the detector
+	// costs an order of magnitude on arithmetic-heavy suites, and a suite that
+	// legitimately needs 40 minutes under it should say so here rather than
+	// in a recipe nobody else runs.
+	Timeout string `yaml:"timeout"`
 }
 
 // Depcheck configures the dependency-footprint gate.
@@ -698,6 +710,12 @@ func (c *Config) validate(path string) error {
 			"it looks for a line comment at the top of the file, and knows no "+
 			"marker for these; one scanned with the wrong marker never matches",
 			path, strings.Join(unreadable, ", "))
+	}
+	if tm := strings.TrimSpace(c.Race.Timeout); tm != "" {
+		d, err := time.ParseDuration(tm)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("%s: race.timeout %q is not a positive duration such as 45m", path, c.Race.Timeout)
+		}
 	}
 	if t := c.Cover.Threshold; t < 0 || t > 100 {
 		return fmt.Errorf("%s: cover.threshold %.1f is not a percentage", path, t)

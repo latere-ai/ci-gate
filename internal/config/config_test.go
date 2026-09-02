@@ -550,3 +550,18 @@ func TestTheArchiveRuleLoadsWhenBothAreSet(t *testing.T) {
 		t.Error("a working status must not read as terminal")
 	}
 }
+
+func TestRaceTimeoutMustBeAPositiveDuration(t *testing.T) {
+	for _, bad := range []string{"soon", "-5m", "0"} {
+		if _, err := Load(write(t, "race:\n  timeout: "+bad+"\n")); err == nil {
+			t.Errorf("race.timeout %q must fail the load", bad)
+		}
+	}
+	c, err := Load(write(t, "race:\n  timeout: 45m\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Race.Timeout != "45m" {
+		t.Errorf("timeout = %q", c.Race.Timeout)
+	}
+}

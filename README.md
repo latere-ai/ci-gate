@@ -583,6 +583,9 @@ spec:                      # applies when git tracks specs/
 hermetic:
   allow: []                # directories kept on PATH besides the toolchain's
 
+race:
+  timeout: ""              # go test -timeout for the detector run, e.g. 45m; empty is the toolchain default
+
 modernize:
   disable: [newexpr, errorsastype]   # the default; [] runs every fixer
 

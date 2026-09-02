@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+
+	"latere.ai/x/ci-gate/internal/config"
 )
 
 // VulnVersion pins govulncheck. One version, in one place, moved by one
@@ -35,10 +38,16 @@ func Test(goBin string, out io.Writer, run Exec) error {
 // The detector needs cgo, which the shipped binary may not: this is about
 // finding a race in the tests, not about what is compiled for release, so
 // CGO_ENABLED is forced on for this run alone. Five repositories held five
-// different timeouts for this; the toolchain's own default applies here.
-func Race(goBin string, out io.Writer, run Exec) error {
+// different timeouts for this; the toolchain's own default applies unless
+// the repository budgets more in race.timeout.
+func Race(cfg config.Race, goBin string, out io.Writer, run Exec) error {
 	env := append(withoutKey(os.Environ(), "CGO_ENABLED"), "CGO_ENABLED=1")
-	if _, err := run(env, true, goBin, "test", "-race", "./..."); err != nil {
+	args := []string{"test", "-race"}
+	if t := strings.TrimSpace(cfg.Timeout); t != "" {
+		args = append(args, "-timeout", t)
+	}
+	args = append(args, "./...")
+	if _, err := run(env, true, goBin, args...); err != nil {
 		return fmt.Errorf("the suite is not race-clean: %w", err)
 	}
 	_, _ = fmt.Fprintln(out, "the suite is race-clean")

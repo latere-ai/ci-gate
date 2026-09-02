@@ -87,7 +87,7 @@ var Gates = []Gate{
 	{Name: "test", Doc: "go vet and the suite",
 		Run: func(c Ctx) error { return gates.Test(c.GoBin, c.Out, c.Exec) }},
 	{Name: "race", Doc: "the suite under the race detector",
-		Run: func(c Ctx) error { return gates.Race(c.GoBin, c.Out, c.Exec) }},
+		Run: func(c Ctx) error { return gates.Race(c.Cfg.Race, c.GoBin, c.Out, c.Exec) }},
 	{Name: "hermetic", Doc: "the suite with only the toolchain on PATH",
 		Run: func(c Ctx) error { return gates.Hermetic(c.Cfg.Hermetic, c.GoBin, c.Out, c.Exec) }},
 	{Name: "tempdir", Doc: "the suite leaves nothing under TMPDIR",
