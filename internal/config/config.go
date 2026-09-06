@@ -49,6 +49,7 @@ type Config struct {
 	License   License   `yaml:"license"`
 
 	OtelClient OtelClient `yaml:"otel_client"`
+	Registers  Registers  `yaml:"registers"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
@@ -447,6 +448,66 @@ type OtelClient struct {
 	Skip []string `yaml:"skip"`
 }
 
+// Registers configures the user-surface register gate.
+//
+// Every sentence a product emits is written for one reader, and the most
+// common leak is a developer sentence on a user surface: a package path, a
+// package-qualified identifier, a Kubernetes object, or a file path in a
+// string handed to the function that writes the user's error. The rule is
+// docs/writing/registers.md in latere.ai/x/pkg; this section names where
+// the gate looks for the leak, because which functions are user surfaces is
+// the one part no shared rule can know.
+type Registers struct {
+	// UserSurfaces names the functions whose string arguments a user reads,
+	// as package path and function name: internal/api.WriteError, or the
+	// full import path for a package outside this module. Only package-level
+	// functions are matched, by import path and name, so a method or a
+	// function passed as a value is not seen. Empty means the gate does not
+	// apply: a repository opts in by naming its surfaces.
+	UserSurfaces []string `yaml:"user_surfaces"`
+	// Skip names directories the scan does not enter, besides .git, .claude,
+	// testdata and node_modules.
+	Skip []string `yaml:"skip"`
+}
+
+// Surface is one named user-surface function, split for matching.
+type Surface struct {
+	// Pkg is the package path as written: relative to the module or full.
+	Pkg string
+	// Func is the function name.
+	Func string
+}
+
+// Surfaces splits every entry. Load has already validated the shape.
+func (r Registers) Surfaces() []Surface {
+	out := make([]Surface, 0, len(r.UserSurfaces))
+	for _, s := range r.UserSurfaces {
+		pkg, fn, _ := splitSurface(s)
+		out = append(out, Surface{Pkg: pkg, Func: fn})
+	}
+	return out
+}
+
+// splitSurface reads path.Func: the function is what follows the last dot
+// after the last slash, so a dotted module path such as latere.ai/x/pkg is
+// left whole.
+func splitSurface(s string) (pkg, fn string, ok bool) {
+	base := s[strings.LastIndex(s, "/")+1:]
+	i := strings.LastIndex(base, ".")
+	if i <= 0 || i == len(base)-1 {
+		return "", "", false
+	}
+	pkg = s[:len(s)-len(base)+i]
+	fn = base[i+1:]
+	for j, r := range fn {
+		if r == '_' || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (j > 0 && r >= '0' && r <= '9') {
+			continue
+		}
+		return "", "", false
+	}
+	return pkg, fn, true
+}
+
 // TempDir configures the temporary-directory leak gate.
 type TempDir struct {
 	// Command is the test run the gate watches. Empty means `go test ./...`.
@@ -714,6 +775,20 @@ func (c *Config) validate(path string) error {
 			"it looks for a line comment at the top of the file, and knows no "+
 			"marker for these; one scanned with the wrong marker never matches",
 			path, strings.Join(unreadable, ", "))
+	}
+	// A surface the gate cannot parse is one it silently never scans, and
+	// the entry would sit there looking like protection.
+	var badSurface []string
+	for _, s := range c.Registers.UserSurfaces {
+		if _, _, ok := splitSurface(strings.TrimSpace(s)); !ok || strings.TrimSpace(s) != s {
+			badSurface = append(badSurface, fmt.Sprintf("%q", s))
+		}
+	}
+	if len(badSurface) > 0 {
+		return fmt.Errorf("%s: registers.user_surfaces entries the gate cannot read: %s\n"+
+			"write each as a package path and a function name, such as "+
+			"internal/api.WriteError or latere.ai/x/pkg/httpjson.Write",
+			path, strings.Join(badSurface, ", "))
 	}
 	if tm := strings.TrimSpace(c.Race.Timeout); tm != "" {
 		d, err := time.ParseDuration(tm)

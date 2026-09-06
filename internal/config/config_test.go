@@ -6,6 +6,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -582,5 +583,42 @@ func TestAnExcludedReadmeIsNotTheDefaultIndex(t *testing.T) {
 	}
 	if c.Spec.Index != "" {
 		t.Errorf("index = %q, want none for an excluded README", c.Spec.Index)
+	}
+}
+
+func TestRegistersIsRead(t *testing.T) {
+	dir := write(t, `
+registers:
+  user_surfaces: [internal/api.WriteError, latere.ai/x/pkg/httpjson.Write, cmd/latere.errorf]
+  skip: [e2e]
+`)
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.Registers.Surfaces()
+	want := []Surface{
+		{Pkg: "internal/api", Func: "WriteError"},
+		{Pkg: "latere.ai/x/pkg/httpjson", Func: "Write"},
+		{Pkg: "cmd/latere", Func: "errorf"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("surfaces = %+v, want %+v", got, want)
+	}
+	if !slices.Equal(c.Registers.Skip, []string{"e2e"}) {
+		t.Errorf("skip = %v", c.Registers.Skip)
+	}
+}
+
+// An entry with no function, no package, or a name that is not an
+// identifier would never match a call, and the gate would report clean over
+// a surface nobody scanned.
+func TestAnUnreadableSurfaceIsRejected(t *testing.T) {
+	for _, entry := range []string{"WriteError", "internal/api.", "internal/api.Write Error", ".Write", "internal/api.9x", " internal/api.Write"} {
+		dir := write(t, "registers:\n  user_surfaces: ['"+entry+"']\n")
+		_, err := Load(dir)
+		if err == nil || !strings.Contains(err.Error(), "registers.user_surfaces") {
+			t.Errorf("%q: want a rejection naming the key, got %v", entry, err)
+		}
 	}
 }
