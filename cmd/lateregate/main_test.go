@@ -167,9 +167,9 @@ func TestReleaseNotesPrintsTheSection(t *testing.T) {
 	}
 }
 
-// A release runs the whole bar first and refuses to cut on a red gate: the
-// temp directory has no module, so every gate fails, and the error names
-// the refusal, the version, and the failing gates before anything is tagged.
+// A release runs the whole bar first and refuses to cut when it cannot pass:
+// the temp directory is not a checkout, so the bar stops before any gate,
+// and the error names the refusal and the version before anything is tagged.
 func TestReleaseRefusesToCutOnARedBar(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "CHANGELOG.md"), []byte("## Unreleased\n\n- a note\n"), 0o644); err != nil {
@@ -179,10 +179,8 @@ func TestReleaseRefusesToCutOnARedBar(t *testing.T) {
 	if err == nil {
 		t.Fatal("a red bar released")
 	}
-	for _, want := range []string{"not releasing v1.0.0", "gates failed"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q lacks %q", err, want)
-		}
+	if !strings.Contains(err.Error(), "not releasing v1.0.0") {
+		t.Errorf("error %q does not name the refusal", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, ".git")); statErr == nil {
 		t.Error("the refusal must not create a repository or a tag")
