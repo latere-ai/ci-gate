@@ -14,6 +14,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"latere.ai/x/ci-gate/internal/bar"
+	"latere.ai/x/ci-gate/internal/changelog"
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/contract"
 	"latere.ai/x/ci-gate/internal/gates"
@@ -39,8 +41,11 @@ Usage:
 	lateregate contract        report every way the wiring drifted from the shared shape
 	lateregate init            write the wiring: workflow caller, both hooks, gitignore lines
 	lateregate hook            the pre-commit checks over the staged Go files
-	lateregate prepush         golangci-lint over the packages the push on stdin changes
+	lateregate prepush         refuse a release tag with no changelog section, then golangci-lint over the packages the push on stdin changes
 	lateregate golangci        render the shared .golangci.yml without linting
+	lateregate release-notes TAG [REF]
+	                           print the CHANGELOG.md section for TAG, read at REF (default: the working tree), or fail
+	lateregate release VERSION move the notes under "## Unreleased" into a section for VERSION, commit, tag, push
 
 Gates, in the order check runs them:
 GATES
@@ -144,7 +149,37 @@ func run(argv []string, out io.Writer) error {
 		module, _ := golangci.ModulePath(*goBin, *root)
 		return gates.Hook(cfg, *root, module, *goBin, out, ctx.Exec)
 	case "prepush":
-		return golangci.Prepush(*root, cfg, *goBin, os.Stdin, out, ctx.Exec)
+		// Git hands the refs over once. The changelog check runs first
+		// because it is a file read and the lint is not, so a tag with no
+		// note is refused in under a second.
+		refs, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("reading the pushed refs: %w", err)
+		}
+		if err := changelog.Prepush(*root, bytes.NewReader(refs), out, ctx.Exec); err != nil {
+			return err
+		}
+		return golangci.Prepush(*root, cfg, *goBin, bytes.NewReader(refs), out, ctx.Exec)
+	case "release-notes":
+		args := fs.Args()
+		if len(args) < 1 || len(args) > 2 {
+			return fmt.Errorf("usage: lateregate release-notes TAG [REF]")
+		}
+		ref := ""
+		if len(args) == 2 {
+			ref = args[1]
+		}
+		notes, err := changelog.Notes(*root, args[0], ref, ctx.Exec)
+		if err != nil {
+			return err
+		}
+		_, _ = io.WriteString(out, notes)
+		return nil
+	case "release":
+		if len(fs.Args()) != 1 {
+			return fmt.Errorf("usage: lateregate release vX.Y.Z")
+		}
+		return changelog.Cut(*root, fs.Args()[0], time.Now(), out, ctx.Exec)
 	case "golangci":
 		if reason, err := golangci.Own(*root, cfg); err != nil {
 			return err

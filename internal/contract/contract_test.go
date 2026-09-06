@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"latere.ai/x/ci-gate/internal/changelog"
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
 )
@@ -26,6 +27,7 @@ func repo(t *testing.T) string {
 	must(t, os.WriteFile(filepath.Join(dir, ".githooks", "pre-push"), []byte(gates.Prepush), 0o755))
 	must(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("coverage.out\n.golangci.yml\n"), 0o644))
 	must(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/m\n\ngo 1.27\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(dir, changelog.Name), []byte(changelog.Seed), 0o644))
 	return dir
 }
 
@@ -42,13 +44,14 @@ func write(t *testing.T, dir, rel, body string) {
 	must(t, os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644))
 }
 
-// untracked answers git ls-files as "not tracked", and replays a make
-// database when asked for one.
+// untracked answers git ls-files as "not tracked" for the generated config
+// and "tracked" for the changelog, and replays a make database when asked
+// for one.
 func untracked(db string) gates.Exec {
 	return func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
 		switch name {
 		case "git":
-			if len(args) > 0 && args[0] == "ls-files" {
+			if len(args) > 0 && args[0] == "ls-files" && args[len(args)-1] != changelog.Name {
 				return nil, errors.New("exit 1")
 			}
 			return nil, nil
@@ -106,7 +109,7 @@ func TestEveryDriftIsReportedAtOnce(t *testing.T) {
 	}
 	for _, want := range []string{
 		"no workflow calls", "pre-commit is missing", ".gitignore is missing",
-		"hand-rolls a gate: cover", "go.mod is missing",
+		"hand-rolls a gate: cover", "go.mod is missing", "CHANGELOG.md is missing",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("want %q in one run, got:\n%v", want, err)
@@ -284,7 +287,8 @@ func TestInitWritesTheWiringOnce(t *testing.T) {
 		if name == "git" && len(args) > 0 && args[0] == "config" {
 			configured = append(configured, strings.Join(args, " "))
 		}
-		if name == "git" && len(args) > 0 && args[0] == "ls-files" {
+		// The changelog init writes is committed by hand, like the pin.
+		if name == "git" && len(args) > 0 && args[0] == "ls-files" && args[len(args)-1] != changelog.Name {
 			return nil, errors.New("exit 1")
 		}
 		return nil, nil
@@ -293,7 +297,7 @@ func TestInitWritesTheWiringOnce(t *testing.T) {
 	if err := Init(dir, &sb, exec); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"wrote .github/workflows/ci.yml", "wrote .githooks/pre-commit", "wrote .githooks/pre-push", "added .golangci.yml to .gitignore"} {
+	for _, want := range []string{"wrote .github/workflows/ci.yml", "wrote .githooks/pre-commit", "wrote .githooks/pre-push", "added .golangci.yml to .gitignore", "wrote CHANGELOG.md; commit it"} {
 		if !strings.Contains(sb.String(), want) {
 			t.Errorf("want %q:\n%s", want, sb.String())
 		}
@@ -424,5 +428,84 @@ func TestInitLeavesAnOwnPrepushAlone(t *testing.T) {
 	}
 	if _, err := check(t, dir, untracked("")); err == nil {
 		t.Error("contract still reports the pre-push until the delegation is added by hand")
+	}
+}
+
+// A tag is a release and a release has notes, so every repository carries
+// the file the notes go in, tracked, with the heading the next tag's notes
+// go under.
+func TestTheChangelogMustBeTrackedWithAnUnreleasedHeading(t *testing.T) {
+	dir := repo(t)
+	must(t, os.Remove(filepath.Join(dir, changelog.Name)))
+	_, err := check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "CHANGELOG.md is missing; run `lateregate init`") {
+		t.Fatalf("a missing changelog names init, got %v", err)
+	}
+
+	write(t, dir, changelog.Name, changelog.Seed)
+	nothingTracked := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && len(args) > 0 && args[0] == "ls-files" {
+			return nil, errors.New("exit 1")
+		}
+		return nil, nil
+	}
+	_, err = check(t, dir, nothingTracked)
+	if err == nil || !strings.Contains(err.Error(), "CHANGELOG.md is not tracked by git") {
+		t.Fatalf("an untracked changelog is not at the tag's commit, got %v", err)
+	}
+
+	write(t, dir, changelog.Name, "# Changelog\n\n## v0.1.0 - 2026-09-06\n\nnotes\n")
+	_, err = check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "has no `## Unreleased` heading") {
+		t.Fatalf("got %v", err)
+	}
+
+	write(t, dir, changelog.Name, "# Changelog\n\n## Unreleased\n\n## v0.1.0 - 2026-09-06\n\nnotes\n")
+	if _, err := check(t, dir, untracked("")); err != nil {
+		t.Fatalf("a tracked changelog with the heading is in shape: %v", err)
+	}
+}
+
+func TestAReleaseTargetMustDelegate(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, "Makefile", "release:\n\t.github/scripts/release-cut.sh $(VERSION)\n")
+	db := "release:\n\t.github/scripts/release-cut.sh $(VERSION)\n\n"
+	_, err := check(t, dir, untracked(db))
+	if err == nil || !strings.Contains(err.Error(), "release (runs the release gate itself)") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestInitSeedsTheChangelogOnce(t *testing.T) {
+	dir := repo(t)
+	must(t, os.Remove(filepath.Join(dir, changelog.Name)))
+	var sb strings.Builder
+	if err := Init(dir, &sb, untracked("")); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sb.String(), "wrote CHANGELOG.md") {
+		t.Errorf("output:\n%s", sb.String())
+	}
+	body, err := os.ReadFile(filepath.Join(dir, changelog.Name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != changelog.Seed {
+		t.Error("init writes the seed")
+	}
+	if _, err := check(t, dir, untracked("")); err != nil {
+		t.Fatalf("the seed is in shape once committed: %v", err)
+	}
+
+	// A changelog that exists holds notes; init never rewrites it.
+	own := "# Changelog\n\n## v0.1.0\n\nnotes\n"
+	write(t, dir, changelog.Name, own)
+	sb.Reset()
+	if err := Init(dir, &sb, untracked("")); err != nil {
+		t.Fatal(err)
+	}
+	body, _ = os.ReadFile(filepath.Join(dir, changelog.Name))
+	if string(body) != own || strings.Contains(sb.String(), "wrote CHANGELOG.md") {
+		t.Error("init must not overwrite a changelog that holds notes")
 	}
 }

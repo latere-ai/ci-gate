@@ -14,6 +14,7 @@
 package contract
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"latere.ai/x/ci-gate/internal/bar"
+	"latere.ai/x/ci-gate/internal/changelog"
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
 	"latere.ai/x/ci-gate/internal/golangci"
@@ -88,6 +90,9 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	if f := checkGitignore(root); f != "" {
 		note(f)
 	}
+	if f := checkChangelog(root, exec); f != "" {
+		note(f)
+	}
 	if len(cfg.Restated) > 0 {
 		note(fmt.Sprintf("%s restates a default: %s\n\tdelete the key; a restated default is the line the next default change makes wrong",
 			config.Name, strings.Join(cfg.Restated, ", ")))
@@ -106,8 +111,8 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	if len(findings) > 0 {
 		return fmt.Errorf("%d drift(s) from the shared shape:\n- %s", len(findings), strings.Join(findings, "\n- "))
 	}
-	_, _ = fmt.Fprintf(out, "in shape: workflow calls %s, %s and %s delegate, %s untracked, %s ignored, no restated default, no hand-rolled gate target, go.mod pins the tool\n",
-		Workflow, hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "))
+	_, _ = fmt.Fprintf(out, "in shape: workflow calls %s, %s and %s delegate, %s untracked, %s ignored, %s tracked with an Unreleased heading, no restated default, no hand-rolled gate target, go.mod pins the tool\n",
+		Workflow, hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "), changelog.Name)
 	return nil
 }
 
@@ -262,14 +267,32 @@ func ignores(body, name string) bool {
 	return false
 }
 
-// targetNames maps the make targets a gate was ever called by onto the
-// gate. A target with one of these names must delegate.
+// targetNames maps the make targets a gate or command was ever called by
+// onto it. A target with one of these names must delegate.
 var targetNames = map[string]string{
 	"fmt-check": "fmt-check", "test": "test", "test-race": "race", "race": "race",
 	"cover": "cover", "lint": "lint", "lint-config": "lint", "lint-modernize": "modernize",
 	"modernize": "modernize", "test-hermetic": "hermetic", "hermetic": "hermetic",
 	"spec-lint": "spec-lint", "license": "license", "test-tempdir": "tempdir",
 	"tempdir": "tempdir", "vuln": "vuln", "check": "check", "contract": "contract",
+	"release": "release", "release-notes": "release-notes",
+}
+
+// checkChangelog: CHANGELOG.md is tracked and has the heading the next
+// tag's notes go under. Every repository, whether or not it has tagged: a
+// repository that starts tagging finds the rule already there.
+func checkChangelog(root string, exec gates.Exec) string {
+	body, err := os.ReadFile(filepath.Join(root, changelog.Name))
+	if err != nil {
+		return changelog.Name + " is missing; run `lateregate init` to write it. Every release tag needs a section in it"
+	}
+	if _, err := exec(nil, false, "git", "ls-files", "--error-unmatch", changelog.Name); err != nil {
+		return changelog.Name + " is not tracked by git; the pre-push and the release workflow read it at the tag's commit:\n\tgit add " + changelog.Name
+	}
+	if _, err := changelog.Section(string(body), changelog.Unreleased); errors.Is(err, changelog.ErrNoSection) {
+		return changelog.Name + " has no `## " + changelog.Unreleased + "` heading; the notes for the next tag go under it"
+	}
+	return ""
 }
 
 // rule matches a target line in make's database.
@@ -414,6 +437,16 @@ func Init(root string, out io.Writer, exec gates.Exec) error {
 			return err
 		}
 		_, _ = fmt.Fprintf(out, "added %s to .gitignore\n", strings.Join(add, ", "))
+		wrote++
+	}
+
+	// The changelog, only when there is none. One that exists holds notes,
+	// and a missing heading is a one-line hand edit that Run reports.
+	if _, err := os.Stat(filepath.Join(root, changelog.Name)); err != nil {
+		if err := os.WriteFile(filepath.Join(root, changelog.Name), []byte(changelog.Seed), 0o644); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintln(out, "wrote "+changelog.Name+"; commit it")
 		wrote++
 	}
 

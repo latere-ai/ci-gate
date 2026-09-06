@@ -149,10 +149,11 @@ exec go tool lateregate hook
 // and a repository that adds its own check below the delegation reads $refs
 // rather than an already-drained stdin.
 const Prepush = `#!/bin/sh
-# pre-push: golangci-lint over the packages this push changes, so a lint
-# finding is seen before CI rather than as a fix commit after it. The check
-# lives in lateregate; this file only calls it. Refs arrive on stdin, once:
-# a repository that adds its own check below reads $refs, not stdin.
+# pre-push: a release tag is refused unless CHANGELOG.md at its commit has a
+# section for it, then golangci-lint runs over the packages this push
+# changes, so a finding is seen before CI rather than as a fix commit after
+# it. The checks live in lateregate; this file only calls it. Refs arrive on
+# stdin, once: a repository that adds its own check below reads $refs.
 refs=$(cat)
 printf '%s\n' "$refs" | go tool lateregate prepush || exit 1
 `

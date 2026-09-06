@@ -135,8 +135,38 @@ func TestInitThenContract(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module m\n\ngo 1.27\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The seed changelog is committed by hand, as init says.
+	add := exec.Command("git", "add", "CHANGELOG.md")
+	add.Dir = dir
+	if outb, err := add.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, outb)
+	}
 	if s, err := out(t, "contract", "-C", dir); err != nil {
 		t.Fatalf("contract after init: %v\n%s", err, s)
+	}
+}
+
+// release-notes prints the section and nothing else, so a workflow can
+// redirect it into the release body; the usage is checked before the file.
+func TestReleaseNotesPrintsTheSection(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "CHANGELOG.md"), []byte("## Unreleased\n\n## v1.0.0 - 2026-09-06\n\nthe note\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := out(t, "release-notes", "-C", dir, "v1.0.0")
+	if err != nil || s != "the note\n" {
+		t.Fatalf("got %q, %v", s, err)
+	}
+	if _, err := out(t, "release-notes", "-C", dir, "v9.9.9"); err == nil || !strings.Contains(err.Error(), "no section for v9.9.9") {
+		t.Errorf("got %v", err)
+	}
+	for _, argv := range [][]string{{"release-notes", "-C", dir}, {"release-notes", "-C", dir, "a", "b", "c"}, {"release", "-C", dir}} {
+		if _, err := out(t, argv...); err == nil || !strings.Contains(err.Error(), "usage:") {
+			t.Errorf("%v: got %v", argv, err)
+		}
+	}
+	if _, err := out(t, "release", "-C", dir, "1.0.0"); err == nil || !strings.Contains(err.Error(), "usage: lateregate release vX.Y.Z") {
+		t.Errorf("got %v", err)
 	}
 }
 
