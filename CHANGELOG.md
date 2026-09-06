@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.31.0 - 2026-09-06
+
 ### Added
 
 - A `registers` gate: no developer sentence in a string literal handed to a
