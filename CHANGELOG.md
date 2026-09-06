@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.31.2 - 2026-09-06
+
 - `lateregate release` runs the full gate before it tags. v0.31.1 was cut
   with the modernize and lint gates red on the release commit; a release is
   the one push that must never go out red.
