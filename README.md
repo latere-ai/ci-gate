@@ -50,6 +50,7 @@ lateregate: 1 of 13 gates failed: cover
 | `license` | every source file carries the SPDX notice the repo declared | always; needs `license.spdx` |
 | `spec-lint` | the spec tree agrees with itself and with its index | git tracks `specs/` |
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
+| `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
 | `vuln` | govulncheck at the pinned version finds no reachable vulnerability | always |
 | `test` | `go vet` and the suite | always |
@@ -601,6 +602,47 @@ otel_client:
 Keep that list short. A directory skipped here is one whose outbound calls
 nobody is asserting anything about.
 
+### `registers` keeps the developer's sentence off the user's surface
+
+Every sentence a product emits is written for one reader: the user, the
+contributor, or the developer debugging a running system. The rule is
+[docs/writing/registers.md](https://github.com/latere-ai/pkg/blob/main/docs/writing/registers.md)
+in `latere.ai/x/pkg`. The leak that survives review most often is a
+developer sentence handed to the function that writes the user's error:
+
+```go
+api.WriteError(w, "deploy_failed", "apply Deployment insula-p-3f2a/api: store.Deploy not found")
+```
+
+The user cannot act on any of that, and the developer detail belongs in a
+separate field the CLI shows on request. Which functions are user surfaces
+is the one part no shared rule can know, so the repository names them:
+
+```yaml
+registers:
+  user_surfaces: [internal/api.WriteError, cmd/latere.errorf]
+```
+
+The gate parses each non-test file, finds calls to those functions by
+import path and name, and reads every string literal in their arguments,
+including one nested in a `fmt.Sprintf` or a concatenation. Four tells
+fail it: a Go import path (`latere.ai/x/pkg/httpjson`; a URL is a page
+and passes), a package-qualified identifier (`store.Deploy`,
+`pgx.ErrNoRows`), a Kubernetes kind followed by an object name
+(`Deployment insula-p-3f2a/api`, `pods "api-7d9c"`; `Service
+unavailable` is a sentence and passes), and a file path (`/etc/latere/config.yaml`,
+`~/.config/latere/token`, `handler.go:42`; a bare `latere.yaml` is the
+file the user edits and passes).
+
+A surface may be written relative to the module or as a full import path.
+Only package-level functions are matched, because the scan reads no type
+information; name the function the user's output goes through. A surface
+that no file calls fails the gate rather than reporting clean over nothing,
+so a typo in the name is a failure and not a silently disabled check. The
+gate applies only when the key names a function: it is opt-in per
+repository, and the review still carries the tells no regular expression
+can, such as a hint with no action.
+
 ## Running the bar in CI
 
 The reusable workflow in `latere-ai/ci` asks the binary for its plan and
@@ -678,4 +720,8 @@ depcheck:
 
 cgo_free: {skip: []}
 otel_client: {skip: []}
+
+registers:                 # applies when user_surfaces names a function
+  user_surfaces: []        # package path and function: internal/api.WriteError
+  skip: []                 # directories the scan does not enter
 ```

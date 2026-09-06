@@ -84,14 +84,18 @@ func TestPlanSkipsAGateWithNoSubject(t *testing.T) {
 	if e := entry(plan, "depcheck"); e.Status != Skip || !strings.Contains(e.Reason, "names no package") {
 		t.Errorf("depcheck with no packages: %+v", e)
 	}
+	if e := entry(plan, "registers"); e.Status != Skip || !strings.Contains(e.Reason, "names no function") {
+		t.Errorf("registers with no surface: %+v", e)
+	}
 
 	c, _ = ctx(t, nil, withSpecs)
 	c.Cfg.Depcheck.Packages = map[string]config.Gated{"example.com/m": {Decision: "d"}}
+	c.Cfg.Registers.UserSurfaces = []string{"internal/api.WriteError"}
 	plan, err = Plan(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"spec-lint", "depcheck"} {
+	for _, name := range []string{"spec-lint", "depcheck", "registers"} {
 		if e := entry(plan, name); e.Status != Run {
 			t.Errorf("%s has a subject and must run: %+v", name, e)
 		}

@@ -10,6 +10,19 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- A `registers` gate: no developer sentence in a string literal handed to a
+  user-surface function. A repository opts in by naming its surfaces in
+  `.lateregate.yaml` (`registers.user_surfaces: [internal/api.WriteError]`);
+  the gate then reads every string literal passed to them, including
+  through `fmt.Sprintf` or concatenation, and fails on a Go import path, a
+  package-qualified identifier, a Kubernetes kind and object name, or a
+  file path. A named surface that nothing calls fails rather than passing
+  over nothing. The rule it enforces is `docs/writing/registers.md` in
+  `latere.ai/x/pkg`. Without the key the gate is skipped, so no existing
+  repository changes verdict.
+
 ## v0.30.0 - 2026-09-06
 
 - The licence gate accepts `license.spdx: LicenseRef-Proprietary`, the SPDX

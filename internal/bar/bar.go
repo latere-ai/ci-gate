@@ -25,6 +25,7 @@ import (
 	"latere.ai/x/ci-gate/internal/gates"
 	"latere.ai/x/ci-gate/internal/golangci"
 	"latere.ai/x/ci-gate/internal/license"
+	"latere.ai/x/ci-gate/internal/registers"
 	"latere.ai/x/ci-gate/internal/speclint"
 )
 
@@ -80,6 +81,14 @@ var Gates = []Gate{
 			return true, "", nil
 		},
 		Run: func(c Ctx) error { return depcheck.Run(c.Cfg.Depcheck, c.Out, depcheck.GoLister(c.GoBin, c.Root)) }},
+	{Name: "registers", Doc: "no developer sentence in a string handed to a user surface",
+		Applies: func(c Ctx) (bool, string, error) {
+			if len(c.Cfg.Registers.UserSurfaces) == 0 {
+				return false, "registers.user_surfaces names no function", nil
+			}
+			return true, "", nil
+		},
+		Run: func(c Ctx) error { return registers.Run(c.Cfg.Registers, c.Root, c.Out) }},
 	{Name: "lint", Doc: "golangci-lint " + golangci.Version + " against the shared config",
 		Run: func(c Ctx) error { return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec) }},
 	{Name: "vuln", Doc: "govulncheck " + gates.VulnVersion + " finds no reachable vulnerability",
