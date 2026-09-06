@@ -1,6 +1,6 @@
 ---
 title: The hooks hold every cheap gate, and pre-push lints what the push changes
-status: draft
+status: complete
 depends_on:
   - 009-contract-reports-drift.md
 affects:
@@ -66,8 +66,12 @@ linter runs on exactly those, against the shared config rendered first as
 the full gate does. Tag refs are ignored: a tag points at a commit that
 was already pushed on a branch. A push that changes no Go file runs nothing.
 
-A push is rarer than a commit and already waits on the network, so the
-linter's lock does not serialise anyone's day. The full `lint` gate in CI is
+A push is rarer than a commit and already waits on the network. The run
+passes `--allow-parallel-runners`: golangci-lint's machine-wide lock exists
+so two full runs do not fight over one cache, and the first end-to-end run
+of this hook was aborted by a lint in another checkout. A subset run in a
+session that is already waiting opts out of the lock; the full gate keeps
+it. The full `lint` gate in CI is
 unchanged and remains the authority; the hook is the same linter on a
 subset, so a package it passes is a package CI passes.
 
@@ -146,3 +150,24 @@ no Go file staged is a pass, as it is today.
 Tag this repository. In each of the fourteen repositories: bump the tool
 pin, run `lateregate init`, commit the new pre-push. That is one commit per
 repository and `contract` in CI holds the shape from then on.
+
+## Outcome
+
+Shipped as v0.28.0 on 2026-09-06 and rolled to all fourteen repositories
+the same hour; `contract` in CI holds the shape from here.
+
+- The first end-to-end pre-push on this repository was aborted by a
+  golangci-lint running in another checkout. The run now passes
+  `--allow-parallel-runners`; the full gate does not.
+- The first real pre-push on pkg refused the push: eight sloglint findings
+  in an `egress` package another session had committed locally and not yet
+  pushed. That is the case the spec was written for, one push early.
+- One repository's pre-push ran an old binary because a concurrent session
+  had reverted the go.mod bump before the commit; the pin and the hook were
+  re-applied on a clean worktree of origin/main and pushed from there. The
+  same route was used wherever another session had unpushed commits, so
+  the rollout pushed nothing that was not its own.
+- Acceptance 8: pkg's pre-push keeps the changelog-before-tag check below
+  the delegation and reads the captured `$refs`; `contract` passes on it.
+- The hook takes about four seconds on this repository once goimports is
+  built; the goimports pin is v0.49.0.
