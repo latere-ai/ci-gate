@@ -1,0 +1,17 @@
+name: release
+
+# A tag is a release, and a release has notes: this repository holds that
+# rule, so a v* tag publishes the GitHub release from the CHANGELOG.md
+# section through the shared pipeline, which runs this binary to read it.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: latere-ai/ci/.github/workflows/notes-release.yml@v1
+    secrets: inherit
