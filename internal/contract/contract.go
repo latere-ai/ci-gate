@@ -62,8 +62,11 @@ const ToolPath = "latere.ai/x/ci-gate/cmd/lateregate"
 // Ignored are the generated files .gitignore must list.
 var Ignored = []string{golangci.Name, "coverage.out"}
 
-// hookPath is where git looks once core.hooksPath is set.
-const hookPath = ".githooks/pre-commit"
+// hookPath and prepushPath are where git looks once core.hooksPath is set.
+const (
+	hookPath    = ".githooks/pre-commit"
+	prepushPath = ".githooks/pre-push"
+)
 
 // Run reports every drift, or prints what it checked.
 func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error {
@@ -74,6 +77,9 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 		note(f)
 	}
 	if f := checkHook(root); f != "" {
+		note(f)
+	}
+	if f := checkPrepush(root); f != "" {
 		note(f)
 	}
 	if f := checkGolangci(root, cfg, exec); f != "" {
@@ -100,8 +106,8 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	if len(findings) > 0 {
 		return fmt.Errorf("%d drift(s) from the shared shape:\n- %s", len(findings), strings.Join(findings, "\n- "))
 	}
-	_, _ = fmt.Fprintf(out, "in shape: workflow calls %s, %s delegates, %s untracked, %s ignored, no restated default, no hand-rolled gate target, go.mod pins the tool\n",
-		Workflow, hookPath, golangci.Name, strings.Join(Ignored, " and "))
+	_, _ = fmt.Fprintf(out, "in shape: workflow calls %s, %s and %s delegate, %s untracked, %s ignored, no restated default, no hand-rolled gate target, go.mod pins the tool\n",
+		Workflow, hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "))
 	return nil
 }
 
@@ -180,20 +186,31 @@ func containsAny(xs []any, want string) bool {
 
 // checkHook wants an executable pre-commit that delegates to the binary.
 func checkHook(root string) string {
-	p := filepath.Join(root, hookPath)
+	return checkDelegating(root, hookPath, gates.HookInvocation)
+}
+
+// checkPrepush wants an executable pre-push that delegates to the binary. A
+// repository's own lines around the delegation are its own; the check is the
+// one line, not the bytes.
+func checkPrepush(root string) string {
+	return checkDelegating(root, prepushPath, gates.PrepushInvocation)
+}
+
+func checkDelegating(root, rel, invocation string) string {
+	p := filepath.Join(root, rel)
 	info, err := os.Stat(p)
 	if err != nil {
-		return hookPath + " is missing; run `lateregate init` to write it"
+		return rel + " is missing; run `lateregate init` to write it"
 	}
 	if info.Mode()&0o111 == 0 {
-		return hookPath + " is not executable, so git never runs it"
+		return rel + " is not executable, so git never runs it"
 	}
 	body, err := os.ReadFile(p)
 	if err != nil {
-		return fmt.Sprintf("%s: %v", hookPath, err)
+		return fmt.Sprintf("%s: %v", rel, err)
 	}
-	if !gates.IsSharedHook(string(body)) {
-		return hookPath + " does not run `" + gates.HookInvocation + "`; it holds its own copy of the checks, which no gate keeps in step with the config"
+	if !gates.Delegates(string(body), invocation) {
+		return rel + " does not run `" + invocation + "`; it holds its own copy of the checks, which no gate keeps in step with the config"
 	}
 	return ""
 }
@@ -362,6 +379,17 @@ func Init(root string, out io.Writer, exec gates.Exec) error {
 			return err
 		}
 		_, _ = fmt.Fprintln(out, "wrote "+hookPath)
+		wrote++
+	}
+	// The pre-push, only when there is none. One that exists and does not
+	// delegate holds a check somebody wrote (pkg refuses a tag without a
+	// changelog section there), so it is edited by hand to add the
+	// delegation and reported by Run until it is.
+	if _, err := os.Stat(filepath.Join(root, prepushPath)); err != nil {
+		if err := os.WriteFile(filepath.Join(root, prepushPath), []byte(gates.Prepush), 0o755); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintln(out, "wrote "+prepushPath)
 		wrote++
 	}
 	if _, err := exec(nil, false, "git", "config", "core.hooksPath", ".githooks"); err != nil {

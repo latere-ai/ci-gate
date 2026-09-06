@@ -64,7 +64,7 @@ func TestPrepushLintsThePackagesTheBranchChanges(t *testing.T) {
 	if got := joined(calls[0]); got != "git diff --name-only --diff-filter=ACMR -z "+sha1+" "+sha2+" -- *.go" {
 		t.Errorf("diff ran as %q", got)
 	}
-	if got, want := joined(calls[1]), "go run "+Module+"@"+Version+" run . ./internal/a ./internal/b"; got != want {
+	if got, want := joined(calls[1]), "go run "+Module+"@"+Version+" run --allow-parallel-runners . ./internal/a ./internal/b"; got != want {
 		t.Errorf("linter ran as %q, want %q", got, want)
 	}
 	if !strings.Contains(out, "wrote ") || !strings.Contains(out, Name) || !strings.Contains(out, "linting 3 package(s)") {
@@ -87,7 +87,7 @@ func TestPrepushOfANewBranchDiffsAgainstTheMergeBase(t *testing.T) {
 	if got := joined(calls[1]); !strings.Contains(got, " "+sha3+" "+sha2+" ") {
 		t.Errorf("diff must use the merge base: %q", got)
 	}
-	if got := joined(calls[2]); !strings.HasSuffix(got, " run ./x") {
+	if got := joined(calls[2]); !strings.HasSuffix(got, " run --allow-parallel-runners ./x") {
 		t.Errorf("linter ran as %q", got)
 	}
 }

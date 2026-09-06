@@ -31,9 +31,9 @@ const zeroSHA = "0000000000000000000000000000000000000000"
 //
 // The linter is the full gate's linter on a subset: the same pinned
 // version against the same rendered config, so a package this passes is a
-// package CI passes. A push is rare and already waits on the network,
-// which is why the linter's global lock belongs here and not in the
-// pre-commit.
+// package CI passes. A push is rare and already waits on the network, and
+// this run does not take the linter's machine-wide lock, so a lint in
+// another checkout neither blocks it nor is blocked by it.
 func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io.Writer, run gates.Exec) error {
 	pkgs := map[string]bool{}
 	refs := 0
@@ -94,5 +94,9 @@ func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io
 	}
 	sort.Strings(patterns)
 	_, _ = fmt.Fprintf(out, "linting %d package(s) this push changes\n", len(patterns))
-	return lint(root, cfg, goBin, out, run, patterns)
+	// The linter takes a machine-wide lock so two full runs do not fight
+	// over one cache. A hook that waits on, or dies from, a lint running in
+	// another checkout is the hook people bypass; this run is a subset in a
+	// session that is already waiting, so it opts out of the lock.
+	return lint(root, cfg, goBin, out, run, []string{"--allow-parallel-runners"}, patterns)
 }

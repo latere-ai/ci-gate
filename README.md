@@ -14,7 +14,7 @@ locally and failed in CI, or passed in CI and meant nothing.
 
 ```sh
 go get -tool latere.ai/x/ci-gate/cmd/lateregate
-go tool lateregate init      # the workflow caller, the pre-commit hook, two gitignore lines
+go tool lateregate init      # the workflow caller, both hooks, two gitignore lines
 go tool lateregate           # the whole bar
 ```
 
@@ -121,6 +121,7 @@ difference in one run:
 - exactly one workflow calls `latere-ai/ci/.github/workflows/lateregate.yml@v1`,
   on push to `main` and on pull requests
 - `.githooks/pre-commit` is executable and runs `lateregate hook`
+- `.githooks/pre-push` is executable and runs `lateregate prepush`
 - `.golangci.yml` is not tracked, unless `golangci.own` declares it with a reason
 - `.gitignore` lists `.golangci.yml` and `coverage.out`
 - `.lateregate.yaml` restates no default
@@ -131,15 +132,38 @@ difference in one run:
 Nothing here is waivable. A waiver says a repository is behind on a gate;
 wiring is fixed in the commit that notices it.
 
-`lateregate init` writes what `contract` checks: the caller, the hook, the
+`lateregate init` writes what `contract` checks: the caller, both hooks, the
 gitignore lines, and `git config core.hooksPath .githooks`. It never touches
-`Makefile` or `.lateregate.yaml`, because those hold decisions.
+`Makefile` or `.lateregate.yaml`, because those hold decisions, and it never
+overwrites a pre-push that exists: one that does not delegate holds a check
+somebody wrote, so the delegation line is added by hand and `contract`
+reports it until then.
 
-`lateregate hook` is the pre-commit: gofmt over the staged Go files, and the
-modernizers over the packages holding them, reading `modernize.disable` from
-the same config the full gate reads. The hook script is one line that calls
-it. golangci-lint is deliberately not in the hook: it takes a global lock,
-and a hook that serialises every commit on a machine is one people bypass.
+`lateregate hook` is the pre-commit: every gate that is a file scan, over the
+staged Go files, then the modernizers over the packages holding them. In
+order, gofmt; goimports grouping with the module path as the local prefix,
+which is the linter's rule and the failure it most often reports; the
+licence notice, when `license.spdx` is declared; the outbound-HTTP
+instrumentation rule; then `go fix`, reading `modernize.disable` from the
+same config the full gate reads. Each scan reads only the staged files, so
+the hook stays a few seconds. The script is one line that calls it.
+
+`lateregate prepush` is the pre-push: golangci-lint over the packages the
+push changes, against the config rendered first as the full gate renders
+it. It reads the refs git hands the hook on stdin, diffs each branch against
+the remote's commit (or the merge base with `origin/main` for a new branch),
+and lints exactly the packages the changed Go files sit in. Tags run nothing.
+The linter takes a machine-wide lock by default; this run opts out of it
+with `--allow-parallel-runners`, so a lint in another checkout neither
+blocks a push nor aborts it. It is here and not in the pre-commit because a
+push is rare and already waits on the network, and a hook that adds a
+minute to every commit is one people bypass. The shared script
+captures stdin once, so a repository that adds its own check below the
+delegation reads `$refs`, not stdin.
+
+`vuln`, `tempdir`, `race`, `cover`, and `hermetic` are in neither hook: the
+first needs the network and changes verdict with no commit, and the rest run
+the suite.
 
 ## The gates in detail
 

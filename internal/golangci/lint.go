@@ -29,6 +29,13 @@ const Module = "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
 // A repository that keeps its own config is left to it, with the reason
 // printed so the exception stays visible.
 func Lint(root string, cfg *config.Config, goBin string, out io.Writer, run gates.Exec) error {
+	return lint(root, cfg, goBin, out, run, nil, []string{"./..."})
+}
+
+// lint renders the shared configuration and runs the linter over patterns.
+// Lint passes the whole module; Prepush passes the packages a push changes,
+// and flags of its own.
+func lint(root string, cfg *config.Config, goBin string, out io.Writer, run gates.Exec, flags, patterns []string) error {
 	reason, err := Own(root, cfg)
 	if err != nil {
 		return err
@@ -42,7 +49,9 @@ func Lint(root string, cfg *config.Config, goBin string, out io.Writer, run gate
 		}
 		_, _ = fmt.Fprintln(out, "wrote "+path)
 	}
-	if _, err := run(nil, true, goBin, "run", Module+"@"+Version, "run", "./..."); err != nil {
+	args := append([]string{"run", Module + "@" + Version, "run"}, flags...)
+	args = append(args, patterns...)
+	if _, err := run(nil, true, goBin, args...); err != nil {
 		return fmt.Errorf("golangci-lint %s reported findings: %w", Version, err)
 	}
 	_, _ = fmt.Fprintln(out, "golangci-lint "+Version+" reports nothing")
