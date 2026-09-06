@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.29.2 - 2026-09-06
+
 - The pre-push hook no longer fails a push that changes a Go file under a
   nested module (a directory with its own `go.mod`, such as a spike tool or
   an example). Such a file is not a package of the main module, so the hook
