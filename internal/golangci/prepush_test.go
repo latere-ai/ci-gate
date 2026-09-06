@@ -5,6 +5,8 @@ package golangci
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -143,5 +145,53 @@ func TestPrepushReportsGitFailing(t *testing.T) {
 	_, err = prepush(t, "refs/heads/new "+sha2+" refs/heads/new "+zeroSHA+"\n", failing)
 	if err == nil || !strings.Contains(err.Error(), "merge base") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// A changed file under a nested module is not a package of the main module:
+// the hook skips it, the way it skips testdata, instead of failing the push
+// with "main module does not contain package".
+func TestPrepushSkipsPackagesInNestedModules(t *testing.T) {
+	var calls []call
+	dir := module(t)
+	if err := os.MkdirAll(filepath.Join(dir, "tools", "spike", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tools", "spike", "go.mod"), []byte("module example.com/spike\n\ngo 1.27\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	err = Prepush(dir, cfg, "go", strings.NewReader("refs/heads/main "+sha2+" refs/heads/main "+sha1+"\n"), &sb,
+		replay(&calls, nil, "tools/spike/main.go\x00tools/spike/sub/x.go\x00internal/a/a.go\x00"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("ran %v", calls)
+	}
+	if got, want := joined(calls[1]), "go run "+Module+"@"+Version+" run --allow-parallel-runners ./internal/a"; got != want {
+		t.Errorf("linter ran as %q, want %q", got, want)
+	}
+	if !strings.Contains(sb.String(), "linting 1 package(s)") {
+		t.Errorf("output:\n%s", sb.String())
+	}
+}
+
+func TestInNestedModuleWalksUpToTheRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "a", "b", "c"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a", "b", "go.mod"), []byte("module x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for dir, want := range map[string]bool{"a/b/c": true, "a/b": true, "a": false, ".": false, "other": false} {
+		if got := inNestedModule(root, dir); got != want {
+			t.Errorf("inNestedModule(%q) = %v, want %v", dir, got, want)
+		}
 	}
 }

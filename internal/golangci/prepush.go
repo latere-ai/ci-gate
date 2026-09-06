@@ -7,7 +7,9 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -70,6 +72,14 @@ func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io
 			if slices.Contains(strings.Split(dir, "/"), "testdata") {
 				continue
 			}
+			// A file under a nested module (its own go.mod below the root)
+			// is not a package of the main module either: `go run ... ./dir`
+			// from the root fails with "main module does not contain
+			// package", and the full gate never reads it. A spike tool or an
+			// example with its own dependencies lives there on purpose.
+			if inNestedModule(root, dir) {
+				continue
+			}
 			if dir == "." {
 				pkgs["."] = true
 				continue
@@ -99,4 +109,16 @@ func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io
 	// another checkout is the hook people bypass; this run is a subset in a
 	// session that is already waiting, so it opts out of the lock.
 	return lint(root, cfg, goBin, out, run, []string{"--allow-parallel-runners"}, patterns)
+}
+
+// inNestedModule reports whether dir, a slash path relative to root, sits
+// under a go.mod other than the root's, walking up from dir to the root.
+func inNestedModule(root, dir string) bool {
+	for dir != "." && dir != "" && dir != "/" {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(dir), "go.mod")); err == nil {
+			return true
+		}
+		dir = path.Dir(dir)
+	}
+	return false
 }

@@ -10,6 +10,11 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+- The pre-push hook no longer fails a push that changes a Go file under a
+  nested module (a directory with its own `go.mod`, such as a spike tool or
+  an example). Such a file is not a package of the main module, so the hook
+  skips it the way it skips `testdata`, and the full gate remains the bar.
+
 ## v0.29.1 - 2026-09-06
 
 This repository now publishes its own GitHub releases from this file,
