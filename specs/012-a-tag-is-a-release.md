@@ -1,6 +1,6 @@
 ---
 title: A tag is a release, and a release has notes
-status: draft
+status: complete
 depends_on:
   - 009-contract-reports-drift.md
   - 011-hooks-hold-the-cheap-gates.md
@@ -152,3 +152,28 @@ workflows and cuts `v1`; that rollout, and the per-repository adoption, is
 the ci spec's. This repository adopts its own rule in the same tag: a
 `CHANGELOG.md` with a section for it, and a release workflow once ci
 publishes one to call.
+
+## Outcome
+
+Shipped as v0.29.0 on 2026-09-06, cut with `lateregate release` itself;
+v0.29.1 the same hour added this repository's release workflow and was the
+first tag published through `notes-release.yml`. latere-ai/ci v1.8.0 pins
+the reader in all four release pipelines. Every acceptance criterion holds;
+the changelog package sits at 96.9% coverage.
+
+- Rolled to 27 repositories the same day: the 23 on lateregate took the
+  pin and the seed changelog through `lateregate init` from a clean
+  worktree of `origin/main`; latere-ui and the two SDKs took a hand-written
+  seed and a workflow edit; pkg lost its two scripts and its hook's own
+  lines (acceptance 6).
+- The `release` target rule caught llmops, whose `make release` built and
+  pushed runtime images. It is `make push-images` now: a release is a git
+  tag with a section, and the name is that command's everywhere.
+- Five repositories (managed-agents, pay, platform, service-template, tgo)
+  had no committed pre-push at all, so the tag rule would have run only in
+  CI there; the shared hook was committed in each. managed-agents still
+  drifts on its caller, its restated defaults and its hand-rolled targets,
+  none of which this spec touched.
+- images publishes no GitHub release (its tag pushes images and republishes
+  on the `release` event), so it took nothing; adopting `images-release.yml`
+  there is its own change.
