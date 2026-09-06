@@ -14,7 +14,7 @@ locally and failed in CI, or passed in CI and meant nothing.
 
 ```sh
 go get -tool latere.ai/x/ci-gate/cmd/lateregate
-go tool lateregate init      # the workflow caller, both hooks, two gitignore lines
+go tool lateregate init      # the workflow caller, both hooks, two gitignore lines, the changelog
 go tool lateregate           # the whole bar
 ```
 
@@ -114,7 +114,7 @@ typo that disables a gate is the failure this whole repository is against.
 
 ## The wiring: `contract`, `init`, `hook`
 
-Four files connect the binary to the places it is invoked from, and each is
+Five files connect the binary to the places it is invoked from, and each is
 a place to drift. `lateregate contract` reads all of them and names every
 difference in one run:
 
@@ -124,20 +124,22 @@ difference in one run:
 - `.githooks/pre-push` is executable and runs `lateregate prepush`
 - `.golangci.yml` is not tracked, unless `golangci.own` declares it with a reason
 - `.gitignore` lists `.golangci.yml` and `coverage.out`
+- `CHANGELOG.md` is tracked and has a `## Unreleased` heading
 - `.lateregate.yaml` restates no default
-- a `Makefile` target named for a gate (`cover`, `test-race`, `lint`, ...)
-  delegates to `lateregate`, or does not exist
+- a `Makefile` target named for a gate or a command (`cover`, `test-race`,
+  `lint`, `release`, ...) delegates to `lateregate`, or does not exist
 - `go.mod` carries the `tool` line
 
 Nothing here is waivable. A waiver says a repository is behind on a gate;
 wiring is fixed in the commit that notices it.
 
 `lateregate init` writes what `contract` checks: the caller, both hooks, the
-gitignore lines, and `git config core.hooksPath .githooks`. It never touches
-`Makefile` or `.lateregate.yaml`, because those hold decisions, and it never
-overwrites a pre-push that exists: one that does not delegate holds a check
-somebody wrote, so the delegation line is added by hand and `contract`
-reports it until then.
+gitignore lines, the seed changelog, and `git config core.hooksPath
+.githooks`. It never touches `Makefile` or `.lateregate.yaml`, because those
+hold decisions, and it never overwrites a pre-push or a changelog that
+exists: a pre-push that does not delegate holds a check somebody wrote, and
+a changelog holds notes, so each is edited by hand and `contract` reports
+it until then.
 
 `lateregate hook` is the pre-commit: every gate that is a file scan, over the
 staged Go files, then the modernizers over the packages holding them. In
@@ -148,12 +150,14 @@ instrumentation rule; then `go fix`, reading `modernize.disable` from the
 same config the full gate reads. Each scan reads only the staged files, so
 the hook stays a few seconds. The script is one line that calls it.
 
-`lateregate prepush` is the pre-push: golangci-lint over the packages the
-push changes, against the config rendered first as the full gate renders
-it. It reads the refs git hands the hook on stdin, diffs each branch against
-the remote's commit (or the merge base with `origin/main` for a new branch),
-and lints exactly the packages the changed Go files sit in. Tags run nothing.
-The linter takes a machine-wide lock by default; this run opts out of it
+`lateregate prepush` is the pre-push. It reads the refs git hands the hook
+on stdin. A release tag among them (`vMAJOR.MINOR.PATCH`, with an optional
+prerelease or build suffix) is refused unless `CHANGELOG.md` at its commit
+has a section for it; see the next section. Then golangci-lint runs over
+the packages the push changes, against the config rendered first as the
+full gate renders it: each branch is diffed against the remote's commit (or
+the merge base with `origin/main` for a new branch), and exactly the
+packages the changed Go files sit in are linted. The linter takes a machine-wide lock by default; this run opts out of it
 with `--allow-parallel-runners`, so a lint in another checkout neither
 blocks a push nor aborts it. It is here and not in the pre-commit because a
 push is rare and already waits on the network, and a hook that adds a
@@ -164,6 +168,36 @@ delegation reads `$refs`, not stdin.
 `vuln`, `tempdir`, `race`, `cover`, and `hermetic` are in neither hook: the
 first needs the network and changes verdict with no commit, and the rest run
 the suite.
+
+## A tag is a release, and a release has notes: `release-notes`, `release`
+
+`CHANGELOG.md` holds one level-two section per tag, and the section is the
+body of the GitHub release. A heading's second word names the tag, so
+`## v0.29.0 - 2026-09-06` and `## v0.29.0` both name `v0.29.0`, and the
+section runs to the next level-two heading. `## Unreleased` holds what the
+next tag will say; write under it as work lands.
+
+`lateregate release-notes TAG [REF]` prints the section for `TAG`, read
+from the working tree or from `REF:CHANGELOG.md`, and fails naming the fix
+when the file, the heading, or the notes are missing. It is the one
+implementation of the rule: the pre-push calls it at the pushed commit, the
+release workflows in latere-ai/ci call it at the tag and fail closed, and
+`release` calls it to check its own work.
+
+`lateregate release vX.Y.Z` cuts the tag. It refuses a dirty tree, an
+existing tag, and an empty `Unreleased`; otherwise it writes `## vX.Y.Z -
+<today>` under a fresh `## Unreleased`, commits `changelog: vX.Y.Z`,
+creates an annotated tag, and pushes `HEAD` and the tag in one push, so
+the release workflow runs once. A `Makefile` target is a convenience:
+
+```make
+release:
+	@go tool lateregate release $(VERSION)
+```
+
+The binary writes no draft from the commit log: a note is written for
+whoever uses the release, and the commit log is written for whoever reads
+the diff.
 
 ## The gates in detail
 
