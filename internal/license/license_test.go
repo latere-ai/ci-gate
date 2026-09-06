@@ -585,3 +585,18 @@ func TestEveryFingerprintedLicenseTextPasses(t *testing.T) {
 		}
 	}
 }
+
+// A proprietary repository declares the SPDX LicenseRef form; its root file
+// must reserve every right and grant no licence, and a root file that reads
+// as an open source licence is the mismatch the gate exists to catch.
+func TestAProprietaryDeclarationNeedsAnAllRightsReservedRootFile(t *testing.T) {
+	good := "Copyright (c) 2026 Latere AI. All rights reserved.\n\nThis software is proprietary and confidential. No license is granted to use, copy, modify, or distribute it without written permission.\n"
+	if why := licenseText("LicenseRef-Proprietary", good); why != "" {
+		t.Fatalf("a proprietary notice was refused: %s", why)
+	}
+	mit := "MIT License\n\nPermission is hereby granted, free of charge, to any person\n"
+	why := licenseText("LicenseRef-Proprietary", mit)
+	if why == "" || !strings.Contains(why, "reads as MIT") {
+		t.Fatalf("an MIT root file under a proprietary declaration passed or did not name MIT: %q", why)
+	}
+}

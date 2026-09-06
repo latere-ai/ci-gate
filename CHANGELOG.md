@@ -10,6 +10,12 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+- The licence gate accepts `license.spdx: LicenseRef-Proprietary`, the SPDX
+  form for terms not on the licence list. The root `LICENSE` must then reserve
+  all rights and grant no licence, and every file carries the identifier the
+  same way an open source repository does, so a proprietary repository is
+  checked instead of waived.
+
 ### Added
 
 - `license` checks the root `LICENSE` text against `license.spdx` through a

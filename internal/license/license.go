@@ -45,7 +45,9 @@ var year = regexp.MustCompile(`^\d{4}(-\d{4})?$`)
 // fingerprints maps each identifier a repository may declare to phrases that
 // are in the canonical text of that licence and in no other the fleet uses.
 // The two "only"/"or-later" forms of a GNU licence share one text, so they
-// share one fingerprint. An identifier missing here fails the gate rather
+// share one fingerprint. LicenseRef-Proprietary is the SPDX spelling for
+// terms not on the list, and its fingerprint is the two phrases a
+// proprietary notice cannot do without. An identifier missing here fails the gate rather
 // than passing unchecked: the check that made the declaration and the root
 // file agree is the whole point, and a hole in the table would have let the
 // mismatch this exists to catch through.
@@ -54,6 +56,11 @@ var fingerprints = map[string][]string{
 	"Apache-2.0":        {"Apache License", "Version 2.0"},
 	"AGPL-3.0-only":     {"GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"},
 	"AGPL-3.0-or-later": {"GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"},
+	// The SPDX form for terms that are not on the licence list: a
+	// proprietary repository declares LicenseRef-Proprietary, its headers
+	// stay machine-readable, and its root file must say what such a file
+	// says, that every right is reserved and no licence is granted.
+	"LicenseRef-Proprietary": {"All rights reserved", "No license is granted"},
 }
 
 // licenseText reports why the root LICENSE text is not the licence spdx
