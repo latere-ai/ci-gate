@@ -190,6 +190,12 @@ func Files(cfg config.License, root string, rels []string) ([]string, error) {
 		if !ok {
 			continue
 		}
+		// The hook sees a path, not a walk, so it applies the same skip
+		// list Run applies to directories: a file under a skipped directory
+		// is not the repository's to notice, whichever route found it.
+		if underSkipped(cfg.Skip, rel) {
+			continue
+		}
 		finding, err := checkFile(cfg, filepath.Join(root, rel), rel, prefix)
 		if err != nil {
 			return nil, err
@@ -387,6 +393,17 @@ func skipped(root, path string, d os.DirEntry, untracked map[string]bool) bool {
 	}
 	if d.IsDir() && path != root {
 		if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// underSkipped reports whether rel, a slash path relative to the root, has
+// a directory in skip anywhere on its path, the way Run's walk prunes it.
+func underSkipped(skip []string, rel string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(filepath.Dir(rel)), "/") {
+		if slices.Contains(skip, part) {
 			return true
 		}
 	}

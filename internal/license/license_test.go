@@ -600,3 +600,25 @@ func TestAProprietaryDeclarationNeedsAnAllRightsReservedRootFile(t *testing.T) {
 		t.Fatalf("an MIT root file under a proprietary declaration passed or did not name MIT: %q", why)
 	}
 }
+
+// The staged-file path honours the same skip list the walk does: a file under
+// a skipped directory is neither checked nor written, whichever route found it.
+func TestFilesHonoursTheSkipList(t *testing.T) {
+	root := t.TempDir()
+	for _, rel := range []string{"skeleton/cmd/main.go", "internal/x.go"} {
+		if err := os.MkdirAll(filepath.Join(root, filepath.Dir(rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte("package p\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.License{SPDX: "MIT", Holder: "Latere AI", Skip: []string{"skeleton"}}
+	bad, err := Files(cfg, root, []string{"skeleton/cmd/main.go", "internal/x.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bad) != 1 || !strings.HasPrefix(bad[0], "internal/x.go") {
+		t.Fatalf("findings = %v, want only internal/x.go", bad)
+	}
+}
