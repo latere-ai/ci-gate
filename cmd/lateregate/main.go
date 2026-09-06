@@ -179,6 +179,12 @@ func run(argv []string, out io.Writer) error {
 		if len(fs.Args()) != 1 {
 			return fmt.Errorf("usage: lateregate release vX.Y.Z")
 		}
+		// A release is the one push that must never go out red: the whole
+		// bar runs on the tree about to be tagged, and a failure stops the
+		// cut before the changelog moves or the tag exists.
+		if err := bar.Check(ctx); err != nil {
+			return fmt.Errorf("not releasing %s: %w", fs.Args()[0], err)
+		}
 		return changelog.Cut(*root, fs.Args()[0], time.Now(), out, ctx.Exec)
 	case "golangci":
 		if reason, err := golangci.Own(*root, cfg); err != nil {

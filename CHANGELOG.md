@@ -10,6 +10,10 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+- `lateregate release` runs the full gate before it tags. v0.31.1 was cut
+  with the modernize and lint gates red on the release commit; a release is
+  the one push that must never go out red.
+
 ## v0.31.1 - 2026-09-06
 
 - The licence check on staged files (the pre-commit hook) honours
