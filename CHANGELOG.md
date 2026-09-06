@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.30.0 - 2026-09-06
+
 - The licence gate accepts `license.spdx: LicenseRef-Proprietary`, the SPDX
   form for terms not on the licence list. The root `LICENSE` must then reserve
   all rights and grant no licence, and every file carries the identifier the
