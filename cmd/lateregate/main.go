@@ -182,7 +182,11 @@ func run(argv []string, out io.Writer) error {
 		// A release is the one push that must never go out red: the whole
 		// bar runs on the tree about to be tagged, and a failure stops the
 		// cut before the changelog moves or the tag exists.
-		if err := bar.Check(ctx); err != nil {
+		// The version is this command's argument, not a gate's: tempdir
+		// reads its test command from Args, so the bar runs with none.
+		check := ctx
+		check.Args = nil
+		if err := bar.Check(check); err != nil {
 			return fmt.Errorf("not releasing %s: %w", fs.Args()[0], err)
 		}
 		return changelog.Cut(*root, fs.Args()[0], time.Now(), out, ctx.Exec)
