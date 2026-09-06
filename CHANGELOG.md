@@ -10,6 +10,10 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+This repository now publishes its own GitHub releases from this file,
+through `notes-release.yml` in latere-ai/ci. v0.29.0 was tagged before that
+pipeline existed and has no release object; its section below is the note.
+
 ## v0.29.0 - 2026-09-06
 
 A tag is a release, and a release has notes. The changelog rule pkg kept in
