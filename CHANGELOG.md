@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.29.1 - 2026-09-06
+
 This repository now publishes its own GitHub releases from this file,
 through `notes-release.yml` in latere-ai/ci. v0.29.0 was tagged before that
 pipeline existed and has no release object; its section below is the note.
