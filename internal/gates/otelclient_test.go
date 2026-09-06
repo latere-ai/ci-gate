@@ -180,3 +180,17 @@ func TestOtelClient_SkipsAgentWorktrees(t *testing.T) {
 		t.Errorf("gate walked into .claude: %v\n%s", err, buf.String())
 	}
 }
+
+// OtelClientFiles is the rule the pre-commit hook runs on the staged files:
+// the same findings as the walk, over a list, with test and non-Go files
+// left out as the walk leaves them out.
+func TestOtelClientFilesChecksJustTheNamedFiles(t *testing.T) {
+	root := writeGo(t, "p/a.go", "package p\n\nimport \"net/http\"\n\nvar c = &http.Client{}\n")
+	if err := os.WriteFile(filepath.Join(root, "p", "a_test.go"), []byte("package p\n\nimport \"net/http\"\n\nvar d = &http.Client{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := OtelClientFiles(root, []string{"p/a.go", "p/a_test.go", "p/README.md", "p/missing.go"})
+	if len(got) != 1 || !strings.HasPrefix(got[0], "p/a.go:5: ") {
+		t.Errorf("findings = %v", got)
+	}
+}

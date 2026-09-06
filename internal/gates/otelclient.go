@@ -59,10 +59,7 @@ func OtelClient(root string, out io.Writer, skip []string) error {
 		if relErr != nil {
 			rel = path
 		}
-		for _, v := range fileViolations(fset, path) {
-			pos := fset.Position(v.pos)
-			found = append(found, fmt.Sprintf("%s:%d: %s", rel, pos.Line, v.reason))
-		}
+		found = append(found, findings(fset, path, rel)...)
 		return nil
 	})
 	if err != nil {
@@ -80,6 +77,32 @@ func OtelClient(root string, out io.Writer, skip []string) error {
 	}
 	_, _ = fmt.Fprintf(out, "every outbound HTTP client is instrumented, across %d Go file(s)\n", scanned)
 	return nil
+}
+
+// OtelClientFiles runs the same rule over just the named files, relative to
+// root, and returns one "path:line: reason" per uninstrumented client. It
+// is what the pre-commit hook runs over the staged files. Test files and
+// files that are not Go are skipped, as the walk skips them.
+func OtelClientFiles(root string, rels []string) []string {
+	var found []string
+	fset := token.NewFileSet()
+	for _, rel := range rels {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		found = append(found, findings(fset, filepath.Join(root, rel), rel)...)
+	}
+	return found
+}
+
+// findings renders one file's violations as the gate reports them.
+func findings(fset *token.FileSet, path, rel string) []string {
+	var out []string
+	for _, v := range fileViolations(fset, path) {
+		pos := fset.Position(v.pos)
+		out = append(out, fmt.Sprintf("%s:%d: %s", rel, pos.Line, v.reason))
+	}
+	return out
 }
 
 // violation is one uninstrumented client and why it is one.

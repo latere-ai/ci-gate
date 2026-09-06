@@ -503,3 +503,28 @@ func TestUntrackedDirectoriesAndNestedCheckoutsAreLeftAlone(t *testing.T) {
 		t.Fatalf("neither file is the repository's: %v\n%s", err, sb.String())
 	}
 }
+
+// Files is the check the pre-commit hook runs on the staged files: the same
+// finding per file as Run, over a list rather than a walk, and nothing said
+// about files whose type has no comment marker.
+func TestFilesChecksJustTheNamedFiles(t *testing.T) {
+	root := repo(t, map[string]string{
+		"ok.go":     "// SPDX-FileCopyrightText: 2026 Latere AI\n// SPDX-License-Identifier: AGPL-3.0-or-later\n\npackage p\n",
+		"bad.go":    "package p\n",
+		"unseen.go": "package p\n",
+		"notes.txt": "no marker for this type\n",
+	})
+	got, err := Files(cfg(), root, []string{"ok.go", "bad.go", "notes.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "bad.go: no SPDX-FileCopyrightText: on line 1" {
+		t.Errorf("findings = %v", got)
+	}
+	if _, err := Files(config.License{}, root, []string{"bad.go"}); err == nil {
+		t.Error("an undeclared licence is an error, as in Run")
+	}
+	if _, err := Files(cfg(), root, []string{"missing.go"}); err == nil {
+		t.Error("a named file that cannot be read is an error, not a pass")
+	}
+}

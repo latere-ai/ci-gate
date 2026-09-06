@@ -78,15 +78,15 @@ func Run(cfg config.License, root string, out io.Writer) error {
 			return nil
 		}
 		scanned++
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
 		// WalkDir only ever yields paths under root, so trimming the prefix
 		// is exact and leaves no failure to invent a fallback for.
 		rel := strings.TrimPrefix(path, root+string(filepath.Separator))
-		if why := check(string(body), prefix, cfg); why != "" {
-			bad = append(bad, rel+": "+why)
+		finding, err := checkFile(cfg, path, rel, prefix)
+		if err != nil {
+			return err
+		}
+		if finding != "" {
+			bad = append(bad, finding)
 		}
 		return nil
 	})
@@ -107,6 +107,46 @@ func Run(cfg config.License, root string, out io.Writer) error {
 	}
 	_, _ = fmt.Fprintf(out, "%s declared on %d file(s)\n", cfg.SPDX, scanned)
 	return nil
+}
+
+// Files checks just the named files, relative to root, and returns one
+// "path: why" line per wrong notice. It is what the pre-commit hook runs
+// over the staged files: the same check as Run, so the hook and the gate
+// cannot disagree on what a violation is. A file whose type has no comment
+// marker is not checked. Nothing here is vacuous: an empty list is an
+// empty result, and it is the caller's business whether that means pass.
+func Files(cfg config.License, root string, rels []string) ([]string, error) {
+	if strings.TrimSpace(cfg.SPDX) == "" {
+		return nil, fmt.Errorf("license.spdx is not set in %s", config.Name)
+	}
+	var bad []string
+	for _, rel := range rels {
+		prefix, ok := cfg.CommentFor(filepath.Base(rel))
+		if !ok {
+			continue
+		}
+		finding, err := checkFile(cfg, filepath.Join(root, rel), rel, prefix)
+		if err != nil {
+			return nil, err
+		}
+		if finding != "" {
+			bad = append(bad, finding)
+		}
+	}
+	return bad, nil
+}
+
+// checkFile reads one file and renders its finding as "rel: why", or ""
+// when the notice is right.
+func checkFile(cfg config.License, path, rel, prefix string) (string, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if why := check(string(body), prefix, cfg); why != "" {
+		return rel + ": " + why, nil
+	}
+	return "", nil
 }
 
 // Want renders the notice the repository declared, so a failure teaches the
