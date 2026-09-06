@@ -42,6 +42,57 @@ const (
 // diff, and a gate that fails for a reason nobody caused gets skipped.
 var year = regexp.MustCompile(`^\d{4}(-\d{4})?$`)
 
+// fingerprints maps each identifier a repository may declare to phrases that
+// are in the canonical text of that licence and in no other the fleet uses.
+// The two "only"/"or-later" forms of a GNU licence share one text, so they
+// share one fingerprint. An identifier missing here fails the gate rather
+// than passing unchecked: the check that made the declaration and the root
+// file agree is the whole point, and a hole in the table would have let the
+// mismatch this exists to catch through.
+var fingerprints = map[string][]string{
+	"MIT":               {"MIT License", "Permission is hereby granted, free of charge"},
+	"Apache-2.0":        {"Apache License", "Version 2.0"},
+	"AGPL-3.0-only":     {"GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"},
+	"AGPL-3.0-or-later": {"GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"},
+}
+
+// licenseText reports why the root LICENSE text is not the licence spdx
+// names, or "" when it is. A header stating one licence over a root file
+// carrying another is exactly the mismatch the notice was meant to prevent,
+// and nothing else in the gate reads the root file.
+func licenseText(spdx, text string) string {
+	phrases, ok := fingerprints[spdx]
+	if !ok {
+		return "the gate has no fingerprint for " + quote(spdx) +
+			"; add its distinctive phrases to the fingerprint table before declaring it"
+	}
+	for _, p := range phrases {
+		if !strings.Contains(text, p) {
+			return "the declaration is " + quote(spdx) + " but LICENSE does not contain " +
+				quote(p) + reads(text)
+		}
+	}
+	return ""
+}
+
+// reads names the licence the text does look like, when one fingerprint
+// matches, so the failure says "reads as MIT" and not only "is not Apache".
+func reads(text string) string {
+	for id, phrases := range fingerprints {
+		if strings.HasSuffix(id, "-only") {
+			continue
+		}
+		hit := true
+		for _, p := range phrases {
+			hit = hit && strings.Contains(text, p)
+		}
+		if hit {
+			return "; the text reads as " + id
+		}
+	}
+	return ""
+}
+
 // Run checks every source file under root and reports the ones whose notice
 // is missing, stale or wrongly placed.
 func Run(cfg config.License, root string, out io.Writer) error {
@@ -52,17 +103,24 @@ func Run(cfg config.License, root string, out io.Writer) error {
 			"repository is released under, e.g. license.spdx: MIT",
 			config.Name)
 	}
-	if _, err := os.Stat(filepath.Join(root, "LICENSE")); err != nil {
+	text, err := os.ReadFile(filepath.Join(root, "LICENSE"))
+	if err != nil {
 		return fmt.Errorf("no LICENSE file at %s\n"+
 			"the header names terms a reader has to be able to find; %s in every "+
 			"file and nothing at the root points at nothing",
 			root, cfg.SPDX)
 	}
+	if why := licenseText(cfg.SPDX, string(text)); why != "" {
+		return fmt.Errorf("LICENSE disagrees with license.spdx in %s: %s\n"+
+			"the notice on every file and the text at the root name the same terms; "+
+			"change one to match the other",
+			config.Name, why)
+	}
 
 	var bad []string
 	scanned := 0
 	skip := untracked(root)
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

@@ -375,8 +375,12 @@ run of `-w`, and one commit.
 `spdx` has no default, and a repository that runs the gate without one gets an
 error rather than a pass. That is the opposite of every other gate here, and
 it has to be: an identifier guessed on your behalf and printed into 300 files
-is worse than none. For the same reason the gate does not read `LICENSE` and
-infer the identifier from its text, though it does check the file is there.
+is worse than none. For the same reason the gate does not infer the
+identifier from `LICENSE`. It does read the file: the declaration is checked
+against the text through a fingerprint per identifier (`MIT`, `Apache-2.0`,
+`AGPL-3.0-only`, `AGPL-3.0-or-later`), so a root file that says MIT under an
+`Apache-2.0` declaration fails, naming both. An identifier with no
+fingerprint fails too, until one is added to the table.
 
 Two details the check earns its keep on. The **blank third line** is part of
 it: in Go a comment block touching `package` *is* the package documentation,

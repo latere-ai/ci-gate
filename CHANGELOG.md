@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- `license` checks the root `LICENSE` text against `license.spdx` through a
+  fingerprint per identifier, so a declaration that names one licence over a
+  root file carrying another fails with both named. An identifier the table
+  does not know fails closed. This is the mismatch pkg carried for four
+  days: `Apache-2.0` on 264 files above an MIT `LICENSE`.
+
 ## v0.29.2 - 2026-09-06
 
 - The pre-push hook no longer fails a push that changes a Go file under a

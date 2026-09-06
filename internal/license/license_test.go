@@ -26,7 +26,7 @@ func cfg() config.License {
 func repo(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
-	files["LICENSE"] = "GNU AFFERO GENERAL PUBLIC LICENSE\n"
+	files["LICENSE"] = "                    GNU AFFERO GENERAL PUBLIC LICENSE\n                       Version 3, 19 November 2007\n"
 	for name, body := range files {
 		p := filepath.Join(root, name)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -526,5 +526,62 @@ func TestFilesChecksJustTheNamedFiles(t *testing.T) {
 	}
 	if _, err := Files(cfg(), root, []string{"missing.go"}); err == nil {
 		t.Error("a named file that cannot be read is an error, not a pass")
+	}
+}
+
+func TestALicenseFileThatDisagreesWithTheDeclarationFails(t *testing.T) {
+	root := t.TempDir()
+	mit := "MIT License\n\nCopyright (c) 2026 Latere AI\n\n" +
+		"Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+	for name, body := range map[string]string{
+		"LICENSE": mit,
+		"a.go": "// SPDX-FileCopyrightText: 2026 Latere AI\n" +
+			"// SPDX-License-Identifier: Apache-2.0\n\npackage a\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var sb strings.Builder
+	err := Run(config.License{SPDX: "Apache-2.0", Holder: "Latere AI"}, root, &sb)
+	if err == nil {
+		t.Fatal("an MIT LICENSE under an Apache-2.0 declaration should fail the gate")
+	}
+	for _, want := range []string{"LICENSE", "MIT", "Apache-2.0"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the failure should name %q so the mismatch is visible: %v", want, err)
+		}
+	}
+}
+
+func TestALicenseFileTheGateCannotFingerprintFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		"LICENSE": "Some Bespoke License\n",
+		"a.go": "// SPDX-FileCopyrightText: 2026 Latere AI\n" +
+			"// SPDX-License-Identifier: Bespoke-1.0\n\npackage a\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var sb strings.Builder
+	err := Run(config.License{SPDX: "Bespoke-1.0", Holder: "Latere AI"}, root, &sb)
+	if err == nil || !strings.Contains(err.Error(), "Bespoke-1.0") {
+		t.Fatalf("an identifier with no fingerprint should fail and name itself: %v", err)
+	}
+}
+
+func TestEveryFingerprintedLicenseTextPasses(t *testing.T) {
+	for id, text := range map[string]string{
+		"MIT":        "MIT License\n\nPermission is hereby granted, free of charge, to any person\n",
+		"Apache-2.0": "                                 Apache License\n                           Version 2.0, January 2004\n",
+		"AGPL-3.0-or-later": "                    GNU AFFERO GENERAL PUBLIC LICENSE\n" +
+			"                       Version 3, 19 November 2007\n",
+		"AGPL-3.0-only": "GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3, 19 November 2007\n",
+	} {
+		if why := licenseText(id, text); why != "" {
+			t.Errorf("%s: canonical text should match its own identifier: %s", id, why)
+		}
 	}
 }
