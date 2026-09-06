@@ -37,8 +37,9 @@ Usage:
 	lateregate list [-json]    print each gate with run / skip / waived and why
 	lateregate <gate>          run one gate
 	lateregate contract        report every way the wiring drifted from the shared shape
-	lateregate init            write the wiring: workflow caller, hook, gitignore lines
+	lateregate init            write the wiring: workflow caller, both hooks, gitignore lines
 	lateregate hook            the pre-commit checks over the staged Go files
+	lateregate prepush         golangci-lint over the packages the push on stdin changes
 	lateregate golangci        render the shared .golangci.yml without linting
 
 Gates, in the order check runs them:
@@ -138,7 +139,12 @@ func run(argv []string, out io.Writer) error {
 	case "init":
 		return contract.Init(*root, out, ctx.Exec)
 	case "hook":
-		return gates.Hook(cfg.Modernize, *goBin, out, ctx.Exec)
+		// Outside a module there is no local prefix; goimports then only
+		// separates the standard library, which is still the linter's rule.
+		module, _ := golangci.ModulePath(*goBin, *root)
+		return gates.Hook(cfg, *root, module, *goBin, out, ctx.Exec)
+	case "prepush":
+		return golangci.Prepush(*root, cfg, *goBin, os.Stdin, out, ctx.Exec)
 	case "golangci":
 		if reason, err := golangci.Own(*root, cfg); err != nil {
 			return err
