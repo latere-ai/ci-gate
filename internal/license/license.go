@@ -402,7 +402,7 @@ func skipped(root, path string, d os.DirEntry, untracked map[string]bool) bool {
 // underSkipped reports whether rel, a slash path relative to the root, has
 // a directory in skip anywhere on its path, the way Run's walk prunes it.
 func underSkipped(skip []string, rel string) bool {
-	for _, part := range strings.Split(filepath.ToSlash(filepath.Dir(rel)), "/") {
+	for part := range strings.SplitSeq(filepath.ToSlash(filepath.Dir(rel)), "/") {
 		if slices.Contains(skip, part) {
 			return true
 		}
