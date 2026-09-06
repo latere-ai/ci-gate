@@ -19,6 +19,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 008 | [The binary is the whole bar, and a repository runs it with no arguments](008-one-bar.md) | complete | `lateregate` runs every gate; recipes, pins and defaults move into the binary; waivers replace per-repo targets |
 | 009 | [contract reports the ways a repository has drifted from the shared shape](009-contract-reports-drift.md) | complete | `contract` checks the wiring files, `hook` and `init` write and run them |
 | 010 | [A reusable workflow that runs lateregate and nothing else](010-ci-workflow.md) | complete | `lateregate.yml` in latere-ai/ci builds its matrix from `lateregate list -json` |
+| 011 | [The hooks hold every cheap gate, and pre-push lints what the push changes](011-hooks-hold-the-cheap-gates.md) | draft | `hook` adds goimports, licence, and otel-client over staged files; a `prepush` runs golangci-lint on the packages a push changes; `contract` and `init` know the second hook |
 
 ## Conventions
 
