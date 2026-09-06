@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.31.1 - 2026-09-06
+
 - The licence check on staged files (the pre-commit hook) honours
   `license.skip` the way the full walk does, so a file under a skipped
   directory such as a template skeleton no longer blocks a commit that the
