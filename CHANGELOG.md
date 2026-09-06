@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.29.0 - 2026-09-06
+
 A tag is a release, and a release has notes. The changelog rule pkg kept in
 three shell scripts is now in the binary, for every repository.
 
