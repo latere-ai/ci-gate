@@ -22,6 +22,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 011 | [The hooks hold every cheap gate, and pre-push lints what the push changes](011-hooks-hold-the-cheap-gates.md) | complete | `hook` adds goimports, licence, and otel-client over staged files; a `prepush` runs golangci-lint on the packages a push changes; `contract` and `init` know the second hook |
 | 012 | [A tag is a release, and a release has notes](012-a-tag-is-a-release.md) | complete | `release-notes` prints the `CHANGELOG.md` section for a tag or fails; `prepush` refuses a release tag without one; `release` cuts the tag; `contract` and `init` know the changelog |
 | 013 | [Gate the register of the strings a user reads](013-registers-gate.md) | complete | A `registers` gate: string literals handed to the functions a repository names as user surfaces carry no import path, package-qualified identifier, Kubernetes object, or file path |
+| 014 | [One instrumented run of the suite carries test, race, cover, tempdir and hermetic](014-one-suite-run.md) | draft | A `suite` gate: vet, then one `go test -race` with a cover profile under the hermetic PATH inside the watched TMPDIR; the five gates fold into it in the plan, and CI runs one job where it ran five |
 
 ## Conventions
 
