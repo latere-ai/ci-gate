@@ -23,6 +23,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 012 | [A tag is a release, and a release has notes](012-a-tag-is-a-release.md) | complete | `release-notes` prints the `CHANGELOG.md` section for a tag or fails; `prepush` refuses a release tag without one; `release` cuts the tag; `contract` and `init` know the changelog |
 | 013 | [Gate the register of the strings a user reads](013-registers-gate.md) | complete | A `registers` gate: string literals handed to the functions a repository names as user surfaces carry no import path, package-qualified identifier, Kubernetes object, or file path |
 | 014 | [One instrumented run of the suite carries test, race, cover, tempdir and hermetic](014-one-suite-run.md) | draft | A `suite` gate: vet, then one `go test -race` with a cover profile under the hermetic PATH inside the watched TMPDIR; the five gates fold into it in the plan, and CI runs one job where it ran five |
+| 015 | [The spec deck's cross-reference is one parser and one gate](015-spec-names-gate.md) | draft | `specdeck`, the first package this module exports, and a `spec-names` gate over the names a deck defines; the two copies of `tools/specindex` and their CI jobs go |
 
 ## Conventions
 
