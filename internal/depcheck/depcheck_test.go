@@ -5,6 +5,7 @@ package depcheck
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -170,5 +171,59 @@ func TestAGateWithNoDecisionStillReports(t *testing.T) {
 	}
 	if !strings.Contains(sb.String(), "its allowlist") {
 		t.Errorf("report:\n%s", sb.String())
+	}
+}
+
+// A path under two allowances marks both used. The bug this pins reported
+// one of them as stale at random, because allowedBy returned whichever of
+// the two Go's map iteration reached first.
+func TestNestedAllowancesAreAllMarkedUsed(t *testing.T) {
+	got := allowedBy(map[string]string{
+		"golang.org/x":        "sys, text and time",
+		"golang.org/x/oauth2": "the authorization-code flow",
+		"golang.org/y":        "unrelated",
+	}, "golang.org/x/oauth2/internal")
+	want := []string{"golang.org/x", "golang.org/x/oauth2"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("allowedBy = %v, want %v", got, want)
+	}
+}
+
+// The same tree has to give the same verdict every time. Without the fix
+// this fails on the run where the broader entry wins every draw.
+func TestNestedAllowancesGiveTheSameVerdictEveryRun(t *testing.T) {
+	cfg := gated(map[string]string{
+		"golang.org/x":        "sys, text and time",
+		"golang.org/x/oauth2": "the authorization-code flow",
+	})
+	first := ""
+	for i := range 200 {
+		l, _ := lister(t, map[string][]string{"*": {
+			"golang.org/x/oauth2", "golang.org/x/oauth2/internal", "golang.org/x/sys/unix",
+		}})
+		var sb strings.Builder
+		err := Run(cfg, &sb, l)
+		if err != nil {
+			t.Fatalf("run %d: every allowance is reached, so the gate must pass: %v\n%s", i, err, sb.String())
+		}
+		if first == "" {
+			first = sb.String()
+		} else if sb.String() != first {
+			t.Fatalf("run %d differs from run 0:\n%s\nwant:\n%s", i, sb.String(), first)
+		}
+	}
+}
+
+// The staleness check still fires: an entry nothing reaches is a failure,
+// nesting or not.
+func TestAnAllowanceUnderAnotherStillFailsWhenNothingReachesIt(t *testing.T) {
+	l, _ := lister(t, map[string][]string{"*": {"golang.org/x/sys/unix"}})
+	var sb strings.Builder
+	err := Run(gated(map[string]string{
+		"golang.org/x":        "sys",
+		"golang.org/x/oauth2": "nothing reaches this",
+	}), &sb, l)
+	if err == nil || !strings.Contains(sb.String(), "allows golang.org/x/oauth2") {
+		t.Fatalf("an unreached nested allowance must fail: %v\n%s", err, sb.String())
 	}
 }

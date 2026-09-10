@@ -59,8 +59,10 @@ func Run(cfg config.Depcheck, out io.Writer, list Lister) error {
 			}
 			for _, d := range deps {
 				reached[d] = true
-				if prefix, ok := allowedBy(g.Allow, d); ok {
-					used[prefix] = true
+				if prefixes := allowedBy(g.Allow, d); len(prefixes) > 0 {
+					for _, prefix := range prefixes {
+						used[prefix] = true
+					}
 					continue
 				}
 				problems = append(problems, fmt.Sprintf(
@@ -93,17 +95,26 @@ func Run(cfg config.Depcheck, out io.Writer, list Lister) error {
 	return nil
 }
 
-// allowedBy reports the prefix admitting an import path.
+// allowedBy reports every prefix admitting an import path, in sorted order.
 //
 // The prefix must end at a path boundary, so a sibling module whose path
 // starts with the same bytes is a different module.
-func allowedBy(allow map[string]string, dep string) (string, bool) {
+//
+// All of them, not the first one found: an allowlist may nest, and
+// golang.org/x/oauth2 sits under both its own entry and a broader
+// golang.org/x. Each of those entries is one the build does reach, so each
+// is marked used. Returning a single match left the choice to map iteration
+// order, and the entry that lost the draw was then reported as a stale
+// allowance the build does not reach, at random, on an unchanged tree.
+func allowedBy(allow map[string]string, dep string) []string {
+	var prefixes []string
 	for prefix := range allow {
 		if dep == prefix || strings.HasPrefix(dep, strings.TrimSuffix(prefix, "/")+"/") {
-			return prefix, true
+			prefixes = append(prefixes, prefix)
 		}
 	}
-	return "", false
+	slices.Sort(prefixes)
+	return prefixes
 }
 
 func decisionOf(g config.Gated) string {
