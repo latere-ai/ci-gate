@@ -230,7 +230,6 @@ values and not shape:
 | Kind | Name | Owner | Also named in |
 |---|---|---|---|
 | error code | `forbidden` | [003](003-protocol-contract.md) | 007, 010, 020, 021 |
-| header | `Origo-Stale` | [015](015-degraded-storage.md) | 003, 011 |
 ```
 
 Rows are grouped by kind in `Vocabulary.Kinds` order and sorted by name
@@ -296,7 +295,10 @@ hundred are distinguishable: `spec-names: 214 names of 7 kinds across 27
 specs, specs/README.md current`.
 
 `lateregate spec-names -w` rewrites the table between the markers and
-writes nothing else. It reuses the `-w` the flagset already declares for
+writes nothing else. It writes the table and then fails on any finding
+the deck carries, as both copies do today: the table is current whatever
+the exit code, so an operator regenerating it during the migration sees
+the deck work that remains rather than a command that refused to run. It reuses the `-w` the flagset already declares for
 `license`; a gate cannot rewrite a file, and the writer is the same
 subcommand so the reader never has to find a second tool.
 
@@ -328,7 +330,7 @@ is written down.
 |---|---|---|
 | A table inside a code fence is read as a definition table | Insula tracks fences | **Bug fix**, unconditional. A sample table in a fenced block defines nothing. |
 | A `Method` cell holding `GET, POST` defines one name | Insula splits on the comma | **Bug fix**, unconditional. Two methods on one path are two names. |
-| A mention carrying a query, a fragment, or prose after the path resolves to nothing | Insula cuts the tail | **Bug fix**, unconditional. The name is the method and the path. |
+| A mention carrying a query, a fragment, or prose after the path resolves to nothing | Insula cuts the tail | **Bug fix**, unconditional. The method is separated at the first space, and the path is then cut at the first `?`, `#` or space, so the name is the method and the path. |
 | A token naming a family, `INSULA_` or `LATERE_*`, is read as a variable | Insula skips it | **Bug fix**, refined: a token ending `_` or `_*` is a family unless a definition names it exactly, so a deck that really defines `ORIGO_TLS_*` keeps it. |
 | A definition carrying `<placeholder>` segments matches its instances, longest literal winning and ties going to the first by name | Insula | **Kept**, unconditional. Inert on a deck whose definitions carry no `<`. |
 | `Origo-Event: push` mentions the header and the event kind | Origo splits both sides | **Origo wins**, unconditional. The split emits the whole token and both sides; a side that resolves to nothing is dropped, so it adds mentions and never a finding. Insula's rule, which strips the value and keeps the name, is a subset of it. |
@@ -427,11 +429,11 @@ D4 would refuse.
    regenerated with `spec-names -w` and the deck findings the reconciled
    parser raises are fixed in the same commit; `tools/specindex` is
    deleted and `tools/specrules` added; `tools/apidoc/go.mod` swaps its
-   `require` and `replace` for `latere.ai/x/ci-gate`; the `Makefile`'s
-   `specindex` target goes and `docs` points its rules step at
-   `tools/specrules`. The workflow's `specindex` job **is not deleted**:
-   it loses the `go test` step, keeps promtool and keeps `make docs` plus
-   `git diff --exit-code docs/`, and is renamed for the two things it
+   `require` and `replace` for `latere.ai/x/ci-gate`; the `Makefile` loses
+   its `specindex` target and its `docs` target is unchanged. The
+   workflow's `specindex` job **is not deleted**: it loses the `go test`
+   step, points its promtool step at `tools/specrules`, keeps `make docs`
+   plus `git diff --exit-code docs/`, and is renamed for the two things it
    still does. Green: the `gate` job runs `spec-names` over the
    regenerated table, and the surviving job runs the two checks the gate
    does not hold.
