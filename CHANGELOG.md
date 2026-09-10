@@ -10,6 +10,23 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- `depcheck` no longer fails at random on an unchanged tree. An import path
+  admitted by two allowances at once, such as `golang.org/x/oauth2` under
+  both its own entry and a broader `golang.org/x`, marked only one of them
+  as reached, and which one depended on Go's map iteration order. The entry
+  that lost was then reported as a stale allowance the build does not reach.
+  A repository with nested entries saw this on roughly a third of runs, with
+  an identical reached count on the passing and the failing run. Every
+  matching allowance is now marked reached, so the verdict is the same every
+  time. No allowlist that passes today starts failing; an entry that is
+  redundant rather than stale, because a narrower entry admits everything
+  under it, is no longer reported at all.
+- `cover` and `tempdir` name the same reason on every run for a package or a
+  temporary entry that two waivers match. The most specific waiver's reason
+  wins. Neither gate's pass or fail was affected.
+
 ## v0.31.2 - 2026-09-06
 
 - `lateregate release` runs the full gate before it tags. v0.31.1 was cut
