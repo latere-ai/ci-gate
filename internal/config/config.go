@@ -533,13 +533,18 @@ type TempDir struct {
 
 // AllowedFor reports whether a surviving entry was admitted, and why.
 // Matching is by prefix because a temporary name carries a random suffix.
+//
+// The longest matching prefix wins, so a name two entries admit is always
+// reported against the more specific one. Returning the first match a map
+// range reached printed a different reason on each run of the same suite.
 func (t TempDir) AllowedFor(name string) (string, bool) {
-	for prefix, why := range t.Allow {
-		if strings.HasPrefix(name, prefix) {
-			return why, true
+	best, why, found := "", "", false
+	for prefix, reason := range t.Allow {
+		if strings.HasPrefix(name, prefix) && (!found || len(prefix) > len(best)) {
+			best, why, found = prefix, reason, true
 		}
 	}
-	return "", false
+	return why, found
 }
 
 // Argv is the command the gate runs, with the default applied.
@@ -804,13 +809,17 @@ func (c *Config) validate(path string) error {
 
 // ExemptFor reports whether a package is exempt, and why. Matching is by
 // suffix so a config does not have to repeat the module path.
+//
+// The longest matching suffix wins, for the reason AllowedFor gives: a
+// package two entries exempt has to name the same reason on every run.
 func (c Cover) ExemptFor(pkg string) (string, bool) {
-	for suffix, why := range c.Exempt {
-		if strings.HasSuffix(pkg, suffix) {
-			return why, true
+	best, why, found := "", "", false
+	for suffix, reason := range c.Exempt {
+		if strings.HasSuffix(pkg, suffix) && (!found || len(suffix) > len(best)) {
+			best, why, found = suffix, reason, true
 		}
 	}
-	return "", false
+	return why, found
 }
 
 // AllowsStatus reports whether s is in the configured vocabulary. An empty
