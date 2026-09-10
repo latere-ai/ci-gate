@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.31.3 - 2026-09-10
+
 ### Fixed
 
 - `depcheck` no longer fails at random on an unchanged tree. An import path
