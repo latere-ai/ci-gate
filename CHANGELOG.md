@@ -10,6 +10,16 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- `enum-go` and `enum-typescript` enforce declared enum domains: fields use
+  their named type, implementation uses named members, and switches cover
+  every distinct value even when a default exists. Configure domain types
+  and fields under `enums`; reviewed parser exceptions require a reason.
+- TypeScript checking uses the consumer's installed compiler and supports
+  Vue script blocks. `enum-typescript-prepare` installs frontend dependencies
+  from tracked npm or Bun lockfiles; checking does not install packages.
+
 ## v0.31.3 - 2026-09-10
 
 ### Fixed

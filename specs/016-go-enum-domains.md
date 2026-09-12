@@ -1,6 +1,6 @@
 ---
 title: Go enum domains use named types and members
-status: draft
+status: complete
 depends_on:
   - 001-gate-principles.md
 affects:
@@ -10,7 +10,7 @@ affects:
   - go.mod
 effort: medium
 created: 2026-09-12
-updated: 2026-09-12
+updated: 2026-09-13
 author: changkun
 dispatched_task_id: null
 ---
@@ -50,3 +50,17 @@ Test files are outside the production rule so invalid inputs remain testable.
 - Configuration mistakes fail instead of measuring nothing.
 - Package coverage exceeds 90%; an end-to-end gate fixture exercises loading
   and a failing/passing source edit. No fixture needs the network.
+
+## Outcome
+
+Implemented in `internal/enumcheck` and wired into the shared plan as
+`enum-go`. The repository checks `internal/bar.Status` and `Entry.Status`.
+The analyzer uses `go/packages` with workspace resolution disabled and
+read-only module selection. Typed constant conversions are accepted at
+member declarations; the same conversions at use sites require a parser.
+
+Real fixture packages cover string/integer domains, imports and aliases,
+containers, calls/returns, conversions, parser scope, missing switch cases,
+configuration mistakes, and a failing source edit followed by its fix.
+The Go command fixture exercises the public gate command. The package has
+98.0% statement coverage; the full suite passes under the race detector.

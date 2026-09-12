@@ -1,6 +1,6 @@
 ---
 title: TypeScript enum domains use named types and members
-status: draft
+status: complete
 depends_on:
   - 001-gate-principles.md
 affects:
@@ -11,7 +11,7 @@ affects:
   - internal/bar/
 effort: medium
 created: 2026-09-12
-updated: 2026-09-12
+updated: 2026-09-13
 author: changkun
 dispatched_task_id: null
 ---
@@ -50,3 +50,19 @@ an actionable diagnostic. Input schemas remain responsible for runtime data.
   projects, including a Vue script importing a domain enum.
 - Coverage exceeds 90% for analyzer statements/lines; Go wrapper coverage
   exceeds 90%. Test dependencies are pinned with a frozen install.
+
+## Outcome
+
+Implemented as the embedded `internal/tsenum/analyzer.mjs` and Go wrapper.
+The analyzer resolves the consumer's TypeScript compiler and Vue compiler
+from the configured project. It retains ambient declarations and original
+Vue script positions, and leaves template/prop checking to `vue-tsc`.
+External Vue script sources fail with an explicit diagnostic. Native enum
+members must have constant values; duplicate-valued members count once.
+
+Sixteen Node tests cover successful and rejected source, aliases, parser
+scope, assertions and primitive-cast comparisons, declaration/field errors,
+compiler failures and Vue handling. The Node analyzer has 100% line and
+function coverage; the Go wrapper has 91.7% statement coverage. A compiled
+CLI run verified failing/fixed TypeScript and Vue source using a relative
+`-C` in a repository without `go.mod`.

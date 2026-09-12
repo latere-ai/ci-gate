@@ -1,6 +1,6 @@
 ---
 title: Enum gates run from the shared plan locally and in CI
-status: draft
+status: complete
 depends_on:
   - 016-go-enum-domains.md
   - 017-typescript-enum-domains.md
@@ -15,7 +15,7 @@ affects:
   - ../ci/test/lateregate_test.sh
 effort: medium
 created: 2026-09-12
-updated: 2026-09-12
+updated: 2026-09-13
 author: changkun
 dispatched_task_id: null
 ---
@@ -50,3 +50,19 @@ analyzer tests in a separate CI job with a frozen install.
   proves the gate returns nonzero for a raw enum value.
 - Documentation explains domain selectors, parser exceptions, commands,
   prerequisites and limitations. Changes land as scoped commits on main.
+
+## Outcome
+
+Both enum gates participate in the plan, command dispatch and dated waivers.
+Strict configuration validation and `enum-typescript-prepare` are covered
+by regression tests; preparation has 98.1% statement coverage. It verifies
+all configured projects before installing and deduplicates lockfile owners.
+
+The reusable workflow changes in `latere-ai/ci` set up Node/Bun and prepare
+projects only for `enum-typescript`; workflow tests and actionlint pass.
+The tooling repository's own workflow runs the Node analyzer suite with
+its locked development dependencies. README and changelog document the
+configuration, commands and limits. Application repositories were not
+migrated, as requested. Publishing a ci-gate release and promoting the
+reusable workflow's `v1` tag remain the normal release process, separate
+from this source implementation.

@@ -51,6 +51,8 @@ lateregate: 1 of 13 gates failed: cover
 | `spec-lint` | the spec tree agrees with itself and with its index | git tracks `specs/` |
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
 | `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
+| `enum-go` | declared Go domains use named types, named members and exhaustive switches | `enums.go.types` names a domain |
+| `enum-typescript` | declared TypeScript domains use native enums, named members and exhaustive switches | `enums.typescript` names a project |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
 | `vuln` | govulncheck at the pinned version finds no reachable vulnerability | always |
 | `test` | `go vet` and the suite | always |
@@ -643,6 +645,116 @@ gate applies only when the key names a function: it is opt-in per
 repository, and the review still carries the tells no regular expression
 can, such as a hint with no action.
 
+### Enum domains keep protocol values out of implementation
+
+`enum-go` and `enum-typescript` enforce three properties for the domains a
+repository names: fields retain their enum type, implementation uses named
+members or typed values, and switches handle every distinct enum value.
+They do not guess whether a string is a status, an ID, or an open protocol
+value. Naming the domains is the repository's decision:
+
+```yaml
+enums:
+  go:
+    types: [internal/state.Status]
+    fields:
+      internal/job.Job.Status: internal/state.Status
+  typescript:
+    - project: frontend/tsconfig.json
+      types: [src/state.ts#Status]
+      fields:
+        src/job.ts#Job.status: src/state.ts#Status
+```
+
+Go selectors are a package path and type name, relative to the module or
+as a full import path. `.Status` names a type in the module root. Field
+selectors append the struct field. A configured domain must be a defined
+string or integer type with package-level typed constants. Type aliases
+retain the underlying domain identity.
+
+TypeScript selectors are relative to the tsconfig's directory and name
+`file.ts#Enum` or `file.ts#Interface.field`; type aliases and classes can
+also own fields. The initial representation is a native string or numeric
+`enum`. A literal union or an `as const` object is not a configured native
+enum. A required field cannot widen to `string`, `number`, another enum,
+or a union with those types. Optional TypeScript fields may also hold
+`undefined`; optional Go fields may use a pointer to the configured type.
+
+For example, with `Status` configured, Go accepts `var s Status = Running`
+and rejects `var s Status = "running"`. TypeScript accepts
+`status === Status.Running` and rejects `status === "running"`. Both gates
+check assignments, arguments, returns, composite values and switches.
+`default` does not cover a missing member. Duplicate-valued members count
+as one value. Explicit primitive casts immediately before comparisons or
+switches do not hide the original enum domain.
+
+Use a parser that validates external values and returns named members at
+input boundaries. When a parser needs a direct conversion, declare the
+function and why; `parsers` is available in either language's policy:
+
+```yaml
+enums:
+  go:
+    types: [internal/state.Status]
+    parsers:
+      internal/state.ParseStatus: validates persisted status before converting it
+  typescript:
+    - project: frontend/tsconfig.json
+      types: [src/state.ts#Status]
+      parsers:
+        src/state.ts#parseStatus: validates the API response before asserting its type
+```
+
+The exception permits conversion inside that function. It does not permit
+raw enum assignments or comparisons, incomplete switches, or conversion
+inside a nested callback. It does not prove the parser validates its input;
+boundary tests must establish that. Enum-to-primitive conversion remains
+available for serialization. This is a source/type check, not runtime
+validation or dataflow tracking through arbitrary primitive variables.
+
+Run either gate independently:
+
+```sh
+go tool lateregate enum-go
+go tool lateregate enum-typescript-prepare  # after cloning or changing a lockfile
+go tool lateregate enum-typescript
+```
+
+The Go gate uses the module's pinned dependencies with `GOWORK=off` and
+`-mod=readonly`, under the current platform and build tags. It scans production
+packages, not tests. A configured type or field that does not resolve fails.
+Run the gate for each build configuration whose domain code differs.
+
+For a TypeScript-only repository, use an installed `lateregate` binary and
+invoke `enum-typescript` directly. That command does not need a consumer
+`go.mod`. The no-argument bar and the reusable Go workflow still assume a
+Go repository; a frontend-only workflow installs its Node dependencies and
+runs the individual enum command.
+
+The TypeScript gate needs Node and the project's installed `typescript`.
+Vue script blocks additionally need `@vue/compiler-sfc`; script-setup macros
+use the project's Vue types. Use the tsconfig that includes application
+source, rather than a solution tsconfig containing only project references.
+The gate reads TypeScript/TSX and Vue scripts, including imported domains;
+Vue templates and component props remain the responsibility of `vue-tsc`.
+External Vue `script src` blocks fail with a diagnostic: include the source
+as a TypeScript file instead. Test files and declaration files are not
+implementation surfaces; ambient declarations still participate in typing.
+Compiler and configuration errors fail the gate.
+
+Preparation finds each project's nearest npm or Bun lockfile inside the
+repository, verifies the lockfile and `package.json` are tracked, and runs
+`npm ci` or `bun install --frozen-lockfile` once per package-manager root.
+Multiple competing lockfiles fail. Checking itself never installs packages.
+The reusable CI workflow prepares dependencies only for `enum-typescript`;
+Go-only repositories do not need Node or Bun. Both gates participate in the
+usual plan and dated waivers.
+
+To test the checker itself, use `go test ./...` and, after `npm ci`,
+`npm run test:enums`. Node fixtures exercise the embedded script with real
+TypeScript/Vue projects and enforce coverage. No application migration is
+needed to test or adopt the tooling repository.
+
 ## Running the bar in CI
 
 The reusable workflow in `latere-ai/ci` asks the binary for its plan and
@@ -724,4 +836,11 @@ otel_client: {skip: []}
 registers:                 # applies when user_surfaces names a function
   user_surfaces: []        # package path and function: internal/api.WriteError
   skip: []                 # directories the scan does not enter
+
+enums:
+  go:
+    types: []              # package.Type; .Type is the module root
+    fields: {}             # package.Struct.Field -> configured package.Type
+    parsers: {}            # package.Function -> reason for primitive conversion
+  typescript: []           # entries: {project, types, fields, parsers}; selectors are file.ts#Symbol
 ```
