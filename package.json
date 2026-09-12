@@ -1,0 +1,13 @@
+{
+  "name": "@latere-ai/ci-gate-enum-tests",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "test:enums": "node --test --experimental-test-coverage --test-coverage-include=internal/tsenum/analyzer.mjs --test-coverage-lines=91 --test-coverage-functions=90 internal/tsenum/analyzer.test.mjs"
+  },
+  "devDependencies": {
+    "@vue/compiler-sfc": "3.5.22",
+    "typescript": "5.9.3",
+    "vue": "3.5.22"
+  }
+}
