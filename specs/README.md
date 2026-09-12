@@ -25,6 +25,10 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 014 | [One instrumented run of the suite carries test, race, cover, tempdir and hermetic](014-one-suite-run.md) | draft | A `suite` gate: vet, then one `go test -race` with a cover profile under the hermetic PATH inside the watched TMPDIR; the five gates fold into it in the plan, and CI runs one job where it ran five |
 | 015 | [The spec deck's cross-reference is one parser and one gate](015-spec-names-gate.md) | draft | `specdeck`, the first package this module exports, and a `spec-names` gate over the names a deck defines; the two copies of `tools/specindex` and their CI jobs go |
 
+| 016 | [Go enum domains use named types and members](016-go-enum-domains.md) | draft | Type-aware Go enum members, domain fields and exhaustive switches |
+| 017 | [TypeScript enum domains use named types and members](017-typescript-enum-domains.md) | draft | Type-aware TypeScript and Vue enum checks through the project compiler |
+| 018 | [Enum gates run from the shared plan locally and in CI](018-enum-gate-wiring.md) | draft | Strict policy configuration, gate dispatch, frontend preparation and CI wiring |
+
 ## Conventions
 
 Status is one of three values, and the difference is meant to be legible
