@@ -50,6 +50,7 @@ type Config struct {
 
 	OtelClient OtelClient `yaml:"otel_client"`
 	Registers  Registers  `yaml:"registers"`
+	Enums      Enums      `yaml:"enums"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
@@ -653,6 +654,9 @@ func sameSet(a, b []string) bool {
 
 // validate rejects a config that would make a gate weaker than it looks.
 func (c *Config) validate(path string) error {
+	if err := c.Enums.validate(); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
 	var bad []string
 	for pkg, why := range c.Cover.Exempt {
 		if strings.TrimSpace(why) == "" {
