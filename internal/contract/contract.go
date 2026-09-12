@@ -311,9 +311,18 @@ func checkMakefile(root string, exec gates.Exec) (string, error) {
 		//nolint:nilerr // absence is the pass, not an error
 		return "", nil
 	}
+	// The probe owns temporary files left by make and its launcher. On macOS,
+	// even reading the database leaves Apple's xcrun_db cache under TMPDIR.
+	// Keep that work in a directory we remove, including on a failed probe.
+	dir, err := os.MkdirTemp("", "lateregate-make")
+	if err != nil {
+		return "", fmt.Errorf("making the Makefile probe's temporary directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	env := append(os.Environ(), "TMPDIR="+dir, "TMP="+dir, "TEMP="+dir)
 	// make -n exits non-zero when a default goal fails to build; the database
 	// is printed either way and an empty one is caught below.
-	db, _ := exec(nil, false, "make", "-np")
+	db, _ := exec(env, false, "make", "-np")
 	if strings.TrimSpace(string(db)) == "" {
 		return "", fmt.Errorf("make printed no rule database for the Makefile at %s: this cannot tell a Makefile with no targets from make failing to run", root)
 	}

@@ -20,6 +20,12 @@ committed: the commit log already holds that.
   Vue script blocks. `enum-typescript-prepare` installs frontend dependencies
   from tracked npm or Bun lockfiles; checking does not install packages.
 
+### Fixed
+
+- `contract` cleans up temporary files from its Makefile probe, including
+  Apple's `xcrun_db` cache. Running the test suite through `tempdir` on macOS
+  no longer fails because the probe leaves that cache behind.
+
 ## v0.31.3 - 2026-09-10
 
 ### Fixed

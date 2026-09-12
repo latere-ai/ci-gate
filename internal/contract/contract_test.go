@@ -6,6 +6,7 @@ package contract
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -261,6 +262,101 @@ func TestAnEmptyMakeDatabaseIsAnError(t *testing.T) {
 	_, err := check(t, dir, untracked(""))
 	if err == nil || !strings.Contains(err.Error(), "no rule database") {
 		t.Fatalf("make failing to run must not read as a Makefile with no targets, got %v", err)
+	}
+}
+
+// Tools invoked by a probe can keep caches under TMPDIR. The probe owns
+// their lifetime even when make fails or the database fails the contract.
+func TestMakefileProbeCleansTemporaryFiles(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		db   string
+		err  error
+		want string
+	}{
+		{"clean database", "build:\n\tgo build ./...\n", nil, ""},
+		{"invalid contract", "lint:\n\tlint ./...\n", nil, "hand-rolls"},
+		{"failed make", "", errors.New("exit 1"), "no rule database"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			write(t, root, "Makefile", "build:\n")
+			parent := t.TempDir()
+			for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+				t.Setenv(key, parent)
+			}
+			t.Setenv("LATEREGATE_PROBE_TEST", "inherited")
+			probe := func(env []string, _ bool, _ string, _ ...string) ([]byte, error) {
+				if env == nil {
+					env = os.Environ()
+				}
+				vars := map[string]string{}
+				for _, entry := range env {
+					key, value, _ := strings.Cut(entry, "=")
+					vars[key] = value
+				}
+				if vars["LATEREGATE_PROBE_TEST"] != "inherited" {
+					t.Fatal("the probe lost the caller's environment")
+				}
+				for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+					write(t, vars[key], key+"-cache", "tool cache")
+				}
+				return []byte(tc.db), tc.err
+			}
+			finding, err := checkMakefile(root, probe)
+			if tc.want == "" && (finding != "" || err != nil) {
+				t.Fatalf("clean database failed: %s, %v", finding, err)
+			}
+			if tc.want != "" && !strings.Contains(finding, tc.want) &&
+				(err == nil || !strings.Contains(err.Error(), tc.want)) {
+				t.Fatalf("want %q, got %q, %v", tc.want, finding, err)
+			}
+			entries, err := os.ReadDir(parent)
+			must(t, err)
+			if len(entries) != 0 {
+				t.Fatalf("make's temporary files outlived the probe: %v", entries)
+			}
+		})
+	}
+}
+
+// Exercise an actual make process. $(shell ...) runs while make reads the
+// database, including with -n; Apple's make launcher also leaves xcrun_db.
+func TestMakefileProbeCleansRealMakeTemporaryFiles(t *testing.T) {
+	if _, err := exec.LookPath("make"); err != nil {
+		t.Skip("make is unavailable")
+	}
+	root := t.TempDir()
+	write(t, root, "Makefile", "cache := $(shell printf cache > \"$$TMPDIR/contract-make-cache\")\nbuild:\n\t@:\n")
+	parent := t.TempDir()
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(key, parent)
+	}
+	var output strings.Builder
+	finding, err := checkMakefile(root, gates.OSExec(root, &output))
+	if err != nil || finding != "" {
+		t.Fatalf("make probe failed: %s, %v\n%s", finding, err, &output)
+	}
+	entries, err := os.ReadDir(parent)
+	must(t, err)
+	if len(entries) != 0 {
+		t.Fatalf("make's temporary files outlived the probe: %v", entries)
+	}
+}
+
+func TestMakefileProbeReportsAnUnavailableTemporaryDirectory(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "Makefile", "build:\n")
+	write(t, root, "not-a-directory", "file")
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(key, filepath.Join(root, "not-a-directory"))
+	}
+	_, err := checkMakefile(root, func(_ []string, _ bool, _ string, _ ...string) ([]byte, error) {
+		t.Fatal("make must not run without its temporary directory")
+		return nil, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "Makefile probe's temporary directory") {
+		t.Fatalf("want a temporary directory error, got %v", err)
 	}
 }
 

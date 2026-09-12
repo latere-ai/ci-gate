@@ -69,6 +69,8 @@ from this source implementation.
 
 Local validation passed lint, vet, race tests, coverage, hermetic tests,
 workflow tests, actionlint and the reachable-vulnerability scan. The macOS
-`tempdir` check reports Apple's 608-byte `xcrun_db` cache on both this tree
-and a clean checkout of pre-change commit `3329543`; that existing host-tool
-artifact is outside this enum implementation.
+`tempdir` check initially reported Apple's 608-byte `xcrun_db` cache on both
+this tree and a clean checkout of pre-change commit `3329543`. A follow-up
+fix makes `contract` own and clean the temporary directory used by its
+Makefile probe; regression tests cover real make execution and cleanup on
+failure without adding an allowance to `tempdir`.
