@@ -114,6 +114,54 @@ func TestPlanFailsWhenGitCannotAnswer(t *testing.T) {
 	}
 }
 
+func TestEnumGatesFollowDeclaredDomainsAndWaivers(t *testing.T) {
+	c, _ := ctx(t, nil, noSpecs)
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"enum-go", "enum-typescript"} {
+		if e := entry(plan, name); e.Status != Skip || e.Reason == "" {
+			t.Fatalf("unconfigured %s: %+v", name, e)
+		}
+	}
+	c.Cfg.Enums.Go.Types = []string{"internal/state.Status"}
+	c.Cfg.Enums.TypeScript = []config.TypeScriptEnums{{Project: "frontend/tsconfig.json", Types: []string{"src/state.ts#Status"}}}
+	c.Cfg.Waive = map[string]config.Waiver{"enum-go": {Reason: "migration", Until: "2026-09-01"}}
+	plan, err = Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry(plan, "enum-go").Status != Waived || entry(plan, "enum-typescript").Status != Run {
+		t.Fatalf("wrong enum plan: %+v", plan)
+	}
+	c.Now = day.AddDate(0, 0, 1)
+	plan, err = Plan(c)
+	if err != nil || entry(plan, "enum-go").Status != Run {
+		t.Fatalf("expired enum waiver: %+v %v", plan, err)
+	}
+}
+
+func TestTypeScriptGatePassesPolicyToEmbeddedAnalyzer(t *testing.T) {
+	called := false
+	c, _ := ctx(t, nil, func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		called = true
+		if name != "node" || !strings.Contains(strings.Join(args, " "), "src/state.ts#Status") {
+			t.Fatalf("wrong analyzer invocation: %s", name)
+		}
+		return nil, nil
+	})
+	c.Cfg.Enums.TypeScript = []config.TypeScriptEnums{{Project: "tsconfig.json", Types: []string{"src/state.ts#Status"}}}
+	g, _ := Find("enum-typescript")
+	if err := g.Run(c); err != nil || !called {
+		t.Fatalf("TypeScript gate: %v called=%v", err, called)
+	}
+	g, _ = Find("enum-go")
+	if err := g.Run(c); err == nil {
+		t.Fatal("direct Go gate with no domain passed")
+	}
+}
+
 func TestALiveWaiverSkipsAndAnExpiredOneRuns(t *testing.T) {
 	c, _ := ctx(t, nil, withSpecs)
 	c.Cfg.Waive = map[string]config.Waiver{

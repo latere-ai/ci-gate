@@ -22,11 +22,13 @@ import (
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/cover"
 	"latere.ai/x/ci-gate/internal/depcheck"
+	"latere.ai/x/ci-gate/internal/enumcheck"
 	"latere.ai/x/ci-gate/internal/gates"
 	"latere.ai/x/ci-gate/internal/golangci"
 	"latere.ai/x/ci-gate/internal/license"
 	"latere.ai/x/ci-gate/internal/registers"
 	"latere.ai/x/ci-gate/internal/speclint"
+	"latere.ai/x/ci-gate/internal/tsenum"
 )
 
 // Ctx is what a gate runs with.
@@ -89,6 +91,25 @@ var Gates = []Gate{
 			return true, "", nil
 		},
 		Run: func(c Ctx) error { return registers.Run(c.Cfg.Registers, c.Root, c.Out) }},
+	{Name: "enum-go", Doc: "declared Go enums use named types, named members and exhaustive switches",
+		Applies: func(c Ctx) (bool, string, error) {
+			return len(c.Cfg.Enums.Go.Types) > 0, "enums.go.types names no domain", nil
+		},
+		Run: func(c Ctx) error {
+			p := c.Cfg.Enums.Go
+			return enumcheck.Run(enumcheck.Policy{Types: p.Types, Fields: p.Fields, Parsers: p.Parsers}, c.Root, c.Out)
+		}},
+	{Name: "enum-typescript", Doc: "declared TypeScript enums use named types, named members and exhaustive switches",
+		Applies: func(c Ctx) (bool, string, error) {
+			return len(c.Cfg.Enums.TypeScript) > 0, "enums.typescript names no project", nil
+		},
+		Run: func(c Ctx) error {
+			projects := make([]tsenum.Project, 0, len(c.Cfg.Enums.TypeScript))
+			for _, p := range c.Cfg.Enums.TypeScript {
+				projects = append(projects, tsenum.Project{Project: p.Project, Types: p.Types, Fields: p.Fields, Parsers: p.Parsers})
+			}
+			return tsenum.Run(projects, c.Root, c.Out, c.Exec)
+		}},
 	{Name: "lint", Doc: "golangci-lint " + golangci.Version + " against the shared config",
 		Run: func(c Ctx) error { return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec) }},
 	{Name: "vuln", Doc: "govulncheck " + gates.VulnVersion + " finds no reachable vulnerability",
@@ -290,6 +311,8 @@ func Check(c Ctx) error {
 			} else {
 				_, _ = fmt.Fprintln(c.Out, line(e, "PASS", ""))
 			}
+		case Skip, Waived:
+			_, _ = fmt.Fprintln(c.Out, line(e, "", ""))
 		default:
 			_, _ = fmt.Fprintln(c.Out, line(e, "", ""))
 		}

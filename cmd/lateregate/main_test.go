@@ -48,6 +48,36 @@ func TestHelpSucceeds(t *testing.T) {
 	}
 }
 
+func TestEnumGoCommandRejectsLiteralThenAcceptsNamedMember(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"go.mod":           "module example.test/enumcli\n\ngo 1.27.0\n",
+		".lateregate.yaml": "enums:\n  go:\n    types: [.Status]\n    fields: {.Job.Status: .Status}\n",
+		"state.go":         "package enumcli\ntype Status string\nconst Running Status = \"running\"\ntype Job struct { Status Status }\nvar Current = Job{Status: \"running\"}\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	text, err := out(t, "enum-go", "-C", dir)
+	if err == nil || !strings.Contains(text, "use a named") {
+		t.Fatalf("literal passed command: %v\n%s", err, text)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "state.go"), []byte(strings.ReplaceAll(files["state.go"], "Job{Status: \"running\"}", "Job{Status: Running}")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := out(t, "enum-go", "-C", dir); err != nil {
+		t.Fatalf("named member failed command: %v\n%s", err, text)
+	}
+}
+
+func TestTypeScriptPreparationCommandFailsWithoutProjects(t *testing.T) {
+	if _, err := out(t, "enum-typescript-prepare", "-C", t.TempDir()); err == nil || !strings.Contains(err.Error(), "no projects") {
+		t.Fatalf("preparation did not dispatch: %v", err)
+	}
+}
+
 func TestAnUnknownCommandFails(t *testing.T) {
 	s, err := out(t, "cover-everything")
 	if err == nil || !strings.Contains(err.Error(), "unknown command") {

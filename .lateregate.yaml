@@ -2,6 +2,12 @@
 # the tool can decide for a repository it decides by default, so a key here
 # is one somebody chose. This is the tool gating itself with its own file,
 # which is the only way the schema stays honest.
+enums:
+  go:
+    types: [internal/bar.Status]
+    fields:
+      internal/bar.Entry.Status: internal/bar.Status
+
 cover:
   exempt:
     # The value is the reason. lateregate rejects an empty one.

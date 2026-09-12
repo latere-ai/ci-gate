@@ -26,6 +26,7 @@ import (
 	"latere.ai/x/ci-gate/internal/changelog"
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/contract"
+	"latere.ai/x/ci-gate/internal/enumsetup"
 	"latere.ai/x/ci-gate/internal/gates"
 	"latere.ai/x/ci-gate/internal/golangci"
 	"latere.ai/x/ci-gate/internal/license"
@@ -43,6 +44,8 @@ Usage:
 	lateregate hook            the pre-commit checks over the staged Go files
 	lateregate prepush         refuse a release tag with no changelog section, then golangci-lint over the packages the push on stdin changes
 	lateregate golangci        render the shared .golangci.yml without linting
+	lateregate enum-typescript-prepare
+	                           install configured frontend dependencies from tracked lockfiles
 	lateregate release-notes TAG [REF]
 	                           print the CHANGELOG.md section for TAG, read at REF (default: the working tree), or fail
 	lateregate release VERSION move the notes under "## Unreleased" into a section for VERSION, commit, tag, push
@@ -139,6 +142,8 @@ func run(argv []string, out io.Writer) error {
 		return bar.Check(ctx)
 	case "list":
 		return bar.List(ctx, *asJSON)
+	case "enum-typescript-prepare":
+		return enumsetup.Prepare(cfg.Enums.TypeScript, *root, out, ctx.Exec)
 	case "contract":
 		return contract.Run(*root, cfg, out, ctx.Exec)
 	case "init":
