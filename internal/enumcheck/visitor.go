@@ -38,6 +38,9 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			for i, name := range n.Names {
 				obj := v.pkg.TypesInfo.Defs[name]
 				if d := v.domain(obj.Type()); d != nil {
+					if _, constant := obj.(*types.Const); constant && name.Name == "_" && v.signature == nil {
+						continue // A blank iota entry reserves a value without defining a member.
+					}
 					if d.members[obj] {
 						continue // Literal conversions define this member's wire value.
 					}

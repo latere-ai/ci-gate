@@ -229,8 +229,10 @@ type Status string
 const Running, Counter = Status("running"), 1
 const Stopped = Status("stopped")
 var current Status = Running
+type Count int
+const (_ Count = iota; Ready; Done)
 `})
-	if output, err := run(t, Policy{Types: []string{".Status"}}, root); err != nil {
+	if output, err := run(t, Policy{Types: []string{".Status", ".Count"}}, root); err != nil {
 		t.Fatalf("typed constant declaration rejected: %v\n%s", err, output)
 	}
 }
