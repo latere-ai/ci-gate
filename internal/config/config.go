@@ -51,6 +51,7 @@ type Config struct {
 	OtelClient OtelClient `yaml:"otel_client"`
 	Registers  Registers  `yaml:"registers"`
 	Enums      Enums      `yaml:"enums"`
+	Identity   Identity   `yaml:"identity"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
@@ -586,6 +587,17 @@ func Load(dir string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	// Whether the file carried the identity block at all is what the gate
+	// reports on, and an empty block and an absent one unmarshal alike. A
+	// second pass over the same bytes into a pointer is what tells them
+	// apart.
+	var raw struct {
+		Identity *Identity `yaml:"identity"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	c.Identity.Present = raw.Identity != nil
 	if err := c.validate(path); err != nil {
 		return nil, err
 	}
@@ -633,6 +645,12 @@ func defaults(c *Config, dir string) *Config {
 			c.Spec.Index = DefaultSpecIndex
 		}
 	}
+	if c.Identity.Registry == DefaultRegistry {
+		c.Restated = append(c.Restated, "identity.registry")
+	}
+	if c.Identity.Role == RoleIssuer && c.Identity.Registry == "" {
+		c.Identity.Registry = DefaultRegistry
+	}
 	if sl := c.Golangci.Sloglint; sl == nil {
 		c.Golangci.Sloglint = &Sloglint{Context: DefaultSloglintContext}
 	} else if sl.Context == DefaultSloglintContext && sl.RequestPaths == "" && len(sl.Exempt) == 0 {
@@ -656,6 +674,9 @@ func sameSet(a, b []string) bool {
 func (c *Config) validate(path string) error {
 	if err := c.Enums.validate(); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
+	}
+	if err := c.Identity.validate(path); err != nil {
+		return err
 	}
 	var bad []string
 	for pkg, why := range c.Cover.Exempt {

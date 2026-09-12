@@ -4,9 +4,16 @@
 # which is the only way the schema stays honest.
 enums:
   go:
-    types: [internal/bar.Status]
+    types: [internal/bar.Status, internal/config.Role]
     fields:
       internal/bar.Entry.Status: internal/bar.Status
+      internal/config.Identity.Role: internal/config.Role
+
+identity:
+  # A tool, not a service: it verifies no token and presents none. The role is
+  # declared rather than absent, because the family check lists it and a
+  # repository outside the shape by omission is the gap the gate exists for.
+  role: none
 
 cover:
   exempt:
