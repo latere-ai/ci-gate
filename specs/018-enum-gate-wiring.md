@@ -66,3 +66,9 @@ configuration, commands and limits. Application repositories were not
 migrated, as requested. Publishing a ci-gate release and promoting the
 reusable workflow's `v1` tag remain the normal release process, separate
 from this source implementation.
+
+Local validation passed lint, vet, race tests, coverage, hermetic tests,
+workflow tests, actionlint and the reachable-vulnerability scan. The macOS
+`tempdir` check reports Apple's 608-byte `xcrun_db` cache on both this tree
+and a clean checkout of pre-change commit `3329543`; that existing host-tool
+artifact is outside this enum implementation.
