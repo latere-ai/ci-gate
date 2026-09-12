@@ -223,6 +223,18 @@ var current Status = Running
 	}
 }
 
+func TestEnumDeclarationsMayUseTypedConstantConversions(t *testing.T) {
+	root := fixture(t, map[string]string{"state.go": `package state
+type Status string
+const Running, Counter = Status("running"), 1
+const Stopped = Status("stopped")
+var current Status = Running
+`})
+	if output, err := run(t, Policy{Types: []string{".Status"}}, root); err != nil {
+		t.Fatalf("typed constant declaration rejected: %v\n%s", err, output)
+	}
+}
+
 func TestRunConfigurationFailures(t *testing.T) {
 	root := fixture(t, map[string]string{"state/state.go": enumSource})
 	tests := []struct {

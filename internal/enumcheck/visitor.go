@@ -37,10 +37,15 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 		if len(n.Names) == len(n.Values) {
 			for i, name := range n.Names {
 				obj := v.pkg.TypesInfo.Defs[name]
-				if d := v.domain(obj.Type()); d != nil && !d.members[obj] {
+				if d := v.domain(obj.Type()); d != nil {
+					if d.members[obj] {
+						continue // Literal conversions define this member's wire value.
+					}
 					v.checkValue(n.Values[i], d)
 				}
+				ast.Walk(v, n.Values[i])
 			}
+			return nil
 		}
 	case *ast.AssignStmt:
 		if len(n.Lhs) == len(n.Rhs) {
