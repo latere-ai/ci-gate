@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.32.1 - 2026-09-13
+
 ### Added
 
 - The `identity` block takes a `waive` map keyed by rule, so a repository
