@@ -89,6 +89,12 @@ type Identity struct {
 	Registry string `yaml:"registry"`
 	// Audiences are the product audiences a client mints for. Client only.
 	Audiences []string `yaml:"audiences"`
+	// ReachedBy says who presents this repository's audience: "clients", the
+	// default, means a registered client mints an actor token for it and the
+	// family check expects the registry to list it; "services" means no
+	// client acts here for a person, only service tokens or operators reach
+	// it, and the family check expects no such row. Roles that verify only.
+	ReachedBy string `yaml:"reached_by"`
 	// Waive maps a rule name to the decision not to hold this repository to
 	// it yet. It is per rule, not per gate, so a repository behind on one
 	// rule keeps the other ten running; every entry carries a reason and
@@ -102,6 +108,15 @@ type Identity struct {
 	// is a record, from an open one, which describes the current system.
 	Settled []string `yaml:"-"`
 }
+
+// ReachedByValues are the ways a verified audience is reached: by a
+// registered client minting an actor token for it, or by service tokens and
+// operators alone, with no client acting for a person.
+var ReachedByValues = []string{"clients", "services"}
+
+// ReachedByClients reports whether the family check expects a client to be
+// registered to mint for this repository's audience.
+func (i Identity) ReachedByClients() bool { return i.ReachedBy == "" || i.ReachedBy == "clients" }
 
 // Verifies reports whether this role verifies a token addressed to itself,
 // which is the set of roles that must name an audience.
@@ -139,6 +154,14 @@ func (i Identity) validate(path string) error {
 		return fmt.Errorf("%s: identity.registry is set and identity.role is %q\n"+
 			"the client registry belongs to the issuer, and a registry nothing "+
 			"reads is a decision with no effect", path, string(i.Role))
+	}
+	if i.ReachedBy != "" && !slices.Contains(ReachedByValues, i.ReachedBy) {
+		return fmt.Errorf("%s: identity.reached_by %q is not a way an audience is reached\n"+
+			"one of %s", path, i.ReachedBy, strings.Join(ReachedByValues, ", "))
+	}
+	if i.ReachedBy != "" && !i.Verifies() {
+		return fmt.Errorf("%s: identity.reached_by is set and identity.role is %q\n"+
+			"only a role that verifies an audience says who reaches it", path, string(i.Role))
 	}
 	if len(i.Audiences) > 0 && i.Role != RoleClient {
 		return fmt.Errorf("%s: identity.audiences is set and identity.role is %q\n"+

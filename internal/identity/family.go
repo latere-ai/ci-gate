@@ -103,6 +103,7 @@ func readFamily(dir string) ([]repository, error) {
 func crossCheck(repos []repository) []string {
 	var findings []string
 	verified := map[string][]string{}
+	byClients := map[string]bool{}
 	minted := map[string][]string{}
 	issuers := 0
 	var registered []string
@@ -118,6 +119,9 @@ func crossCheck(repos []repository) []string {
 		}
 		if r.cfg.Verifies() {
 			verified[r.cfg.Audience] = append(verified[r.cfg.Audience], r.name)
+			if r.cfg.ReachedByClients() {
+				byClients[r.cfg.Audience] = true
+			}
 		}
 		for _, a := range r.cfg.Audiences {
 			minted[a] = append(minted[a], r.name)
@@ -142,9 +146,10 @@ func crossCheck(repos []repository) []string {
 				"belongs to one repository, or a token minted for either reaches both",
 				strings.Join(verified[a][:len(verified[a])-1], ", "), verified[a][len(verified[a])-1], a))
 		}
-		if issuers > 0 && !slices.Contains(registered, a) {
+		if issuers > 0 && byClients[a] && !slices.Contains(registered, a) {
 			findings = append(findings, fmt.Sprintf("%s verifies the audience %q and the registry does not "+
-				"list it, so nothing can be minted for it", strings.Join(verified[a], ", "), a))
+				"list it, so nothing can be minted for it; register a client for it, or declare "+
+				"reached_by: services if no client acts there for a person", strings.Join(verified[a], ", "), a))
 		}
 	}
 	for _, a := range slices.Compact(slices.Sorted(slices.Values(registered))) {

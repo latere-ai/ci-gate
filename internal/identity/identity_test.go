@@ -143,6 +143,19 @@ type Claims struct {
 var _ = jwt.Verify
 `
 
+const eventsFile = `package api
+
+import "latere.ai/x/pkg/authkit/jwt"
+
+// event is one audit row as the API renders it.
+type event struct {
+	ID      int64  ` + "`json:\"id\"`" + `
+	ActorID string ` + "`json:\"actor_id\"`" + `
+}
+
+var _ = jwt.Verify
+`
+
 const storeFile = `package store
 
 // Row is one attribution record.
@@ -230,6 +243,14 @@ func ruleCases(core, service, client, settledService config.Identity) []ruleCase
 		rule: "delegation", cfg: service,
 		bad:  map[string]string{"internal/token/claims.go": fmtClaims("AgentID string `json:\"agent_id\"`")},
 		good: map[string]string{"internal/store/row.go": storeFile},
+	}, {
+		// A handler that verifies tokens also renders its audit rows, and
+		// the row's actor column is not a claim because the file imports the
+		// verifier; the same tag beside sub and exp still is.
+		name: "an attribution column in a file that verifies tokens is not a claim",
+		rule: "delegation", cfg: service,
+		bad:  map[string]string{"internal/api/claims.go": fmtClaims("ActorID string `json:\"actor_id\"`")},
+		good: map[string]string{"internal/api/events.go": eventsFile},
 	}, {
 		name: "access by role, not by a flag",
 		rule: "roles", cfg: withRolesOnly(service),

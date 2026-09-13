@@ -167,6 +167,21 @@ func TestIdentityFamily(t *testing.T) {
 	}
 }
 
+// A service no client acts at for a person says so, and the family check
+// then expects no registry row for its audience rather than demanding one.
+func TestIdentityFamilyAcceptsAnAudienceReachedByServices(t *testing.T) {
+	repos := shape()
+	repos["eval"] = "identity:\n  role: service\n  audience: eval\n  reached_by: services\n"
+	if out, err := family(t, blocks(t, repos, registryFile), ""); err != nil {
+		t.Fatalf("a service reached by services alone needs no registry row: %v\n%s", err, out)
+	}
+	repos["eval"] = "identity:\n  role: service\n  audience: eval\n"
+	if _, err := family(t, blocks(t, repos, registryFile), ""); err == nil ||
+		!strings.Contains(err.Error(), `eval verifies the audience "eval" and the registry does not list it`) {
+		t.Fatalf("the default still asks for a registry row: %v", err)
+	}
+}
+
 // The registry the issuer cannot be read from is a check that measured
 // nothing, which fails rather than passing.
 func TestIdentityFamilyNeedsTheRegistry(t *testing.T) {

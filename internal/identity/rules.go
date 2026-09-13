@@ -305,8 +305,10 @@ const requestPathSentence = "this calls the issuer while serving a request; a se
 // The retired names are plain substrings anywhere. The claim names are not:
 // one product carries an agent identity as an attribution column, which the
 // family's decision allows, so those three are a finding only where they are
-// a token claim, which is a JSON key or a struct tag in a type that also
-// carries the registered claims, or in a file that is about claims at all.
+// a token claim: a struct tag in a type that also carries the registered
+// claims, or a bare occurrence, outside any struct type, in a file that is
+// about claims at all. A struct tag in a type that carries no registered
+// claim is a column of that type, whatever the file imports.
 func ruleDelegation(t *tree) (result, error) {
 	if len(t.goFiles) == 0 && len(t.docs) == 0 {
 		return result{skip: "no non-test Go file and no document outside the archive"}, nil
@@ -314,11 +316,12 @@ func ruleDelegation(t *tree) (result, error) {
 	var found []Finding
 	for _, g := range t.goFiles {
 		found = append(found, retiredIn(g.sourceFile)...)
-		found = append(found, delegationClaims(g.sourceFile, aboutClaims(g), claimsLines(t, g))...)
+		claims, other := typeLines(t, g)
+		found = append(found, delegationClaims(g.sourceFile, aboutClaims(g), claims, other)...)
 	}
 	for _, d := range t.docs {
 		found = append(found, retiredIn(d)...)
-		found = append(found, delegationClaims(d, claimsWord.MatchString(d.text), nil)...)
+		found = append(found, delegationClaims(d, claimsWord.MatchString(d.text), nil, nil)...)
 	}
 	return result{findings: found,
 		note: fmt.Sprintf("%d Go file(s) and %d document(s) name no delegation", len(t.goFiles), len(t.docs))}, nil
@@ -342,15 +345,17 @@ func retiredIn(s sourceFile) []Finding {
 	return found
 }
 
-// delegationClaims reports the claim names where they are a claim: in a file
-// about claims, or on a line inside a type that carries the registered ones.
-func delegationClaims(s sourceFile, aboutClaims bool, inClaimsType map[int]bool) []Finding {
+// delegationClaims reports the claim names where they are a claim: on a line
+// inside a type that carries the registered ones, or, in a file about
+// claims, on a line outside every other struct type. A line inside a type
+// that carries no registered claim is a column of that type.
+func delegationClaims(s sourceFile, aboutClaims bool, inClaimsType, inOtherType map[int]bool) []Finding {
 	var found []Finding
 	for i, line := range s.lines {
 		if !delegationClaim.MatchString(line) {
 			continue
 		}
-		if aboutClaims || inClaimsType[i+1] {
+		if inClaimsType[i+1] || (aboutClaims && !inOtherType[i+1]) {
 			found = append(found, at(s.rel, i+1, delegationClaimSentence))
 		}
 	}
@@ -362,21 +367,27 @@ func aboutClaims(g goFile) bool {
 	return g.imported(verifierPackage) || claimsWord.MatchString(g.text)
 }
 
-// claimsLines marks the lines of every type that carries the registered
-// claims, so a delegation claim beside them is read as a claim.
-func claimsLines(t *tree, g goFile) map[int]bool {
-	lines := map[int]bool{}
+// typeLines marks the lines of every struct type in the file: those of a
+// type that carries the registered claims, where a delegation claim beside
+// them is read as a claim, and those of every other type, where the same
+// tag is a column of that type.
+func typeLines(t *tree, g goFile) (claims, other map[int]bool) {
+	claims, other = map[int]bool{}, map[int]bool{}
 	ast.Inspect(g.file, func(n ast.Node) bool {
 		st, ok := n.(*ast.StructType)
-		if !ok || st.Fields == nil || !carriesClaims(st) {
+		if !ok || st.Fields == nil {
 			return true
 		}
+		into := other
+		if carriesClaims(st) {
+			into = claims
+		}
 		for line := t.line(st.Pos()); line <= t.line(st.End()); line++ {
-			lines[line] = true
+			into[line] = true
 		}
 		return true
 	})
-	return lines
+	return claims, other
 }
 
 // carriesClaims reports whether a type holds the registered claims.

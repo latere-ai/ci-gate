@@ -10,6 +10,22 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- `identity`, the delegation rule: `act`, `agent_id` and `actor_id` as a
+  struct tag in a type that carries no registered claim are a column of
+  that type wherever the file lives, so a handler that verifies tokens may
+  render an audit row with an `actor_id` field. A bare occurrence in a
+  file about claims, and a tag beside `sub`, `aud` or `exp`, are findings
+  as before.
+
+### Added
+
+- `identity.reached_by`: `clients` (the default) or `services`. A service
+  no client acts at for a person declares `services`, and the family check
+  then expects no client registry row for its audience instead of failing
+  on the missing one.
+
 ## v0.32.2 - 2026-09-13
 
 ### Changed

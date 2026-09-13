@@ -60,6 +60,7 @@ identity:
   roles_only: false          # the roles rule, which is one way once set
   registry: deploy/base/clients.yaml   # the client registry; issuer only, and the default
   audiences: []              # the product audiences this client presents; client only
+  reached_by: clients        # clients (default): a registered client mints for this audience; services: only service tokens or operators reach it, and the family check expects no registry row
 ```
 
 `none` is for a repository with no identity surface, a library or a
@@ -93,7 +94,7 @@ runs a service.
 | one verifier (C5) | core, service, platform, bff | `latere.ai/x/pkg/authkit/jwt` imported somewhere; no import of another JWT library, and no `base64.RawURLEncoding.DecodeString` applied to a segment of a bearer outside `authkit`; `depcheck`'s allow list carries the same decision, and this rule names it |
 | one contract (C3) | core | `latere.ai/x/pkg/authz` imported; no hand-rolled `POST` to a path named `authorize` outside it |
 | no auth on the request path (R2) | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` in a non-test Go file |
-| one hop, no delegation (R3) | all but none | `grantor_id`, `tokens/exchange`, `actor: true`, `RFC 8693` anywhere in a non-test Go file or a non-archived document; `act`, `agent_id` and `actor_id` only where they are a token claim, which is a JSON key or a struct tag in a type that also carries `sub`, `aud` or `exp`, or in a file that imports the verifier or names `Claims`. One product carries an agent identity as an attribution column, which the 2026-09-06 decision allows, so the English word and the column both pass |
+| one hop, no delegation (R3) | all but none | `grantor_id`, `tokens/exchange`, `actor: true`, `RFC 8693` anywhere in a non-test Go file or a non-archived document; `act`, `agent_id` and `actor_id` only where they are a token claim, which is a struct tag in a type that also carries `sub`, `aud` or `exp`, or a bare occurrence outside every struct type in a file that imports the verifier or names `Claims`. A tag in a type that carries no registered claim is a column of that type wherever the file lives: one product carries an agent identity as an attribution column, which the 2026-09-06 decision allows, and a handler that verifies tokens also renders its audit rows |
 | roles, not flags (R9) | all but none | `is_superadmin` or `IsSuperadmin` anywhere outside tests and archives; the rule is off until the family's id-09 ships and the block says `roles_only: true`, then it is on and cannot be turned off |
 | an explicit audience (D3) | core, service, platform | every container in `deploy/**` that runs the repository's binary sets the variable `audience` names, or `AUTH_AUDIENCE` for a service, to a non-empty value that is not the issuer URL |
 | per-endpoint bearers, internal stays internal (R8) | issuer, platform, core | two environment variables of one container reading one secret key; an ingress rule whose path is `/` or a prefix of `/internal/` on a host also serving `/internal/` |
@@ -117,8 +118,8 @@ gathers by checkout, and fails when:
 - a repository has no block;
 - an audience a `core`, `service` or `platform` verifies is not in the
   issuer repository's client registry under the audiences an actor
-  token may be minted for, or the registry lists an audience nobody
-  verifies;
+  token may be minted for, unless the block says `reached_by:
+  services`, or the registry lists an audience nobody verifies;
 - two repositories declare the same audience;
 - a `client` mints for an audience no repository verifies.
 
