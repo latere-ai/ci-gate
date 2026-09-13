@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.33.0 - 2026-09-13
+
 ### Changed
 
 - `identity`, the delegation rule: `act`, `agent_id` and `actor_id` as a
