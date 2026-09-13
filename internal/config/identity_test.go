@@ -112,6 +112,8 @@ func TestIdentityValidationRejects(t *testing.T) {
 		{"core without api group", "identity:\n  role: core\n  audience: lux\n  config_prefix: LUX\n", "identity.api_group is empty"},
 		{"registry off the issuer", "identity:\n  role: service\n  audience: drive\n  registry: deploy/base/x.yaml\n", "identity.registry is set"},
 		{"audiences off a client", "identity:\n  role: bff\n  audiences: [origo]\n", "identity.audiences is set"},
+		{"waiver without a reason", "identity:\n  role: service\n  audience: drive\n  waive:\n    verifier: {until: 2026-12-31}\n", "identity.waive entry without a reason"},
+		{"waiver without a date", "identity:\n  role: service\n  audience: drive\n  waive:\n    verifier: {reason: later}\n", "identity.waive entry without a usable until date"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

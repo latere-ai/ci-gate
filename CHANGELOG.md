@@ -10,6 +10,19 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- The `identity` block takes a `waive` map keyed by rule, so a repository
+  behind on one rule keeps the other rules running. A waived rule still
+  reports its findings under `WAIV`, says when it already holds, and fails
+  on its own terms after its date. A waiver naming no rule, or a rule the
+  role does not run, fails the load.
+
+### Changed
+
+- `no-latere-value` reads code, manifests and user documents; a core's
+  `specs/` tree is the contributor's record and is not read.
+
 ## v0.32.0 - 2026-09-13
 
 ### Added

@@ -95,7 +95,7 @@ var Gates = []Gate{
 	{Name: "identity", Doc: "the repository declares its identity role and holds that role's rules",
 		// No Applies: a repository with no block is precisely the gap, so
 		// the absence fails inside the gate rather than skipping it.
-		Run: func(c Ctx) error { return identity.Run(c.Cfg.Identity, c.Root, c.Out, c.Exec) }},
+		Run: func(c Ctx) error { return identity.Run(c.Cfg.Identity, c.Root, c.Out, c.Exec, c.Now) }},
 	{Name: "enum-go", Doc: "declared Go enums use named types, named members and exhaustive switches",
 		Applies: func(c Ctx) (bool, string, error) {
 			return len(c.Cfg.Enums.Go.Types) > 0, "enums.go.types names no domain", nil

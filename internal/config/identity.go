@@ -89,6 +89,11 @@ type Identity struct {
 	Registry string `yaml:"registry"`
 	// Audiences are the product audiences a client mints for. Client only.
 	Audiences []string `yaml:"audiences"`
+	// Waive maps a rule name to the decision not to hold this repository to
+	// it yet. It is per rule, not per gate, so a repository behind on one
+	// rule keeps the other ten running; every entry carries a reason and
+	// the day it stops working, like a gate waiver.
+	Waive map[string]Waiver `yaml:"waive"`
 	// Present reports whether the file carried the block at all. Computed by
 	// Load; not part of the file.
 	Present bool `yaml:"-"`
@@ -135,6 +140,29 @@ func (i Identity) validate(path string) error {
 		return fmt.Errorf("%s: identity.audiences is set and identity.role is %q\n"+
 			"only a client mints for a product audience, and a list nothing "+
 			"reads is a decision with no effect", path, string(i.Role))
+	}
+	var noWhy, noDate []string
+	for rule, w := range i.Waive {
+		if strings.TrimSpace(w.Reason) == "" {
+			noWhy = append(noWhy, rule)
+		}
+		if _, ok := w.UntilDate(); !ok {
+			noDate = append(noDate, rule)
+		}
+	}
+	if len(noWhy) > 0 {
+		slices.Sort(noWhy)
+		return fmt.Errorf("%s: identity.waive entry without a reason: %s\n"+
+			"not holding a rule is a decision: write why this repository does "+
+			"not hold it yet, and which work will, or delete the entry",
+			path, strings.Join(noWhy, ", "))
+	}
+	if len(noDate) > 0 {
+		slices.Sort(noDate)
+		return fmt.Errorf("%s: identity.waive entry without a usable until date: %s\n"+
+			"write the date the waiver stops working, as YYYY-MM-DD: a "+
+			"waiver with no end is the shape being lowered permanently",
+			path, strings.Join(noDate, ", "))
 	}
 	return nil
 }

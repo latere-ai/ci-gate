@@ -698,6 +698,24 @@ apart, which neither half alone would show. A container is this repository's
 when its image names a directory under `cmd/`, or when the document has one
 container. A path a heuristic reads wrong goes in `skip`.
 
+A repository behind on one rule waives that rule and keeps the other ten
+running, which a gate waiver could not do:
+
+```yaml
+identity:
+  role: core
+  waive:
+    authorizer:
+      until: 2026-11-30
+      reason: the shared contract package lands with the family's id-03
+```
+
+A waived rule still runs and reports its findings under `WAIV`, so the count
+is visible and a waiver whose rule already holds says the waiver can go. Past
+its date the rule fails on its own terms and the line says which waiver
+expired. A waiver naming no rule, or a rule the role does not run, fails the
+load: a waiver with no effect hides a typo.
+
 `roles_only` is one way. Once a repository has set it, the gate asks git
 whether the history ever carried it, and a tree that unsets it fails: a rule
 that can be turned off lasts until the first push that finds it inconvenient.
@@ -918,6 +936,7 @@ identity:                  # mandatory: a repository with no block fails the gat
   roles_only: false        # turn on the roles rule; one way once set
   registry: deploy/base/clients.yaml   # the client registry; issuer, and the default
   audiences: []            # the product audiences this client presents; client
+  waive: {}                # rule -> {until, reason}: hold every other rule while this one is behind
 
 enums:
   go:

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
@@ -52,15 +53,18 @@ func run(t *testing.T, cfg config.Identity, root string, exec gates.Exec) (strin
 	t.Helper()
 	cfg.Present = true
 	var sb strings.Builder
-	err := Run(cfg, root, &sb, exec)
+	err := Run(cfg, root, &sb, exec, today)
 	return sb.String(), err
 }
+
+// today is the clock every test runs on, so a waiver's date means one thing.
+var today = time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
 
 // A repository with no block fails, and the failure names the key and every
 // role, because a repository outside the shape by omission is the gap.
 func TestIdentityBlockIsRequired(t *testing.T) {
 	var sb strings.Builder
-	err := Run(config.Identity{}, repo(t, nil), &sb, noHistory())
+	err := Run(config.Identity{}, repo(t, nil), &sb, noHistory(), today)
 	if err == nil {
 		t.Fatal("a repository with no block must fail")
 	}
@@ -590,5 +594,70 @@ func TestRolesOnlyReadsARealHistory(t *testing.T) {
 	}
 	if !strings.HasPrefix(ruleLine(out, "roles"), "SKIP") {
 		t.Errorf("a history that never set the key skips the rule:\n%s", out)
+	}
+}
+
+// A waiver is per rule: the waived rule reports under WAIV with its count
+// and the gate passes, while every other rule of the role still runs.
+func TestWaivedRuleReportsAndHolds(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai",
+		Waive: map[string]config.Waiver{"no-latere-value": {Until: "2026-12-31", Reason: "the overlay moves with id-06"}}}
+	root := repo(t, map[string]string{
+		"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_ISSUERS\n          value: https://auth.latere.ai\n"),
+	})
+	out, err := run(t, core, root, noHistory())
+	if !strings.Contains(out, "WAIV no-latere-value") || !strings.Contains(out, "1 finding(s)") {
+		t.Fatalf("the waived rule must report under WAIV with its count:\n%s", out)
+	}
+	if strings.Contains(out, "FAIL no-latere-value") {
+		t.Fatalf("a waived rule must not fail:\n%s", out)
+	}
+	// The other rules of the role still ran: the audience rule reads the
+	// same manifest and fails on it.
+	if err == nil || !strings.Contains(out, "FAIL audience") {
+		t.Fatalf("the rules beside the waived one must still run (%v):\n%s", err, out)
+	}
+	// A waiver whose rule already holds says the waiver can go.
+	clean := repo(t, map[string]string{
+		"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_ISSUERS\n          value: https://auth.example.com\n"),
+	})
+	out, _ = run(t, core, clean, noHistory())
+	if !strings.Contains(out, "the waiver can go") {
+		t.Fatalf("a waiver with nothing to waive must say so:\n%s", out)
+	}
+}
+
+// Past its date a waiver stops working and the failure names it.
+func TestExpiredWaiverFails(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai",
+		Waive: map[string]config.Waiver{"no-latere-value": {Until: "2026-09-12", Reason: "yesterday"}}}
+	root := repo(t, map[string]string{
+		"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_ISSUERS\n          value: https://auth.latere.ai\n"),
+	})
+	out, err := run(t, core, root, noHistory())
+	if err == nil || !strings.Contains(out, "FAIL no-latere-value") || !strings.Contains(out, "waiver expired 2026-09-12") {
+		t.Fatalf("an expired waiver must fail and name itself (%v):\n%s", err, out)
+	}
+	// The day named is inclusive: a waiver until today still holds.
+	core.Waive["no-latere-value"] = config.Waiver{Until: "2026-09-13", Reason: "today"}
+	if out, _ := run(t, core, root, noHistory()); !strings.Contains(out, "WAIV no-latere-value") {
+		t.Fatalf("a waiver until today must hold today:\n%s", out)
+	}
+}
+
+// A waiver that names no rule, or a rule the role never runs, is a decision
+// with no effect, and the gate refuses it rather than let a typo lower the
+// bar.
+func TestWaiverMustNameARuleTheRoleRuns(t *testing.T) {
+	root := repo(t, map[string]string{"internal/a/a.go": "package a\n"})
+	unknown := config.Identity{Role: config.RoleService, Audience: "drive",
+		Waive: map[string]config.Waiver{"verifiers": {Until: "2026-12-31", Reason: "typo"}}}
+	if _, err := run(t, unknown, root, noHistory()); err == nil || !strings.Contains(err.Error(), "which is not a rule") {
+		t.Fatalf("an unknown rule name must be refused: %v", err)
+	}
+	idle := config.Identity{Role: config.RoleService, Audience: "drive",
+		Waive: map[string]config.Waiver{"claims": {Until: "2026-12-31", Reason: "a core rule on a service"}}}
+	if _, err := run(t, idle, root, noHistory()); err == nil || !strings.Contains(err.Error(), "does not run") {
+		t.Fatalf("a waiver for a rule the role does not run must be refused: %v", err)
 	}
 }

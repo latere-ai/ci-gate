@@ -30,6 +30,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
@@ -97,6 +98,44 @@ var rules = []rule{
 }
 
 // Names lists every rule, for the message a repository with no block reads.
+// checkWaivers refuses a waiver that names no rule, or a rule the role does
+// not run: a waiver with no effect hides a typo, and a typo that lowers the
+// bar is the failure this binary is against.
+func checkWaivers(cfg config.Identity) error {
+	var unknown, idle []string
+	for name := range cfg.Waive {
+		r, ok := find(name)
+		switch {
+		case !ok:
+			unknown = append(unknown, name)
+		case !slices.Contains(r.roles, cfg.Role):
+			idle = append(idle, name)
+		}
+	}
+	slices.Sort(unknown)
+	slices.Sort(idle)
+	if len(unknown) > 0 {
+		return fmt.Errorf("%s: identity.waive names %s, which is not a rule\nrules: %s",
+			config.Name, strings.Join(unknown, ", "), strings.Join(Names(), ", "))
+	}
+	if len(idle) > 0 {
+		return fmt.Errorf("%s: identity.waive names %s, which role %s does not run; "+
+			"a waiver with no effect is a decision with no effect, so delete it",
+			config.Name, strings.Join(idle, ", "), string(cfg.Role))
+	}
+	return nil
+}
+
+// find is the rule of that name.
+func find(name string) (rule, bool) {
+	for _, r := range rules {
+		if r.name == name {
+			return r, true
+		}
+	}
+	return rule{}, false
+}
+
 func Names() []string {
 	out := make([]string, len(rules))
 	for i, r := range rules {
@@ -106,7 +145,7 @@ func Names() []string {
 }
 
 // Run applies the rules of the declared role to the tree.
-func Run(cfg config.Identity, root string, out io.Writer, exec gates.Exec) error {
+func Run(cfg config.Identity, root string, out io.Writer, exec gates.Exec, now time.Time) error {
 	if !cfg.Present {
 		return fmt.Errorf("%s has no identity block, so no rule of the shape runs here\n"+
 			"declare which layer this repository is under identity.role, one of %s; "+
@@ -117,6 +156,9 @@ func Run(cfg config.Identity, root string, out io.Writer, exec gates.Exec) error
 		_, _ = fmt.Fprintf(out, "identity: role none, no identity surface to hold\n"+
 			"not run: %s\n", strings.Join(Names(), ", "))
 		return nil
+	}
+	if err := checkWaivers(cfg); err != nil {
+		return err
 	}
 	t, err := scan(cfg, root, exec)
 	if err != nil {
@@ -133,10 +175,26 @@ func Run(cfg config.Identity, root string, out io.Writer, exec gates.Exec) error
 		if runErr != nil {
 			return runErr
 		}
+		w, waived := cfg.Waive[r.name]
+		expired := ""
+		if waived {
+			// The date is inclusive, as a gate waiver's is: until 1 November
+			// covers all of 1 November.
+			until, _ := w.UntilDate()
+			if now.Before(until.AddDate(0, 0, 1)) {
+				_, _ = fmt.Fprintf(out, "%-4s %-17s until %s: %s (%d finding(s))\n",
+					"WAIV", r.name, w.Until, w.Reason, len(res.findings))
+				if len(res.findings) == 0 {
+					_, _ = fmt.Fprintf(out, "  the rule holds already; the waiver can go\n")
+				}
+				continue
+			}
+			expired = "; the waiver expired " + w.Until + ": " + w.Reason
+		}
 		switch {
 		case len(res.findings) > 0:
 			failed = append(failed, r.name)
-			_, _ = fmt.Fprintf(out, "%-4s %-17s %d finding(s)\n", "FAIL", r.name, len(res.findings))
+			_, _ = fmt.Fprintf(out, "%-4s %-17s %d finding(s)%s\n", "FAIL", r.name, len(res.findings), expired)
 			for _, f := range sorted(res.findings) {
 				_, _ = fmt.Fprintln(out, "  "+f.String())
 			}

@@ -56,6 +56,7 @@ identity:
   api_group: cella.latere.ai # the group this core writes its own manifests under; required for core
   claims_passthrough: [internal/auth/claims.go]   # core: the files that may name a claim, to forward it
   skip: []                   # paths the scans do not enter, as every other skip in this tool
+  waive: {}                  # rule -> {until, reason}; per rule, so the other rules keep running
   roles_only: false          # the roles rule, which is one way once set
   registry: deploy/base/clients.yaml   # the client registry; issuer only, and the default
   audiences: []              # the product audiences this client presents; client only
@@ -64,6 +65,17 @@ identity:
 `none` is for a repository with no identity surface, a library or a
 tool; it is a declared role, not an absent one, and the family check
 below lists it.
+
+### Waivers are per rule
+
+A gate waiver would take the whole gate down for one rule a repository
+is behind on, which in a roll-out across seventeen repositories is
+most of the gate for most of the time. So the block carries its own
+`waive`, keyed by rule name, with the reason and the inclusive `until`
+a gate waiver has. A waived rule runs and prints its findings under
+`WAIV`; a waiver whose rule already holds says so; a waiver past its
+date is a failure that names the waiver; a waiver naming no rule or a
+rule the role does not run fails the load.
 
 ### The rules, by role
 
@@ -130,6 +142,7 @@ as tests under the `suite` gate.
 | A rule with no scan target reports `SKIP` with its reason and never `PASS` | `TestIdentityRuleSkipsAreExplained`, over every rule of every role, which also fails a rule no role reaches |
 | `roles_only` cannot be unset once set in a tree whose history had it set | `TestRolesOnlyIsOneWay`, and `TestRolesOnlyNeedsTheHistory` for a history the rule cannot read |
 | The family check fails on a missing block, an unregistered audience, a registered audience nobody verifies, a duplicate audience, and a client minting for nobody; it prints the layer table and fails when the committed one differs | `TestIdentityFamily`, table-driven, with `TestIdentityFamilyDerivesTheCommittedTable` and `TestIdentityFamilyNeedsTheRegistry` |
+| A waived rule with findings does not fail the gate and prints `WAIV` with its count; the same waiver past its date fails and names it; a waiver naming no rule or a rule the role does not run fails; an entry without a reason or a usable date fails the load | `TestWaivedRuleReportsAndHolds`, `TestExpiredWaiverFails`, `TestWaiverMustNameARuleTheRoleRuns`, `TestIdentityValidationRejects` |
 | The sentence of every finding, after its location, passes the `registers` gate's four tells | `TestIdentityFindingsAreUserRegister`, which reads the tells from that gate through `registers.Tells` rather than restating them |
 | Rolled to every repository of the family with the rules that hold today green and the rest waived with a dated reason | open: the family's id-10 closes it, at step 2 of its order |
 
