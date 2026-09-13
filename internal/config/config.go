@@ -598,6 +598,7 @@ func Load(dir string) (*Config, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	c.Identity.Present = raw.Identity != nil
+	c.Identity.Settled = c.Spec.Settled
 	if err := c.validate(path); err != nil {
 		return nil, err
 	}

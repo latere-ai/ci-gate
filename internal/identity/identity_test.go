@@ -101,8 +101,10 @@ func TestIdentityRules(t *testing.T) {
 	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai"}
 	service := config.Identity{Role: config.RoleService, Audience: "drive"}
 	client := config.Identity{Role: config.RoleClient, Audiences: []string{"origo", "sandboxd"}}
+	settledService := service
+	settledService.Settled = []string{"complete"}
 
-	for _, c := range ruleCases(core, service, client) {
+	for _, c := range ruleCases(core, service, client, settledService) {
 		t.Run(c.name, func(t *testing.T) {
 			out, err := run(t, c.cfg, repo(t, c.bad), noHistory())
 			if err == nil {
@@ -150,7 +152,7 @@ type Row struct {
 }
 `
 
-func ruleCases(core, service, client config.Identity) []ruleCase {
+func ruleCases(core, service, client, settledService config.Identity) []ruleCase {
 	return []ruleCase{{
 		name: "a core reads no claim for meaning",
 		rule: "claims", cfg: core,
@@ -201,6 +203,21 @@ func ruleCases(core, service, client config.Identity) []ruleCase {
 		bad:  map[string]string{"docs/auth.md": "The exchange follows RFC 8693.\n"},
 		good: map[string]string{"docs/auth.md": "The service verifies one token.\n"},
 	}, {
+		// A changelog, a release note and a finished spec record what was
+		// once true and may name what they retired; an open spec may not.
+		name: "a record may name the mechanism it retired, an open spec may not",
+		rule: "delegation", cfg: settledService,
+		bad: map[string]string{
+			"specs/009-open.md": "---\ntitle: x\nstatus: drafted\n---\n\nThe exchange follows RFC 8693.\n",
+		},
+		good: map[string]string{
+			"internal/a/a.go":               "package a\n",
+			"CHANGELOG.md":                  "## v1\n\n- Removed the RFC 8693 exchange.\n",
+			"docs/release-notes-v0.17.0.md": "Agent tokens carry grantor_id.\n",
+			"specs/008-removal.md":          "---\ntitle: x\nstatus: complete\n---\n\nRemoved the RFC 8693 exchange.\n",
+			"specs/.archive/001-old.md":     "The exchange follows RFC 8693.\n",
+		},
+	}, {
 		name: "a delegation claim beside the registered claims",
 		rule: "delegation", cfg: service,
 		bad:  map[string]string{"internal/token/claims.go": fmtClaims("Act string `json:\"act\"`")},
@@ -218,6 +235,20 @@ func ruleCases(core, service, client config.Identity) []ruleCase {
 		rule: "roles", cfg: withRolesOnly(service),
 		bad:  map[string]string{"internal/api/h.go": "package api\n\nvar admin = \"is_superadmin\"\n"},
 		good: map[string]string{"internal/api/h.go": "package api\n\nvar admin = \"platform_admin\"\n"},
+	}, {
+		// A deployment is a base and its overlays: a container missing the
+		// variable in the base passes when an overlay sets it, and a service
+		// may spell the variable AUTH_AUDIENCES.
+		name: "an audience set in an overlay counts for the base, under either spelling",
+		rule: "audience", cfg: service,
+		bad: map[string]string{
+			"deploy/base/app.yaml": deployment(""),
+			"deploy/prod/app.yaml": deployment(""),
+		},
+		good: map[string]string{
+			"deploy/base/app.yaml": deployment(""),
+			"deploy/prod/app.yaml": deployment("        - name: AUTH_AUDIENCES\n          value: drive\n"),
+		},
 	}, {
 		name: "an explicit audience in every deployment",
 		rule: "audience", cfg: core,
@@ -248,6 +279,14 @@ func ruleCases(core, service, client config.Identity) []ruleCase {
 	}, {
 		// A core writes its own manifests under its own group, which is a
 		// name the block declares rather than one the rule guesses at.
+		// The module namespace and a contact address are the project's own
+		// coordinates, wherever they appear; a hostname in a URL is not.
+		name: "module paths and contact addresses are coordinates, a hostname is a value",
+		rule: "no-latere-value", cfg: core,
+		bad: map[string]string{"docs/install.md": "Clone https://code.latere.ai/acme/app.git to begin.\n"},
+		good: map[string]string{"docs/contributing.md": "Import `latere.ai/x/pkg/httpjson`; report issues to security@latere.ai.\n" +
+			"Build with -X latere.ai/x/cella/internal/version.Version=dev.\n"},
+	}, {
 		name: "the core's own group is not a company value",
 		rule: "no-latere-value", cfg: core,
 		bad:  map[string]string{"docs/pools.md": "A pool is `lux.latere.ai/v1beta1`.\n"},
@@ -506,8 +545,10 @@ func TestIdentityFindingsAreUserRegister(t *testing.T) {
 	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai"}
 	service := config.Identity{Role: config.RoleService, Audience: "drive"}
 	client := config.Identity{Role: config.RoleClient, Audiences: []string{"origo", "sandboxd"}}
+	settledService := service
+	settledService.Settled = []string{"complete"}
 	sentences := 0
-	for _, c := range ruleCases(core, service, client) {
+	for _, c := range ruleCases(core, service, client, settledService) {
 		out, _ := run(t, c.cfg, repo(t, c.bad), noHistory())
 		for line := range strings.SplitSeq(out, "\n") {
 			line = strings.TrimSpace(line)
@@ -659,5 +700,19 @@ func TestWaiverMustNameARuleTheRoleRuns(t *testing.T) {
 		Waive: map[string]config.Waiver{"claims": {Until: "2026-12-31", Reason: "a core rule on a service"}}}
 	if _, err := run(t, idle, root, noHistory()); err == nil || !strings.Contains(err.Error(), "does not run") {
 		t.Fatalf("a waiver for a rule the role does not run must be refused: %v", err)
+	}
+}
+
+// A bff forwards the person's token and verifies nothing itself, so the
+// verifier rule asks nothing of its imports; a service is still held to one.
+func TestABFFNeedsNoVerifierOfItsOwn(t *testing.T) {
+	root := repo(t, map[string]string{"internal/web/w.go": "package web\n"})
+	bff := config.Identity{Role: config.RoleBFF}
+	if out, _ := run(t, bff, root, noHistory()); !strings.Contains(out, "PASS verifier") {
+		t.Fatalf("a bff with no verifier import must pass the verifier rule:\n%s", out)
+	}
+	service := config.Identity{Role: config.RoleService, Audience: "drive"}
+	if out, _ := run(t, service, root, noHistory()); !strings.Contains(out, "FAIL verifier") {
+		t.Fatalf("a service with no verifier import must fail the verifier rule:\n%s", out)
 	}
 }

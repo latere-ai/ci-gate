@@ -160,8 +160,44 @@ func (t *tree) readText(p, rel string) error {
 	if err != nil {
 		return err
 	}
+	if record(rel, s.text, t.cfg.Settled) {
+		return nil
+	}
 	t.docs = append(t.docs, s)
 	return nil
+}
+
+// record reports whether a document records what was once true rather than
+// describing the system that exists: a changelog, a release note, or a spec
+// whose status the tree calls settled. A record may name the mechanism it
+// retired; the rules that read documents do not read records.
+func record(rel, text string, settled []string) bool {
+	base := strings.ToLower(rel[strings.LastIndex(rel, "/")+1:])
+	if strings.HasPrefix(base, "changelog") || strings.Contains(base, "release-notes") {
+		return true
+	}
+	if !strings.HasPrefix(rel, "specs/") {
+		return false
+	}
+	status := frontmatterStatus(text)
+	return status == "archived" || slices.Contains(settled, status)
+}
+
+// frontmatterStatus reads status: from a leading YAML block, or "".
+func frontmatterStatus(text string) string {
+	if !strings.HasPrefix(text, "---\n") {
+		return ""
+	}
+	end := strings.Index(text[4:], "\n---")
+	if end < 0 {
+		return ""
+	}
+	for line := range strings.SplitSeq(text[4:4+end], "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "status:"); ok {
+			return strings.Trim(strings.TrimSpace(v), "\"'")
+		}
+	}
+	return ""
 }
 
 // readGo parses one file. A file the parser cannot read is a build failure,

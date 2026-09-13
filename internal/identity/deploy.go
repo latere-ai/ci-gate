@@ -27,39 +27,60 @@ func ruleAudience(t *tree) (result, error) {
 	if len(t.manifests) == 0 {
 		return result{skip: "the tree has no deployment manifest"}, nil
 	}
-	name := audienceVariable
+	names := []string{audienceVariable, audienceVariable + "S"}
 	if t.cfg.Role == config.RoleCore {
-		name = t.cfg.ConfigPrefix + "_OIDC_AUDIENCE"
+		names = []string{t.cfg.ConfigPrefix + "_OIDC_AUDIENCE"}
 	}
+	// A deployment is a base and its overlays, so one container is judged
+	// across every file that names it: it passes when any file sets the
+	// audience, and an address anywhere is a finding.
 	var found []Finding
-	checked := 0
+	set := map[string]bool{}
+	missing := map[string][]Finding{}
+	seen := map[string]bool{}
 	for _, m := range t.manifests {
 		if m.err != nil {
 			found = append(found, at(m.rel, 1, unreadableSentence))
 			continue
 		}
 		for _, c := range m.own(t.binaries) {
-			checked++
-			line := m.lineOf("image", c.image)
-			entry, ok := c.env(name)
+			seen[c.name] = true
+			entry, name, ok := firstEnv(c, names)
 			if !ok {
-				found = append(found, at(m.rel, line, noAudienceSentence, name))
+				missing[c.name] = append(missing[c.name], at(m.rel, m.lineOf("image", c.image), noAudienceSentence, names[0]))
 				continue
 			}
 			value, _ := entry["value"].(string)
 			switch {
 			case strings.TrimSpace(value) == "":
 				found = append(found, at(m.rel, m.lineOf("name", name), noAudienceValueSentence, name))
-			case strings.HasPrefix(value, "http"):
+			case strings.HasPrefix(value, "http"), strings.Contains(value, ",http"), strings.Contains(value, ", http"):
 				found = append(found, at(m.rel, m.lineOf("name", name), addressAsAudienceSentence))
+			default:
+				set[c.name] = true
 			}
 		}
 	}
-	if checked == 0 && len(found) == 0 {
+	for name, fs := range missing {
+		if !set[name] {
+			found = append(found, fs...)
+		}
+	}
+	if len(seen) == 0 && len(found) == 0 {
 		return result{skip: "no container in the deployment runs a command this repository builds"}, nil
 	}
 	return result{findings: found,
-		note: fmt.Sprintf("%d container(s) name the audience they verify", checked)}, nil
+		note: fmt.Sprintf("%d container(s) name the audience they verify", len(seen))}, nil
+}
+
+// firstEnv is the first of names a container sets, with the name it set.
+func firstEnv(c container, names []string) (map[string]any, string, bool) {
+	for _, n := range names {
+		if entry, ok := c.env(n); ok {
+			return entry, n, true
+		}
+	}
+	return nil, "", false
 }
 
 const unreadableSentence = "this deployment file does not parse as a document, so the deployment " +
@@ -145,6 +166,7 @@ func reaches(p string, paths []string) bool {
 
 // container is one container of a deployment document.
 type container struct {
+	name  string
 	image string
 	spec  map[string]any
 }
@@ -208,7 +230,8 @@ func (m manifest) containers() []container {
 					continue
 				}
 				image, _ := spec["image"].(string)
-				out = append(out, container{image: image, spec: spec})
+				name, _ := spec["name"].(string)
+				out = append(out, container{name: name, image: image, spec: spec})
 			}
 		})
 	}

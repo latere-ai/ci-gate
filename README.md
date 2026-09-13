@@ -672,19 +672,22 @@ identity:
 repository with no block fails the gate, and `contract` reports the missing
 block the way it reports a missing hook. The role then selects the rules, and
 every rule is a scan of non-test Go files, deployment manifests, and documents
-outside an archive. Nothing here runs a service.
+that describe the current system. A record is not read: a changelog, a release
+note, anything under an `.archive` directory, and a spec whose status the
+tree's `spec.settled` list calls finished, because a record may name the
+mechanism it retired. Nothing here runs a service.
 
 | Rule | Roles | What fails |
 | --- | --- | --- |
 | `claims` | core | an identifier `OrgID`, `Roles`, `IsSuperadmin`, `PrincipalType`, or a string `org_id`, `roles`, `is_superadmin`, `principal_type`, outside `claims_passthrough` |
-| `verifier` | core, service, platform, bff | nothing imports `latere.ai/x/pkg/authkit/jwt`; a second token library; a token taken apart by hand |
+| `verifier` | core, service, platform, bff | nothing imports `latere.ai/x/pkg/authkit/jwt` (a bff is exempt from this half: it forwards and verifies nothing); a second token library; a token taken apart by hand |
 | `authorizer` | core | nothing imports `latere.ai/x/pkg/authz`; a hand-rolled `POST` to a path named `authorize` |
 | `request-path` | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` |
 | `delegation` | all but none | `grantor_id`, `tokens/exchange`, `RFC 8693`, `actor: true` anywhere; `act`, `agent_id`, `actor_id` as a JSON key or a struct tag where they are a token claim |
 | `roles` | all but none | `is_superadmin` or `IsSuperadmin`, once the block sets `roles_only: true` |
-| `audience` | core, service, platform | a container that runs this repository and sets no `<PREFIX>_OIDC_AUDIENCE`, or `AUTH_AUDIENCE` for a service, to a name that is not an address |
+| `audience` | core, service, platform | a container that runs this repository and, across its base and overlays, sets no `<PREFIX>_OIDC_AUDIENCE`, or `AUTH_AUDIENCE` or `AUTH_AUDIENCES` for a service, to a name that is not an address |
 | `bearers` | issuer, platform, core | two variables of one container reading one secret key; a host serving `/internal/` behind a public path |
-| `no-latere-value` | core | `latere.ai` or `latere.svc` in code, a manifest or a user document, outside `api_group` and an import path; `specs/` is the contributor's record and is not read |
+| `no-latere-value` | core | `latere.ai` or `latere.svc` in code, a manifest or a user document, outside `api_group`, the `latere.ai/x/` module namespace and a contact address; `specs/` is the contributor's record and is not read |
 | `client-audiences` | client | a product audience in `audiences` that no file presents, or that two files present |
 | `documents` | all but none | `pkg/oidclogin`, `pkg/jwtauth`, `pkg/oidc/`, `identity fabric`, `delegated token` in a live `*.md` |
 

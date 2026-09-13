@@ -80,8 +80,12 @@ rule the role does not run fails the load.
 ### The rules, by role
 
 Every rule names the family rule it enforces. A rule is a scan of the
-tree: Go files outside tests, deploy manifests, and documents outside
-archives. Nothing runs a service.
+tree: Go files outside tests, deploy manifests, and documents that
+describe the current system. A record is not a document here: a
+changelog, a release note, a file under `.archive`, and a spec whose
+frontmatter status is one the tree's `spec.settled` list calls
+finished, because a record legitimately names what it retired. Nothing
+runs a service.
 
 | Rule | Roles | What fails |
 |---|---|---|

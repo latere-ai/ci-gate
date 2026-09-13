@@ -148,7 +148,9 @@ func ruleVerifier(t *tree) (result, error) {
 		}
 		found = append(found, handRolledDecode(t, g)...)
 	}
-	if !verifier {
+	// A bff forwards the person's token and verifies nothing itself, so the
+	// shared verifier is not required of it; the other two halves still are.
+	if !verifier && t.cfg.Role != config.RoleBFF {
 		found = append(found, at("go.mod", 1, noVerifierSentence))
 	}
 	return result{findings: found,
@@ -524,23 +526,34 @@ func companyValue(line, group string) bool {
 // block rather than guessed, and an occurrence reached through a URL is not
 // the group even when it reads like one.
 func exempt(line string, i int, group string) bool {
-	if group == "" {
-		return false
-	}
 	start := i
 	for start > 0 && isNameByte(line[start-1]) {
 		start--
-	}
-	if start > 0 && (line[start-1] == '/' || line[start-1] == '@') {
-		return false
 	}
 	end := i
 	for end < len(line) && (isNameByte(line[end]) || line[end] == '/') {
 		end++
 	}
 	tok := line[start:end]
+	// The module namespace and a contact address are the project's own
+	// coordinates, which the cores' invariant names as not forbidden.
+	if strings.HasPrefix(tok, modulePrefix) {
+		return true
+	}
+	if start > 0 && line[start-1] == '@' {
+		return true
+	}
+	if group == "" {
+		return false
+	}
+	if start > 0 && line[start-1] == '/' {
+		return false
+	}
 	return tok == group || strings.HasPrefix(tok, group+"/")
 }
+
+// modulePrefix is the namespace every module of the family lives under.
+const modulePrefix = "latere.ai/x/"
 
 func isNameByte(b byte) bool {
 	return b == '.' || b == '-' || b == '_' ||

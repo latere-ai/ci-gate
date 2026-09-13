@@ -10,6 +10,21 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- The `identity` gate's document rules read no record: a changelog, a
+  release note, a file under `.archive`, or a spec whose status the tree's
+  `spec.settled` list calls finished. A record may name what it retired.
+- `verifier` no longer requires a bff to import the shared verifier: a bff
+  forwards the person's token and verifies nothing of its own. The other two
+  halves of the rule still hold it.
+- `no-latere-value` treats the `latere.ai/x/` module namespace and a contact
+  address such as `security@latere.ai` as the project's coordinates wherever
+  they appear.
+- `audience` accepts `AUTH_AUDIENCES` beside `AUTH_AUDIENCE` and judges a
+  container across its base and overlay files, so a value set in the
+  production overlay counts for the base.
+
 ## v0.32.1 - 2026-09-13
 
 ### Added

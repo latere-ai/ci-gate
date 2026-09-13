@@ -97,6 +97,10 @@ type Identity struct {
 	// Present reports whether the file carried the block at all. Computed by
 	// Load; not part of the file.
 	Present bool `yaml:"-"`
+	// Settled is the spec tree's settled status list, copied from the spec
+	// section by Load so the document rules can tell a finished spec, which
+	// is a record, from an open one, which describes the current system.
+	Settled []string `yaml:"-"`
 }
 
 // Verifies reports whether this role verifies a token addressed to itself,
