@@ -4,8 +4,10 @@
 package identity
 
 import (
+	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -557,5 +559,23 @@ spec:
 	out, _ = run(t, core, repo(t, files), noHistory())
 	if !strings.Contains(out, "FAIL audience") {
 		t.Errorf("a container of this repository with no audience is a finding:\n%s", out)
+	}
+}
+
+// The one-way check reads a real history, and a repository with no commit
+// yet has none: asking the current branch alone reports that as a failure
+// git cannot be told apart from git being absent.
+func TestRolesOnlyReadsARealHistory(t *testing.T) {
+	root := repo(t, map[string]string{"internal/api/h.go": verifying})
+	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
+		t.Skipf("git is not available here: %v\n%s", err, out)
+	}
+	out, err := run(t, config.Identity{Role: config.RoleService, Audience: "drive"}, root,
+		gates.OSExec(root, io.Discard))
+	if err != nil {
+		t.Fatalf("a repository with no commit yet has no history: %v\n%s", err, out)
+	}
+	if !strings.HasPrefix(ruleLine(out, "roles"), "SKIP") {
+		t.Errorf("a history that never set the key skips the rule:\n%s", out)
 	}
 }

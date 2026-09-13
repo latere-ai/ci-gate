@@ -399,7 +399,11 @@ func carriesClaims(st *ast.StructType) bool {
 // off is a rule that lasts until the first push that finds it inconvenient.
 func ruleRoles(t *tree) (result, error) {
 	if !t.cfg.RolesOnly {
-		out, err := t.exec(nil, false, "git", "log", "-S", rolesOnlyKey, "--format=%h", "--", config.Name)
+		// Every ref, not the current branch: the key may have been set on a
+		// branch that was merged, and a repository with no commit yet has no
+		// history rather than an unreadable one, which asking HEAD cannot
+		// tell apart from git being absent.
+		out, err := t.exec(nil, false, "git", "log", "--all", "-S", rolesOnlyKey, "--format=%h", "--", config.Name)
 		if err != nil {
 			return result{}, fmt.Errorf("asking git whether this repository ever set %s in %s: %w\n"+
 				"the rule is one way, so whether it was ever on is asked of the history; "+
