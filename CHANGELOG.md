@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.32.0 - 2026-09-13
+
 ### Added
 
 - `enum-go` and `enum-typescript` enforce declared enum domains: fields use
