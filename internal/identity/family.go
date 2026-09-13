@@ -86,6 +86,13 @@ func readFamily(dir string) ([]repository, error) {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
+		// A directory beside the checkouts that is neither a repository nor
+		// a tree with a gate file, a scratch folder on a workstation, is not
+		// part of the family. A repository with no gate file is, and is a
+		// finding below.
+		if !exists(filepath.Join(dir, e.Name(), ".git")) && !exists(filepath.Join(dir, e.Name(), config.Name)) {
+			continue
+		}
 		r := repository{name: e.Name(), dir: filepath.Join(dir, e.Name())}
 		cfg, loadErr := config.Load(r.dir)
 		if loadErr != nil {
@@ -252,4 +259,9 @@ func keysOf(m map[string][]string) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

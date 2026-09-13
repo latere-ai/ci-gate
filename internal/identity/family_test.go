@@ -16,8 +16,10 @@ func blocks(t *testing.T, repos map[string]string, clients string) string {
 	t.Helper()
 	dir := t.TempDir()
 	for name, body := range repos {
+		// Every fixture is a repository, marked by a .git directory, so a
+		// repository with no gate file is read and found wanting.
 		p := filepath.Join(dir, name)
-		if err := os.MkdirAll(p, 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(p, ".git"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		if body == "" {
@@ -164,6 +166,33 @@ func TestIdentityFamily(t *testing.T) {
 				t.Errorf("the finding must say %q:\n%v", c.contains, err)
 			}
 		})
+	}
+}
+
+// A directory beside the checkouts with no .git is not a repository and the
+// family check does not read it.
+func TestIdentityFamilySkipsADirectoryThatIsNoRepository(t *testing.T) {
+	repos := shape()
+	dir := blocks(t, repos, registryFile)
+	if err := os.MkdirAll(filepath.Join(dir, "output"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "output", "notes.html"), []byte("<p>scratch</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := family(t, dir, ""); err != nil {
+		t.Fatalf("a scratch directory is not a repository: %v\n%s", err, out)
+	}
+}
+
+// An open core's default audience is verified only where the core is
+// self-hosted; the hosted plane is another repository, so the registry
+// never lists the default and the check does not ask it to.
+func TestIdentityFamilyAcceptsACoreReachedSelfHosted(t *testing.T) {
+	repos := shape()
+	repos["lux"] = "identity:\n  role: core\n  audience: lux\n  config_prefix: LUX\n  api_group: lux.latere.ai\n  reached_by: self-hosted\n"
+	if out, err := family(t, blocks(t, repos, registryFile), ""); err != nil {
+		t.Fatalf("a self-hosted default needs no registry row: %v\n%s", err, out)
 	}
 }
 

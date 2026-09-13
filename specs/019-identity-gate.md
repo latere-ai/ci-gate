@@ -61,7 +61,7 @@ identity:
   registry: deploy/base/clients.yaml   # the client registry; issuer only, and the default
   audiences: []              # the product audiences this client presents; client only
   bff: []                    # paths of a browser frontend beside the API, which forwards the person's own token to the issuer; the request-path rule does not read them
-  reached_by: clients        # clients (default): a registered client mints for this audience; services: only service tokens or operators reach it, and the family check expects no registry row
+  reached_by: clients        # clients (default): a registered client mints for this audience; services: only service tokens or operators reach it; self-hosted: an open core's default, verified only where the core is self-hosted. The last two expect no registry row
 ```
 
 `none` is for a repository with no identity surface, a library or a

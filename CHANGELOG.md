@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- `identity family` reads only directories that are repositories; a scratch
+  folder beside the checkouts on a workstation is not part of the family.
+- `identity.reached_by` gains `self-hosted`: an open core's default audience,
+  verified only where the core is self-hosted while the hosted plane is
+  another repository, so the family check expects no registry row for it.
+
 ## v0.34.0 - 2026-09-13
 
 ### Added

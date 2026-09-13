@@ -101,7 +101,10 @@ type Identity struct {
 	// default, means a registered client mints an actor token for it and the
 	// family check expects the registry to list it; "services" means no
 	// client acts here for a person, only service tokens or operators reach
-	// it, and the family check expects no such row. Roles that verify only.
+	// it; "self-hosted" means the audience is an open core's default, which
+	// only a self-hosted deployment verifies while the hosted plane is
+	// another repository. Neither of the last two expects a registry row.
+	// Roles that verify only.
 	ReachedBy string `yaml:"reached_by"`
 	// Waive maps a rule name to the decision not to hold this repository to
 	// it yet. It is per rule, not per gate, so a repository behind on one
@@ -118,9 +121,12 @@ type Identity struct {
 }
 
 // ReachedByValues are the ways a verified audience is reached: by a
-// registered client minting an actor token for it, or by service tokens and
-// operators alone, with no client acting for a person.
-var ReachedByValues = []string{"clients", "services"}
+// registered client minting an actor token for it ("clients"); by service
+// tokens and operators alone, with no client acting for a person
+// ("services"); or only in a self-hosted deployment of an open core, whose
+// hosted plane is another repository with an audience of its own
+// ("self-hosted"), so the family's registry never lists the core's default.
+var ReachedByValues = []string{"clients", "services", "self-hosted"}
 
 // ReachedByClients reports whether the family check expects a client to be
 // registered to mint for this repository's audience.
