@@ -19,6 +19,20 @@ committed: the commit log already holds that.
 - TypeScript checking uses the consumer's installed compiler and supports
   Vue script blocks. `enum-typescript-prepare` installs frontend dependencies
   from tracked npm or Bun lockfiles; checking does not install packages.
+- `identity` holds a repository to the family's identity shape. The new
+  `identity` block in `.lateregate.yaml` declares which layer the repository
+  is, and the role selects the rules the gate runs over the tree: what a core
+  may read, one token verifier, one authorizer contract, no call to the issuer
+  while serving a request, no delegation vocabulary, access by role rather
+  than by a flag, an explicit audience in every deployment, a credential per
+  endpoint with the internal route inside the cluster, no value of one company
+  in an open core, one audience per product in a client, and a document that
+  describes the system that exists. A rule with nothing to read reports why.
+  A repository with no block fails the gate, and `contract` reports it as
+  drift.
+- `lateregate identity family -repos DIR [-expect FILE]` checks the blocks of
+  every repository against each other and the issuer's client registry, and
+  prints the layer table they derive.
 
 ### Fixed
 

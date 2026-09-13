@@ -51,6 +51,7 @@ lateregate: 1 of 13 gates failed: cover
 | `spec-lint` | the spec tree agrees with itself and with its index | git tracks `specs/` |
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
 | `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
+| `identity` | the repository declares its identity role and holds that role's rules | always |
 | `enum-go` | declared Go domains use named types, named members and exhaustive switches | `enums.go.types` names a domain |
 | `enum-typescript` | declared TypeScript domains use native enums, named members and exhaustive switches | `enums.typescript` names a project |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
@@ -645,6 +646,76 @@ gate applies only when the key names a function: it is opt-in per
 repository, and the review still carries the tells no regular expression
 can, such as a hint with no action.
 
+### `identity` holds the repository to the family's identity shape
+
+The family took one decision about identity: the issuer issues identity and
+membership, an open core verifies one token, forwards every claim and asks one
+authorizer, a service verifies that the audience is itself and decides from its
+own state, nobody calls the issuer while serving a request, there is one hop
+mechanism and no delegation in a token, and access is by role.
+
+Those rules held because somebody grepped for them, and a rule nothing runs on
+every push is a rule that drifts. This gate runs them. Every repository
+declares which layer of the shape it is:
+
+```yaml
+identity:
+  role: core                  # issuer | core | platform | service | bff | client | none
+  audience: cella             # what a token addressed here carries; core, service, platform
+  config_prefix: CELLA        # the prefix of the deployment variables; core
+  api_group: cella.latere.ai  # the group this core writes its own manifests under; core
+  claims_passthrough: [internal/auth/claims.go]   # the files of a core that may name a claim
+  skip: [deploy/prod]         # paths the scans do not enter
+```
+
+`none` is a library or a tool. It is a declared role and not an absent one: a
+repository with no block fails the gate, and `contract` reports the missing
+block the way it reports a missing hook. The role then selects the rules, and
+every rule is a scan of non-test Go files, deployment manifests, and documents
+outside an archive. Nothing here runs a service.
+
+| Rule | Roles | What fails |
+| --- | --- | --- |
+| `claims` | core | an identifier `OrgID`, `Roles`, `IsSuperadmin`, `PrincipalType`, or a string `org_id`, `roles`, `is_superadmin`, `principal_type`, outside `claims_passthrough` |
+| `verifier` | core, service, platform, bff | nothing imports `latere.ai/x/pkg/authkit/jwt`; a second token library; a token taken apart by hand |
+| `authorizer` | core | nothing imports `latere.ai/x/pkg/authz`; a hand-rolled `POST` to a path named `authorize` |
+| `request-path` | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` |
+| `delegation` | all but none | `grantor_id`, `tokens/exchange`, `RFC 8693`, `actor: true` anywhere; `act`, `agent_id`, `actor_id` as a JSON key or a struct tag where they are a token claim |
+| `roles` | all but none | `is_superadmin` or `IsSuperadmin`, once the block sets `roles_only: true` |
+| `audience` | core, service, platform | a container that runs this repository and sets no `<PREFIX>_OIDC_AUDIENCE`, or `AUTH_AUDIENCE` for a service, to a name that is not an address |
+| `bearers` | issuer, platform, core | two variables of one container reading one secret key; a host serving `/internal/` behind a public path |
+| `no-latere-value` | core | `latere.ai` or `latere.svc` outside `api_group` and an import path |
+| `client-audiences` | client | a product audience in `audiences` that no file presents, or that two files present |
+| `documents` | all but none | `pkg/oidclogin`, `pkg/jwtauth`, `pkg/oidc/`, `identity fabric`, `delegated token` in a live `*.md` |
+
+Each finding is a file, a line, and a sentence saying what to do. A rule with
+nothing to read prints `SKIP` and why, so a repository with no `deploy/`
+learns that the audience rule did not run rather than reading it as a pass.
+
+Two of the rules are heuristics and the report treats them as such. A file
+that both decodes unpadded base64 and splits a string on `.` is taking a token
+apart, which neither half alone would show. A container is this repository's
+when its image names a directory under `cmd/`, or when the document has one
+container. A path a heuristic reads wrong goes in `skip`.
+
+`roles_only` is one way. Once a repository has set it, the gate asks git
+whether the history ever carried it, and a tree that unsets it fails: a rule
+that can be turned off lasts until the first push that finds it inconvenient.
+
+Some of the shape is only visible with every repository in view, so that part
+is a subcommand over a directory of checkouts:
+
+```sh
+go tool lateregate identity family -repos ../checkouts -expect docs/layers.md
+```
+
+It fails on a repository with no block, an audience two repositories claim, an
+audience a repository verifies and the issuer's client registry does not list,
+an audience the registry lists and nobody verifies, and a client presenting an
+audience nothing accepts. It prints the layer table the blocks derive, and
+`-expect` fails when the committed copy of that table differs, which is what
+makes the document derived from the tree rather than maintained beside it.
+
 ### Enum domains keep protocol values out of implementation
 
 `enum-go` and `enum-typescript` enforce three properties for the domains a
@@ -836,6 +907,17 @@ otel_client: {skip: []}
 registers:                 # applies when user_surfaces names a function
   user_surfaces: []        # package path and function: internal/api.WriteError
   skip: []                 # directories the scan does not enter
+
+identity:                  # mandatory: a repository with no block fails the gate
+  role: ""                 # issuer | core | platform | service | bff | client | none
+  audience: ""             # what a token addressed here carries; core, service, platform
+  config_prefix: ""        # the prefix of the deployment variables; core
+  api_group: ""            # the group this core writes its own manifests under; core
+  claims_passthrough: []   # the files of a core that may name a claim
+  skip: []                 # paths the scans do not enter
+  roles_only: false        # turn on the roles rule; one way once set
+  registry: deploy/base/clients.yaml   # the client registry; issuer, and the default
+  audiences: []            # the product audiences this client presents; client
 
 enums:
   go:
