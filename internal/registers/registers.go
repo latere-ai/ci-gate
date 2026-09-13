@@ -289,3 +289,20 @@ func modulePath(root string) (string, error) {
 	}
 	return "", fmt.Errorf("go.mod at %s has no module line", root)
 }
+
+// Tells reports the developer-register tells a sentence carries, each named
+// with the text that matched, and nothing when the sentence is in the user's
+// register.
+//
+// It is exported so another gate's own output can be held to this gate's
+// rule: a gate that prints a package path at a person is the leak this
+// package exists to find, whoever printed it.
+func Tells(text string) []string {
+	var out []string
+	for _, t := range tells {
+		if m := t.match(text); m != "" {
+			out = append(out, t.name+" "+strconv.Quote(m))
+		}
+	}
+	return out
+}

@@ -285,3 +285,18 @@ func TestAnUnreadableTreeIsAnError(t *testing.T) {
 		t.Fatalf("a directory the walk cannot enter: %v", err)
 	}
 }
+
+// The tells are readable on their own, so another gate can hold its own
+// output to this gate's rule.
+func TestTellsReadsASentence(t *testing.T) {
+	if got := Tells("this repository verifies with something of its own"); len(got) != 0 {
+		t.Errorf("a user sentence carries no tell: %v", got)
+	}
+	got := Tells("see latere.ai/x/pkg/httpjson and store.Deploy")
+	if len(got) != 2 {
+		t.Fatalf("both tells are reported: %v", got)
+	}
+	if !strings.Contains(got[0], "Go import path") || !strings.Contains(got[1], "package-qualified") {
+		t.Errorf("each tell is named with what matched: %v", got)
+	}
+}
