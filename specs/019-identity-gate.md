@@ -60,6 +60,7 @@ identity:
   roles_only: false          # the roles rule, which is one way once set
   registry: deploy/base/clients.yaml   # the client registry; issuer only, and the default
   audiences: []              # the product audiences this client presents; client only
+  bff: []                    # paths of a browser frontend beside the API, which forwards the person's own token to the issuer; the request-path rule does not read them
   reached_by: clients        # clients (default): a registered client mints for this audience; services: only service tokens or operators reach it, and the family check expects no registry row
 ```
 
@@ -93,7 +94,7 @@ runs a service.
 | a core reads no claim for meaning (R1, C1) | core | an identifier `OrgID`, `Roles`, `IsSuperadmin`, `PrincipalType`, or a string `org_id`, `roles`, `is_superadmin`, `principal_type` in a non-test Go file outside `claims_passthrough` |
 | one verifier (C5) | core, service, platform, bff | `latere.ai/x/pkg/authkit/jwt` imported somewhere; no import of another JWT library, and no `base64.RawURLEncoding.DecodeString` applied to a segment of a bearer outside `authkit`; `depcheck`'s allow list carries the same decision, and this rule names it |
 | one contract (C3) | core | `latere.ai/x/pkg/authz` imported; no hand-rolled `POST` to a path named `authorize` outside it |
-| no auth on the request path (R2) | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` in a non-test Go file |
+| no auth on the request path (R2) | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` in a non-test Go file outside the paths the block's `bff` names, which hold a browser frontend that forwards the person's own token to the issuer's API |
 | one hop, no delegation (R3) | all but none | `grantor_id`, `tokens/exchange`, `actor: true`, `RFC 8693` anywhere in a non-test Go file or a non-archived document; `act`, `agent_id` and `actor_id` only where they are a token claim, which is a struct tag in a type that also carries `sub`, `aud` or `exp`, or a bare occurrence outside every struct type in a file that imports the verifier or names `Claims`. A tag in a type that carries no registered claim is a column of that type wherever the file lives: one product carries an agent identity as an attribution column, which the 2026-09-06 decision allows, and a handler that verifies tokens also renders its audit rows |
 | roles, not flags (R9) | all but none | `is_superadmin` or `IsSuperadmin` anywhere outside tests and archives; the rule is off until the family's id-09 ships and the block says `roles_only: true`, then it is on and cannot be turned off |
 | an explicit audience (D3) | core, service, platform | every container in `deploy/**` that runs the repository's binary sets the variable `audience` names, or `AUTH_AUDIENCE` for a service, to a non-empty value that is not the issuer URL |

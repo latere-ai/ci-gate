@@ -278,7 +278,12 @@ func ruleRequestPath(t *tree) (result, error) {
 		return result{skip: "no non-test Go file to read"}, nil
 	}
 	var found []Finding
+	read := 0
 	for _, g := range t.goFiles {
+		if t.frontend(g.rel) {
+			continue
+		}
+		read++
 		for _, lit := range stringLiterals(g.file) {
 			text, ok := literalText(lit)
 			if !ok {
@@ -293,8 +298,11 @@ func ruleRequestPath(t *tree) (result, error) {
 			}
 		}
 	}
+	if read == 0 {
+		return result{skip: "every non-test Go file is the frontend the block names"}, nil
+	}
 	return result{findings: found,
-		note: fmt.Sprintf("%d Go file(s) call no issuer endpoint", len(t.goFiles))}, nil
+		note: fmt.Sprintf("%d Go file(s) call no issuer endpoint", read)}, nil
 }
 
 const requestPathSentence = "this calls the issuer while serving a request; a service verifies one " +

@@ -89,6 +89,14 @@ type Identity struct {
 	Registry string `yaml:"registry"`
 	// Audiences are the product audiences a client mints for. Client only.
 	Audiences []string `yaml:"audiences"`
+	// BFF lists the paths that hold this repository's browser frontend: a
+	// server that signs the person in, keeps the session, and forwards the
+	// person's own token to the issuer's API for what the pages show. The
+	// request-path rule does not read those files, because calling the
+	// issuer with the person's token is what a frontend does; the API the
+	// repository verifies for is still held everywhere else. Roles that
+	// verify only; a repository that is only a frontend declares role bff.
+	BFF []string `yaml:"bff"`
 	// ReachedBy says who presents this repository's audience: "clients", the
 	// default, means a registered client mints an actor token for it and the
 	// family check expects the registry to list it; "services" means no
@@ -158,6 +166,11 @@ func (i Identity) validate(path string) error {
 	if i.ReachedBy != "" && !slices.Contains(ReachedByValues, i.ReachedBy) {
 		return fmt.Errorf("%s: identity.reached_by %q is not a way an audience is reached\n"+
 			"one of %s", path, i.ReachedBy, strings.Join(ReachedByValues, ", "))
+	}
+	if len(i.BFF) > 0 && !i.Verifies() {
+		return fmt.Errorf("%s: identity.bff is set and identity.role is %q\n"+
+			"only a role that verifies an API of its own has a frontend beside it; "+
+			"a repository that is only a frontend declares role bff", path, string(i.Role))
 	}
 	if i.ReachedBy != "" && !i.Verifies() {
 		return fmt.Errorf("%s: identity.reached_by is set and identity.role is %q\n"+

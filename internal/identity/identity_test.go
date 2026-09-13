@@ -508,6 +508,25 @@ type errNoGit struct{}
 
 func (errNoGit) Error() string { return "exec: git: executable file not found" }
 
+// A frontend beside an API forwards the person's own token to the issuer,
+// so the files the block names as bff may name the issuer's paths; the API's
+// own files may not.
+func TestAFrontendBesideTheAPIMayCallTheIssuer(t *testing.T) {
+	service := config.Identity{Role: config.RoleService, Audience: "sandboxd", BFF: []string{"internal/http/web"}}
+	directory := "package web\n\nvar members = \"/orgs/%s/members\"\n"
+	api := "package api\n\nimport _ \"latere.ai/x/pkg/authkit/jwt\"\n"
+	out, err := run(t, service, repo(t, map[string]string{"internal/http/web/directory.go": directory,
+		"internal/http/api/h.go": api}), noHistory())
+	if err != nil || !strings.Contains(out, "PASS request-path") {
+		t.Fatalf("the frontend may call the issuer with the person's token (%v):\n%s", err, out)
+	}
+	out, err = run(t, service, repo(t, map[string]string{"internal/http/api/h.go": api,
+		"internal/http/api/directory.go": strings.Replace(directory, "package web", "package api", 1)}), noHistory())
+	if err == nil || !strings.Contains(out, "FAIL request-path") {
+		t.Fatalf("the API's own files are still held:\n%s", out)
+	}
+}
+
 // A path the block skips is one the rules assert nothing about, and a file
 // the block admits as a passthrough may name a claim, because forwarding one
 // is what it does.

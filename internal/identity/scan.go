@@ -283,6 +283,19 @@ func (t *tree) passthrough(rel string) bool {
 
 // claiming lists the Go files a claim rule reads: every non-test file the
 // block does not admit as a passthrough.
+// frontend reports whether a file is one the block names as the
+// repository's browser frontend, which forwards the person's own token to
+// the issuer's API and so may name the issuer's paths.
+func (t *tree) frontend(rel string) bool {
+	for _, s := range t.cfg.BFF {
+		s = strings.Trim(filepath.ToSlash(strings.TrimSpace(s)), "/")
+		if s != "" && (rel == s || strings.HasPrefix(rel, s+"/")) {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *tree) claiming() []goFile {
 	var out []goFile
 	for _, g := range t.goFiles {

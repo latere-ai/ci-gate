@@ -23,6 +23,10 @@ committed: the commit log already holds that.
 
 ### Added
 
+- `identity.bff`: the paths of a browser frontend a repository serves beside
+  its API. The request-path rule does not read them, because a frontend
+  forwards the person's own token to the issuer's API; the API's files are
+  held as before.
 - `identity.reached_by`: `clients` (the default) or `services`. A service
   no client acts at for a person declares `services`, and the family check
   then expects no client registry row for its audience instead of failing
