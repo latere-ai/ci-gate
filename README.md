@@ -684,7 +684,7 @@ outside an archive. Nothing here runs a service.
 | `roles` | all but none | `is_superadmin` or `IsSuperadmin`, once the block sets `roles_only: true` |
 | `audience` | core, service, platform | a container that runs this repository and sets no `<PREFIX>_OIDC_AUDIENCE`, or `AUTH_AUDIENCE` for a service, to a name that is not an address |
 | `bearers` | issuer, platform, core | two variables of one container reading one secret key; a host serving `/internal/` behind a public path |
-| `no-latere-value` | core | `latere.ai` or `latere.svc` outside `api_group` and an import path |
+| `no-latere-value` | core | `latere.ai` or `latere.svc` in code, a manifest or a user document, outside `api_group` and an import path; `specs/` is the contributor's record and is not read |
 | `client-audiences` | client | a product audience in `audiences` that no file presents, or that two files present |
 | `documents` | all but none | `pkg/oidclogin`, `pkg/jwtauth`, `pkg/oidc/`, `identity fabric`, `delegated token` in a live `*.md` |
 

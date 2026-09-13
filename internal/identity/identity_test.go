@@ -249,6 +249,19 @@ func ruleCases(core, service, client config.Identity) []ruleCase {
 		bad:  map[string]string{"docs/pools.md": "A pool is `lux.latere.ai/v1beta1`.\n"},
 		good: map[string]string{"docs/pools.md": "A pool is `cella.latere.ai/v1beta1`.\n"},
 	}, {
+		// The spec tree is the contributor's record and may name the hosted
+		// deployment the core came from; a user document may not.
+		name: "a spec may name the hosted deployment, a user document may not",
+		rule: "no-latere-value", cfg: core,
+		bad: map[string]string{
+			"docs/install.md":           "The reference installation is https://code.latere.ai.\n",
+			"specs/001-architecture.md": "The reference installation is https://code.latere.ai.\n",
+		},
+		good: map[string]string{
+			"docs/install.md":           "Install cellad from the release archive.\n",
+			"specs/001-architecture.md": "The reference installation is https://code.latere.ai.\n",
+		},
+	}, {
 		name: "one audience per product in a client",
 		rule: "client-audiences", cfg: client,
 		bad: map[string]string{

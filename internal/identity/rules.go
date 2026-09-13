@@ -452,10 +452,21 @@ func (t *tree) everyFile() []sourceFile {
 }
 
 // ruleNoCompanyValue keeps one company's deployment out of an open core.
+//
+// It reads code, manifests and user documents. A spec tree is the
+// contributor's record, and a core extracted from a hosted deployment
+// records that deployment's history and examples there, which a fork
+// inherits as history and not as a default; so specs/ is not read.
 func ruleNoCompanyValue(t *tree) (result, error) {
-	targets := t.everyFile()
+	var targets []sourceFile
+	for _, s := range t.everyFile() {
+		if strings.HasPrefix(s.rel, "specs/") {
+			continue
+		}
+		targets = append(targets, s)
+	}
 	if len(targets) == 0 {
-		return result{skip: "no non-test Go file, document or manifest to read"}, nil
+		return result{skip: "no non-test Go file, document or manifest outside specs/ to read"}, nil
 	}
 	imports := map[string]map[int]bool{}
 	for _, g := range t.goFiles {
