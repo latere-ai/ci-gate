@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.32.2 - 2026-09-13
+
 ### Changed
 
 - The `identity` gate's document rules read no record: a changelog, a
