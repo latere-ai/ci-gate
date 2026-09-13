@@ -93,6 +93,9 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	if f := checkChangelog(root, exec); f != "" {
 		note(f)
 	}
+	if f := checkIdentity(cfg); f != "" {
+		note(f)
+	}
 	if len(cfg.Restated) > 0 {
 		note(fmt.Sprintf("%s restates a default: %s\n\tdelete the key; a restated default is the line the next default change makes wrong",
 			config.Name, strings.Join(cfg.Restated, ", ")))
@@ -111,8 +114,8 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	if len(findings) > 0 {
 		return fmt.Errorf("%d drift(s) from the shared shape:\n- %s", len(findings), strings.Join(findings, "\n- "))
 	}
-	_, _ = fmt.Fprintf(out, "in shape: workflow calls %s, %s and %s delegate, %s untracked, %s ignored, %s tracked with an Unreleased heading, no restated default, no hand-rolled gate target, go.mod pins the tool\n",
-		Workflow, hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "), changelog.Name)
+	_, _ = fmt.Fprintf(out, "in shape: workflow calls %s, %s and %s delegate, %s untracked, %s ignored, %s tracked with an Unreleased heading, identity declares the role %s, no restated default, no hand-rolled gate target, go.mod pins the tool\n",
+		Workflow, hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "), changelog.Name, string(cfg.Identity.Role))
 	return nil
 }
 
@@ -293,6 +296,17 @@ func checkChangelog(root string, exec gates.Exec) string {
 		return changelog.Name + " has no `## " + changelog.Unreleased + "` heading; the notes for the next tag go under it"
 	}
 	return ""
+}
+
+// checkIdentity: the file declares which layer of the family's identity
+// shape this repository is. A repository with no block runs no rule of that
+// shape, which is the same gap as a gate nobody runs.
+func checkIdentity(cfg *config.Config) string {
+	if cfg.Identity.Present {
+		return ""
+	}
+	return config.Name + " has no identity block, so no rule of the family's identity shape runs here:\n" +
+		"\tidentity:\n\t  role: none   # one of " + config.RoleList()
 }
 
 // rule matches a target line in make's database.

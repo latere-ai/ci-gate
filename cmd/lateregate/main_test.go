@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"latere.ai/x/ci-gate/internal/config"
 )
 
 func out(t *testing.T, argv ...string) (string, error) {
@@ -165,6 +167,11 @@ func TestInitThenContract(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module m\n\ngo 1.27\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The role is a decision, and init writes no decision, so the block is
+	// written here the way the pin is.
+	if err := os.WriteFile(filepath.Join(dir, config.Name), []byte("identity:\n  role: none\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	// The seed changelog is committed by hand, as init says.
 	add := exec.Command("git", "add", "CHANGELOG.md")
 	add.Dir = dir
@@ -291,5 +298,50 @@ func TestLicenseRunsAgainstThisRepository(t *testing.T) {
 	}
 	if !strings.Contains(s, "MIT declared on") {
 		t.Errorf("report:\n%s", s)
+	}
+}
+
+// `identity` alone is the gate for this repository; `identity family` reads
+// a directory of checkouts and carries its own flags.
+func TestIdentityAndItsFamilySubcommand(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, config.Name), []byte("identity:\n  role: none\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := out(t, "identity", "-C", dir)
+	if err != nil || !strings.Contains(s, "role none") {
+		t.Fatalf("the gate runs for this repository: %v\n%s", err, s)
+	}
+
+	if _, err := out(t, "identity", "family"); err == nil {
+		t.Error("the family check needs the directory the checkouts are in")
+	}
+
+	family := t.TempDir()
+	for name, body := range map[string]string{
+		"auth":  "identity:\n  role: issuer\n",
+		"drive": "identity:\n  role: service\n  audience: drive\n",
+	} {
+		if err := os.MkdirAll(filepath.Join(family, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(family, name, config.Name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	registry := filepath.Join(family, "auth", "deploy", "base")
+	if err := os.MkdirAll(registry, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(registry, "clients.yaml"),
+		[]byte("clients:\n  - client_id: drive\n    allowed_audiences: [$ISSUER, drive]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err = out(t, "identity", "family", "-repos", family)
+	if err != nil {
+		t.Fatalf("a family in shape passes: %v\n%s", err, s)
+	}
+	if !strings.Contains(s, "| service | drive | drive |") {
+		t.Errorf("the layer table is printed:\n%s", s)
 	}
 }

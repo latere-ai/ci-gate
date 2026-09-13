@@ -29,6 +29,7 @@ import (
 	"latere.ai/x/ci-gate/internal/enumsetup"
 	"latere.ai/x/ci-gate/internal/gates"
 	"latere.ai/x/ci-gate/internal/golangci"
+	"latere.ai/x/ci-gate/internal/identity"
 	"latere.ai/x/ci-gate/internal/license"
 )
 
@@ -40,6 +41,8 @@ Usage:
 	lateregate list [-json]    print each gate with run / skip / waived and why
 	lateregate <gate>          run one gate
 	lateregate contract        report every way the wiring drifted from the shared shape
+	lateregate identity family -repos DIR [-expect FILE]
+	                           check the identity blocks of every repository under DIR against each other and the issuer's client registry, and print the layer table they derive
 	lateregate init            write the wiring: workflow caller, both hooks, gitignore lines
 	lateregate hook            the pre-commit checks over the staged Go files
 	lateregate prepush         refuse a release tag with no changelog section, then golangci-lint over the packages the push on stdin changes
@@ -146,6 +149,23 @@ func run(argv []string, out io.Writer) error {
 		return enumsetup.Prepare(cfg.Enums.TypeScript, *root, out, ctx.Exec)
 	case "contract":
 		return contract.Run(*root, cfg, out, ctx.Exec)
+	case "identity":
+		// `identity family` reads a directory of checkouts rather than this
+		// repository, so it carries its own flags; `identity` alone is the
+		// gate, and falls through to the gate dispatch below.
+		if args := fs.Args(); len(args) > 0 && args[0] == "family" {
+			sub := flag.NewFlagSet("lateregate identity family", flag.ContinueOnError)
+			sub.SetOutput(out)
+			repos := sub.String("repos", "", "directory holding one checkout per repository of the family")
+			expect := sub.String("expect", "", "the committed layer table the blocks must derive")
+			if err := sub.Parse(args[1:]); err != nil {
+				return err
+			}
+			if *repos == "" {
+				return fmt.Errorf("usage: lateregate identity family -repos DIR [-expect FILE]")
+			}
+			return identity.Family(*repos, *expect, out)
+		}
 	case "init":
 		return contract.Init(*root, out, ctx.Exec)
 	case "hook":

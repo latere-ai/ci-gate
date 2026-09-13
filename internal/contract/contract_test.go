@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -29,6 +30,7 @@ func repo(t *testing.T) string {
 	must(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("coverage.out\n.golangci.yml\n"), 0o644))
 	must(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/m\n\ngo 1.27\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n"), 0o644))
 	must(t, os.WriteFile(filepath.Join(dir, changelog.Name), []byte(changelog.Seed), 0o644))
+	must(t, os.WriteFile(filepath.Join(dir, config.Name), []byte("identity:\n  role: none\n"), 0o644))
 	return dir
 }
 
@@ -86,6 +88,25 @@ func check(t *testing.T, dir string, exec gates.Exec) (string, error) {
 	var sb strings.Builder
 	err := Run(dir, load(t, dir), &sb, exec)
 	return sb.String(), err
+}
+
+// A repository with no identity block runs no rule of the family's identity
+// shape, which is drift in the wiring the same way a missing hook is.
+func TestContractReportsMissingIdentityBlock(t *testing.T) {
+	dir := repo(t)
+	must(t, os.Remove(filepath.Join(dir, config.Name)))
+	out, err := check(t, dir, untracked(""))
+	if err == nil {
+		t.Fatalf("a tree with no block has drifted:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "no identity block") {
+		t.Errorf("the drift names the block:\n%v", err)
+	}
+	for _, role := range config.Roles {
+		if !strings.Contains(err.Error(), string(role)) {
+			t.Errorf("the fix names the role %q:\n%v", string(role), err)
+		}
+	}
 }
 
 func TestInShapePasses(t *testing.T) {
@@ -189,7 +210,7 @@ func TestATrackedGolangciConfigFailsUnlessDeclared(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 
-	write(t, dir, ".lateregate.yaml", "golangci:\n  own: a vendored tree with its own lint history\n")
+	write(t, dir, config.Name, "identity:\n  role: none\ngolangci:\n  own: a vendored tree with its own lint history\n")
 	_, err = check(t, dir, tracked(""))
 	if err == nil || !strings.Contains(err.Error(), "and there is none") {
 		t.Fatalf("a declared own config that is not there is a lost config, got %v", err)
@@ -378,6 +399,9 @@ func TestTheToolMustBePinned(t *testing.T) {
 func TestInitWritesTheWiringOnce(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, ".gitignore", "coverage.out")
+	// init writes no decision, and the role is one: the block is here so the
+	// tree after init is in shape on everything init does write.
+	write(t, dir, config.Name, "identity:\n  role: none\n")
 	var configured []string
 	exec := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
 		if name == "git" && len(args) > 0 && args[0] == "config" {
@@ -472,6 +496,11 @@ func TestInitReportsAFailingHooksPath(t *testing.T) {
 func TestRequiredListsTheGates(t *testing.T) {
 	if len(Required()) == 0 {
 		t.Error("the required set is the gate set")
+	}
+	// A gate added to the set is required of every repository without any
+	// further wiring, which is what makes the set the contract.
+	if !slices.Contains(Required(), "identity") {
+		t.Errorf("the gate set carries identity: %v", Required())
 	}
 }
 
