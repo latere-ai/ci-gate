@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.34.0 - 2026-09-13
+
 ### Added
 
 - `identity.bff`: the paths of a browser frontend a repository serves beside
