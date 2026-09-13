@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.35.0 - 2026-09-13
+
 ### Changed
 
 - `identity family` reads only directories that are repositories; a scratch
