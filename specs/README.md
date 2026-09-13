@@ -27,7 +27,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 016 | [Go enum domains use named types and members](016-go-enum-domains.md) | complete | Type-aware Go enum members, domain fields and exhaustive switches |
 | 017 | [TypeScript enum domains use named types and members](017-typescript-enum-domains.md) | complete | Type-aware TypeScript and Vue enum checks through the project compiler |
 | 018 | [Enum gates run from the shared plan locally and in CI](018-enum-gate-wiring.md) | complete | Strict policy configuration, gate dispatch, frontend preparation and CI wiring |
-| 019 | [Gate the identity shape every repository integrates](019-identity-gate.md) | draft | An `identity` gate: a role per repository in `.lateregate.yaml`, static rules per role for the family's identity shape, and a family check across repositories |
+| 019 | [Gate the identity shape every repository integrates](019-identity-gate.md) | partial | An `identity` gate: a role per repository in `.lateregate.yaml`, static rules per role for the family's identity shape, and a family check across repositories |
 
 ## Conventions
 
