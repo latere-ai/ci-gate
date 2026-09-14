@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
 )
 
@@ -167,7 +168,7 @@ func Prepush(root string, in io.Reader, out io.Writer, run gates.Exec) error {
 // It refuses a version that is not a release tag, a dirty tree, an existing
 // tag, and an empty Unreleased, and writes nothing in any of those cases: a
 // tag is a release, and a release has notes.
-func Cut(root, version string, now time.Time, out io.Writer, run gates.Exec) error {
+func Cut(root, version string, now time.Time, out io.Writer, run gates.Exec, stamps []config.Stamp) error {
 	if !IsReleaseTag(version) {
 		return fmt.Errorf("usage: lateregate release vX.Y.Z (got %q)", version)
 	}
@@ -208,17 +209,33 @@ func Cut(root, version string, now time.Time, out io.Writer, run gates.Exec) err
 	if _, err := Section(rewritten, version); err != nil {
 		return fmt.Errorf("the rewritten %s has no usable section for %s: %w", Name, version, err)
 	}
+	// Plan the stamps before writing anything: a bad stamp config refuses the
+	// cut with a clean tree, the way every other refusal above does, rather
+	// than leaving a moved changelog and half-stamped files to unwind.
+	plans, err := planStamps(root, version, stamps)
+	if err != nil {
+		return err
+	}
 	if err := os.WriteFile(path, []byte(rewritten), 0o644); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintf(out, "%s: moved %s under %q\n", Name, Unreleased, heading)
-
-	steps := [][]string{
-		{"add", Name},
-		{"commit", "-m", "changelog: " + version},
-		{"tag", "-a", version, "-m", version},
-		{"push", "origin", "HEAD", version},
+	for _, p := range plans {
+		if err := os.WriteFile(filepath.Join(root, p.file), p.content, 0o644); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(out, "%s: stamped %s\n", p.file, version)
 	}
+
+	steps := [][]string{{"add", Name}}
+	for _, p := range plans {
+		steps = append(steps, []string{"add", p.file})
+	}
+	steps = append(steps,
+		[]string{"commit", "-m", "changelog: " + version},
+		[]string{"tag", "-a", version, "-m", version},
+		[]string{"push", "origin", "HEAD", version},
+	)
 	for _, args := range steps {
 		if _, err := run(nil, true, "git", args...); err != nil {
 			return fmt.Errorf("git %s: %w", args[0], err)
@@ -226,4 +243,48 @@ func Cut(root, version string, now time.Time, out io.Writer, run gates.Exec) err
 	}
 	_, _ = fmt.Fprintf(out, "%s: committed, tagged, pushed\n", version)
 	return nil
+}
+
+// versionInText finds a vX.Y.Z inside a stamp's matched span, unanchored,
+// unlike releaseTag which matches a whole tag string.
+var versionInText = regexp.MustCompile(`v\d+\.\d+\.\d+`)
+
+// stampPlan is one file's stamped content, computed but not yet written.
+type stampPlan struct {
+	file    string
+	content []byte
+}
+
+// planStamps rewrites the version inside each configured file's marker to the
+// release version and returns the planned writes, without touching disk. A
+// pattern that does not match its file exactly once, or matches a span with no
+// version, is a configuration error — better a refused release than one that
+// ships a file naming the wrong version. A file already naming the release
+// version plans a write to identical content, which git commits as nothing.
+func planStamps(root, version string, stamps []config.Stamp) ([]stampPlan, error) {
+	plans := make([]stampPlan, 0, len(stamps))
+	for _, s := range stamps {
+		b, err := os.ReadFile(filepath.Join(root, s.File))
+		if err != nil {
+			return nil, fmt.Errorf("release stamp %s: %w", s.File, err)
+		}
+		re, err := regexp.Compile(s.Pattern)
+		if err != nil {
+			return nil, fmt.Errorf("release stamp %s: pattern %q: %w", s.File, s.Pattern, err)
+		}
+		locs := re.FindAllIndex(b, -1)
+		if len(locs) != 1 {
+			return nil, fmt.Errorf("release stamp %s: pattern %q matched %d times, want exactly one", s.File, s.Pattern, len(locs))
+		}
+		lo, hi := locs[0][0], locs[0][1]
+		if !versionInText.Match(b[lo:hi]) {
+			return nil, fmt.Errorf("release stamp %s: pattern %q holds no vX.Y.Z to move", s.File, s.Pattern)
+		}
+		content := make([]byte, 0, len(b))
+		content = append(content, b[:lo]...)
+		content = append(content, versionInText.ReplaceAll(b[lo:hi], []byte(version))...)
+		content = append(content, b[hi:]...)
+		plans = append(plans, stampPlan{file: s.File, content: content})
+	}
+	return plans, nil
 }

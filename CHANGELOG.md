@@ -10,6 +10,16 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- `release.stamp` in `.lateregate.yaml`: a list of `{file, pattern}` whose
+  `vX.Y.Z` `lateregate release` rewrites to the version it is cutting, staged
+  into the same commit as the changelog. A file that names the release — a
+  `SECURITY.md` line, a deploy overlay's `newTag` — no longer lags the tag,
+  so main does not go red after a cut waiting for a hand-edit. Each pattern
+  must match its file exactly once and hold one `vX.Y.Z`; a pattern that does
+  not refuses the cut with a clean tree, like every other release refusal.
+
 ## v0.35.0 - 2026-09-13
 
 ### Changed

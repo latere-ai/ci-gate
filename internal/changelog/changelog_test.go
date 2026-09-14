@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
 )
 
@@ -237,7 +238,7 @@ func TestCutMovesUnreleasedCommitsTagsAndPushes(t *testing.T) {
 	dir := clone(t)
 	var sb strings.Builder
 	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
-	if err := Cut(dir, "v0.1.0", now, &sb, realExec(t, dir)); err != nil {
+	if err := Cut(dir, "v0.1.0", now, &sb, realExec(t, dir), nil); err != nil {
 		t.Fatalf("%v\n%s", err, sb.String())
 	}
 	got, err := Notes(dir, "v0.1.0", "", nil)
@@ -276,6 +277,91 @@ func TestCutMovesUnreleasedCommitsTagsAndPushes(t *testing.T) {
 	}
 }
 
+func TestCutStampsTheConfiguredFilesIntoTheReleaseCommit(t *testing.T) {
+	dir := clone(t)
+	readf := func(name string) string {
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	// Two files that name the previous version, the marker wrapping across a
+	// line in one and inline in the other, both seeded and committed.
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("SECURITY.md", "Fixes go to the latest series. v0.0.9 is the\ncurrent release.\n")
+	write("kustomization.yaml", "images:\n  - name: app\n    newTag: v0.0.9\n")
+	git(t, dir, "add", "SECURITY.md", "kustomization.yaml")
+	git(t, dir, "commit", "-q", "-m", "seed the stamped files")
+
+	stamps := []config.Stamp{
+		{File: "SECURITY.md", Pattern: `v\d+\.\d+\.\d+ is the\s+current release`},
+		{File: "kustomization.yaml", Pattern: `newTag: v\d+\.\d+\.\d+`},
+	}
+	var sb strings.Builder
+	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	if err := Cut(dir, "v0.1.0", now, &sb, realExec(t, dir), stamps); err != nil {
+		t.Fatalf("%v\n%s", err, sb.String())
+	}
+	if got := readf("SECURITY.md"); !strings.Contains(got, "v0.1.0 is the") || strings.Contains(got, "v0.0.9") {
+		t.Errorf("SECURITY.md was not stamped to v0.1.0: %q", got)
+	}
+	if got := readf("kustomization.yaml"); !strings.Contains(got, "newTag: v0.1.0") || strings.Contains(got, "v0.0.9") {
+		t.Errorf("the overlay was not stamped to v0.1.0: %q", got)
+	}
+	if strings.TrimSpace(git(t, dir, "status", "--porcelain")) != "" {
+		t.Error("the stamped files are in the release commit, not left dirty in the tree")
+	}
+	names := git(t, dir, "show", "--name-only", "--format=", "HEAD")
+	for _, want := range []string{Name, "SECURITY.md", "kustomization.yaml"} {
+		if !strings.Contains(names, want) {
+			t.Errorf("the release commit does not carry %s; it touched:\n%s", want, names)
+		}
+	}
+	if remote := git(t, dir, "ls-remote", "origin"); !strings.Contains(remote, "refs/tags/v0.1.0") {
+		t.Errorf("the tag with the stamped commit is not pushed:\n%s", remote)
+	}
+}
+
+func TestCutRefusesAStampThatDoesNotMatchExactlyOnceAndWritesNothing(t *testing.T) {
+	cases := []struct {
+		name, body, pattern, want string
+	}{
+		{"twice", "v0.0.1 here and v0.0.2 there\n", `v\d+\.\d+\.\d+`, "want exactly one"},
+		{"never", "no version at all\n", `newTag: v\d+\.\d+\.\d+`, "want exactly one"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := clone(t)
+			if err := os.WriteFile(filepath.Join(dir, "marker.txt"), []byte(c.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			git(t, dir, "add", "marker.txt")
+			git(t, dir, "commit", "-q", "-m", "seed")
+			before := mustRead(t, dir)
+			var sb strings.Builder
+			stamps := []config.Stamp{{File: "marker.txt", Pattern: c.pattern}}
+			err := Cut(dir, "v0.1.0", time.Now(), &sb, realExec(t, dir), stamps)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("want a refusal mentioning %q, got %v", c.want, err)
+			}
+			if mustRead(t, dir) != before {
+				t.Error("a refused cut leaves the changelog untouched")
+			}
+			if strings.TrimSpace(git(t, dir, "status", "--porcelain")) != "" {
+				t.Error("a refused cut writes nothing: the tree stays clean")
+			}
+			if out := git(t, dir, "tag", "--list", "v0.1.0"); strings.TrimSpace(out) != "" {
+				t.Error("a refused cut creates no tag")
+			}
+		})
+	}
+}
+
 func TestCutRefusesAndWritesNothing(t *testing.T) {
 	dir := clone(t)
 	before := mustRead(t, dir)
@@ -300,7 +386,7 @@ func TestCutRefusesAndWritesNothing(t *testing.T) {
 		if c.prep != nil {
 			c.prep()
 		}
-		err := Cut(dir, c.version, time.Now(), &sb, run)
+		err := Cut(dir, c.version, time.Now(), &sb, run, nil)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: got %v, want %q", c.name, err, c.want)
 		}
@@ -313,7 +399,7 @@ func TestCutRefusesAndWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	git(t, dir, "commit", "-q", "-am", "empty")
-	err := Cut(dir, "v0.1.0", time.Now(), &sb, run)
+	err := Cut(dir, "v0.1.0", time.Now(), &sb, run, nil)
 	if err == nil || !strings.Contains(err.Error(), "nothing under `## Unreleased`") {
 		t.Errorf("got %v", err)
 	}
@@ -323,7 +409,7 @@ func TestCutRefusesAndWritesNothing(t *testing.T) {
 	// No changelog at all.
 	git(t, dir, "rm", "-q", Name)
 	git(t, dir, "commit", "-q", "-m", "rm")
-	err = Cut(dir, "v0.1.0", time.Now(), &sb, run)
+	err = Cut(dir, "v0.1.0", time.Now(), &sb, run, nil)
 	if err == nil || !strings.Contains(err.Error(), "no CHANGELOG.md") {
 		t.Errorf("got %v", err)
 	}
@@ -344,14 +430,14 @@ func TestCutReportsAFailingGitStep(t *testing.T) {
 		return nil, nil
 	}
 	var sb strings.Builder
-	err := Cut(dir, "v0.1.0", time.Now(), &sb, fail)
+	err := Cut(dir, "v0.1.0", time.Now(), &sb, fail, nil)
 	if err == nil || !strings.Contains(err.Error(), "git push: rejected") {
 		t.Errorf("got %v", err)
 	}
 	statusFails := func(_ []string, _ bool, _ string, _ ...string) ([]byte, error) {
 		return nil, errors.New("not a repository")
 	}
-	if err := Cut(dir, "v0.1.0", time.Now(), &sb, statusFails); err == nil || !strings.Contains(err.Error(), "git status") {
+	if err := Cut(dir, "v0.1.0", time.Now(), &sb, statusFails, nil); err == nil || !strings.Contains(err.Error(), "git status") {
 		t.Errorf("got %v", err)
 	}
 }

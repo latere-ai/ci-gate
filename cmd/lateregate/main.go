@@ -214,7 +214,7 @@ func run(argv []string, out io.Writer) error {
 		if err := bar.Check(check); err != nil {
 			return fmt.Errorf("not releasing %s: %w", fs.Args()[0], err)
 		}
-		return changelog.Cut(*root, fs.Args()[0], time.Now(), out, ctx.Exec)
+		return changelog.Cut(*root, fs.Args()[0], time.Now(), out, ctx.Exec, cfg.Release.Stamp)
 	case "golangci":
 		if reason, err := golangci.Own(*root, cfg); err != nil {
 			return err

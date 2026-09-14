@@ -52,6 +52,7 @@ type Config struct {
 	Registers  Registers  `yaml:"registers"`
 	Enums      Enums      `yaml:"enums"`
 	Identity   Identity   `yaml:"identity"`
+	Release    Release    `yaml:"release"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
@@ -62,6 +63,26 @@ type Config struct {
 	// restates a default is a line the next default change makes wrong, so
 	// the drift report names it. Computed by Load; not part of the file.
 	Restated []string `yaml:"-"`
+}
+
+// Release configures `lateregate release`. Its stamps move a version marker
+// in named files into the release's own commit, so a file that names the
+// release cannot lag the tag: the alternative is a hand-edit after every
+// cut, and a red main until it lands.
+type Release struct {
+	// Stamp lists files whose version marker the cut rewrites to the version
+	// it is releasing, added to the same commit as the changelog.
+	Stamp []Stamp `yaml:"stamp"`
+}
+
+// Stamp is one file whose `vX.Y.Z` the release rewrites. Pattern is a
+// regular expression that must match the file exactly once and hold exactly
+// one `vX.Y.Z`; the cut replaces that version and nothing else, so the
+// pattern is the marker's context (`newTag: vX.Y.Z`), not the bare version,
+// which would match every version the file mentions.
+type Stamp struct {
+	File    string `yaml:"file"`
+	Pattern string `yaml:"pattern"`
 }
 
 // DefaultDisabledFixers are the go fix modernizers every repository turns
