@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.36.0 - 2026-09-15
+
 ### Added
 
 - `release.stamp` in `.lateregate.yaml`: a list of `{file, pattern}` whose
