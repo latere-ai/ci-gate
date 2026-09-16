@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.38.0 - 2026-09-17
+
 ### Added
 
 - `identity.overlays` names the paths that hold one company's own deployment
