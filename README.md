@@ -666,6 +666,7 @@ identity:
   api_group: cella.latere.ai  # the group this core writes its own manifests under; core
   claims_passthrough: [internal/auth/claims.go]   # the files of a core that may name a claim
   skip: [deploy/prod]         # paths the scans do not enter
+  overlays: [deploy/prod]     # the paths holding one company's own overlay; core
 ```
 
 `none` is a library or a tool. It is a declared role and not an absent one: a
@@ -687,7 +688,7 @@ mechanism it retired. Nothing here runs a service.
 | `roles` | all but none | `is_superadmin` or `IsSuperadmin`, once the block sets `roles_only: true` |
 | `audience` | core, service, platform | a container that runs this repository and, across its base and overlays, sets no `<PREFIX>_OIDC_AUDIENCE`, or `AUTH_AUDIENCE` or `AUTH_AUDIENCES` for a service, to a name that is not an address |
 | `bearers` | issuer, platform, core | two variables of one container reading one secret key; a host serving `/internal/` behind a public path |
-| `no-latere-value` | core | `latere.ai` or `latere.svc` in code, a manifest or a user document, outside `api_group`, the `latere.ai/x/` module namespace and a contact address; `specs/` is the contributor's record and is not read |
+| `no-latere-value` | core | `latere.ai` or `latere.svc` in code, a manifest or a user document, outside `api_group`, the `latere.ai/x/` module namespace, a contact address and what `overlays` declares; `specs/` is the contributor's record and is not read |
 | `client-audiences` | client | a product audience in `audiences` that no file presents, or that two files present |
 | `documents` | all but none | `pkg/oidclogin`, `pkg/jwtauth`, `pkg/oidc/`, `identity fabric`, `delegated token` in a live `*.md` |
 
@@ -727,6 +728,27 @@ is visible and a waiver whose rule already holds says the waiver can go. Past
 its date the rule fails on its own terms and the line says which waiver
 expired. A waiver naming no rule, or a rule the role does not run, fails the
 load: a waiver with no effect hides a typo.
+
+An open core sometimes keeps one company's own deployment in its tree,
+because the tag deploys from it. `overlays` names those paths, and the
+`no-latere-value` rule reads them rather than scanning them:
+
+```yaml
+identity:
+  role: core
+  overlays: [deploy/prod]
+```
+
+A declared overlay's own files are not read by that rule, so the addresses
+one installation runs on belong there. The rule then collects every
+`latere.ai` and `latere.svc` address those files set, which is a line's value
+and not its comments, and a document may name one of them, or name a declared
+overlay's path. Everything else is held as before: the same address in a Go
+file or in a manifest outside the overlay, an address the overlay only
+mentions in prose, and any address no declared overlay carries. The exemption
+is read out of the overlay rather than listed beside it, so a repository
+cannot claim one for a value it does not deploy, and a declared path the tree
+does not hold stops the run.
 
 `roles_only` is one way. Once a repository has set it, the gate asks git
 whether the history ever carried it, and a tree that unsets it fails: a rule
@@ -945,6 +967,7 @@ identity:                  # mandatory: a repository with no block fails the gat
   api_group: ""            # the group this core writes its own manifests under; core
   claims_passthrough: []   # the files of a core that may name a claim
   skip: []                 # paths the scans do not enter
+  overlays: []             # the paths holding one company's own deployment overlay; core
   roles_only: false        # turn on the roles rule; one way once set
   registry: deploy/base/clients.yaml   # the client registry; issuer, and the default
   audiences: []            # the product audiences this client presents; client
