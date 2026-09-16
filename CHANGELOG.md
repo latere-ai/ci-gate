@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.37.0 - 2026-09-16
+
 ### Fixed
 
 - The `identity` gate's `audience` rule reads which containers of a manifest
