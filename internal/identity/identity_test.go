@@ -578,10 +578,11 @@ spec:
 
 // A declared overlay is one company's own deployment, kept in the core's
 // tree because the tag deploys from it. The rule reads that overlay for the
-// addresses it sets, so a document may say where the installation runs and
-// which path it deploys from. Everything else is held as before: the same
-// sentence with no overlay declared, an address the overlay only mentions,
-// the base every fork deploys, and the code.
+// addresses it sets, and one of those is the whole of what a document may
+// name. Everything else is held as before: the same sentence with no overlay
+// declared, a line that names the overlay's path beside another address, an
+// address the overlay only mentions, the base every fork deploys, and the
+// code.
 func TestADeclaredOverlayIsWhatADocumentMayName(t *testing.T) {
 	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai"}
 	readme := map[string]string{
@@ -609,10 +610,15 @@ func TestADeclaredOverlayIsWhatADocumentMayName(t *testing.T) {
 		files map[string]string
 		want  string
 	}{{
-		name: "a sentence that names the overlay's path is about that overlay",
-		files: map[string]string{"docs/install.md": "The hosted installation deploys from " +
-			"`deploy/prod`, which serves https://code.latere.ai.\n"},
+		name: "a sentence names the address the overlay serves",
+		files: map[string]string{"docs/install.md": "The hosted installation is " +
+			"https://code.latere.ai.\n"},
 		want: "PASS no-latere-value",
+	}, {
+		name: "naming the overlay's path admits no address the overlay does not set",
+		files: map[string]string{"docs/install.md": "Unlike `deploy/prod`, set your issuer " +
+			"to https://auth.latere.ai.\n"},
+		want: "FAIL no-latere-value",
 	}, {
 		name:  "an address the overlay only mentions is not one it sets",
 		files: map[string]string{"docs/install.md": "The handbook is at https://docs.latere.ai.\n"},

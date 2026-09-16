@@ -184,18 +184,6 @@ func setting(line string) string {
 // where one company's own values belong.
 func (t *tree) overlay(rel string) bool { return under(rel, t.cfg.Overlays) }
 
-// namesOverlay reports whether a line names a declared overlay's path, which
-// makes the sentence one about that overlay rather than a default anybody
-// running this core would inherit.
-func (t *tree) namesOverlay(line string) bool {
-	for _, o := range clean(t.cfg.Overlays) {
-		if strings.Contains(line, o) {
-			return true
-		}
-	}
-	return false
-}
-
 // carries reports whether a declared overlay sets this address.
 func (t *tree) carries(host string) bool { return t.overlayHosts[host] }
 

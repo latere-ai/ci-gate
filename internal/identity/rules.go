@@ -481,10 +481,12 @@ func (t *tree) everyFile() []sourceFile {
 //
 // A declared overlay is the third thing it does not read: the block names
 // the paths one company deploys its own installation from, and the values
-// belong in them. A document may then name that overlay's path, or an
-// address the overlay sets, because the sentence describes an installation
-// the tree already holds rather than a default a fork would inherit. Code
-// and every manifest outside the overlay are held as before.
+// belong in them. A document may then name an address that overlay sets,
+// because the sentence describes an installation the tree already holds
+// rather than a default a fork would inherit. That address is the whole of
+// the exemption, read out of the overlay: naming the overlay's path in a
+// sentence admits nothing, and code and every manifest outside the overlay
+// are held as before.
 func ruleNoCompanyValue(t *tree) (result, error) {
 	docs := map[string]bool{}
 	for _, d := range t.docs {
@@ -521,12 +523,6 @@ func ruleNoCompanyValue(t *tree) (result, error) {
 			// sentence stands beside it.
 			carried := func(string) bool { return false }
 			if docs[s.rel] {
-				// A line that names the overlay's path is a sentence about
-				// that overlay, whatever address it carries; a sentence
-				// about a default belongs on a line of its own.
-				if t.namesOverlay(line) {
-					continue
-				}
 				carried = t.carries
 			}
 			if companyValue(line, t.cfg.APIGroup, carried) {
@@ -603,11 +599,13 @@ func nameAt(line string, i int) (string, int) {
 	return line[start:end], start
 }
 
-// host is a token without the path after it, which is the address a reader
-// of the line sees and the address an overlay sets.
+// host is a token without the path after it and without the punctuation a
+// sentence ends on, which is the address a reader of the line sees and the
+// address an overlay sets. Both sides of the overlay comparison read it, so
+// a document that ends a sentence on an address still names that address.
 func host(tok string) string {
 	name, _, _ := strings.Cut(tok, "/")
-	return name
+	return strings.TrimRight(name, ".-")
 }
 
 // exempt reports whether an occurrence is the core's own API group, which it
