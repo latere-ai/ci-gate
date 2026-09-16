@@ -521,6 +521,9 @@ func ruleNoCompanyValue(t *tree) (result, error) {
 			// sentence stands beside it.
 			carried := func(string) bool { return false }
 			if docs[s.rel] {
+				// A line that names the overlay's path is a sentence about
+				// that overlay, whatever address it carries; a sentence
+				// about a default belongs on a line of its own.
 				if t.namesOverlay(line) {
 					continue
 				}
