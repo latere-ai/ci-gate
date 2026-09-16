@@ -5,14 +5,19 @@ package identity
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
 
+// sharedPrefix is the prefix of the variables a service and a platform are
+// configured with; a core is configured under the prefix its block declares.
+const sharedPrefix = "AUTH_"
+
 // audienceVariable is what a service and a platform read their audience
 // from; a core reads its own, under the prefix its block declares.
-const audienceVariable = "AUTH_AUDIENCE"
+const audienceVariable = sharedPrefix + "AUDIENCE"
 
 // internalPrefix is the route that stays inside the cluster.
 const internalPrefix = "/internal/"
@@ -20,9 +25,14 @@ const internalPrefix = "/internal/"
 // ruleAudience holds every deployment of a repository to naming the audience
 // it verifies.
 //
-// A container runs this repository when its image names one of the commands
-// the repository builds, or when the document holds exactly one container,
-// which is the shape of a single-workload manifest.
+// A container runs this repository when the last path segment of its image,
+// without the tag or the digest, is exactly a command the repository builds:
+// origo runs ghcr.io/latere-ai/origo:v1 and never origo-stubs. A container
+// with no image is an overlay's patch of one declared elsewhere, and is read
+// as the container whose name it merges into. An init container is held only
+// when it is configured as the workload is, by declaring a variable of the
+// repository's own prefix: one that runs the check with the node's
+// environment verifies a token, one that copies a file does not.
 func ruleAudience(t *tree) (result, error) {
 	if len(t.manifests) == 0 {
 		return result{skip: "the tree has no deployment manifest"}, nil
@@ -31,6 +41,8 @@ func ruleAudience(t *tree) (result, error) {
 	if t.cfg.Role == config.RoleCore {
 		names = []string{t.cfg.ConfigPrefix + "_OIDC_AUDIENCE"}
 	}
+	named := workloadNames(t.manifests, t.binaries)
+	prefix := ownPrefix(t.cfg)
 	// A deployment is a base and its overlays, so one container is judged
 	// across every file that names it: it passes when any file sets the
 	// audience, and an address anywhere is a finding.
@@ -43,7 +55,7 @@ func ruleAudience(t *tree) (result, error) {
 			found = append(found, at(m.rel, 1, unreadableSentence))
 			continue
 		}
-		for _, c := range m.own(t.binaries) {
+		for _, c := range m.own(t.binaries, named, prefix) {
 			seen[c.name] = true
 			entry, name, ok := firstEnv(c, names)
 			if !ok {
@@ -164,11 +176,26 @@ func reaches(p string, paths []string) bool {
 	return false
 }
 
-// container is one container of a deployment document.
+// container is one container of a deployment document. init marks the ones
+// that run to completion before the workload starts, which the audience rule
+// reads differently from the workload itself.
 type container struct {
 	name  string
 	image string
 	spec  map[string]any
+	init  bool
+}
+
+// declares reports whether a container sets any variable of a prefix, which
+// is how an init container says it runs with the workload's configuration.
+// A variable reached through envFrom is not named here and does not count.
+func (c container) declares(prefix string) bool {
+	for _, e := range c.envs() {
+		if n, ok := e["name"].(string); ok && strings.HasPrefix(n, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // envs lists the environment entries of a container.
@@ -215,46 +242,103 @@ func secretRef(e map[string]any) string {
 	return name + "/" + key
 }
 
-// containers lists every container of every document in a manifest.
+// containers lists every container of every document in a manifest, the init
+// containers first: a container that verifies a token before the workload
+// starts is a container of the deployment like any other.
 func (m manifest) containers() []container {
 	var out []container
 	for _, doc := range m.docs {
 		walkYAML(doc, func(node map[string]any) {
-			list, ok := node["containers"].([]any)
-			if !ok {
-				return
-			}
-			for _, c := range list {
-				spec, ok := c.(map[string]any)
-				if !ok {
-					continue
-				}
-				image, _ := spec["image"].(string)
-				name, _ := spec["name"].(string)
-				out = append(out, container{name: name, image: image, spec: spec})
-			}
+			out = append(out, listed(node, "initContainers", true)...)
+			out = append(out, listed(node, "containers", false)...)
 		})
 	}
 	return out
 }
 
-// own selects the containers that run this repository: the ones whose image
-// names a command it builds, or the only container there is.
-func (m manifest) own(binaries []string) []container {
-	all := m.containers()
-	if len(all) == 1 {
-		return all
+// listed reads one container list of a pod spec.
+func listed(node map[string]any, key string, init bool) []container {
+	list, ok := node[key].([]any)
+	if !ok {
+		return nil
 	}
+	out := make([]container, 0, len(list))
+	for _, c := range list {
+		spec, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		image, _ := spec["image"].(string)
+		name, _ := spec["name"].(string)
+		out = append(out, container{name: name, image: image, spec: spec, init: init})
+	}
+	return out
+}
+
+// own selects the containers that run this repository, init containers
+// included: the ones whose image is a command it builds, and, among those,
+// the init containers configured as the workload is.
+func (m manifest) own(binaries []string, named map[string]bool, prefix string) []container {
 	var out []container
-	for _, c := range all {
-		for _, b := range binaries {
-			if b != "" && strings.Contains(c.image, b) {
-				out = append(out, c)
-				break
+	for _, c := range m.containers() {
+		if !runs(c, binaries, named) {
+			continue
+		}
+		if c.init && !c.declares(prefix) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// workloadNames are the names the commands of this repository run under
+// across every manifest of the tree. An overlay patches a container by the
+// name it merges on and carries no image, so the name is what says which
+// container it is.
+func workloadNames(ms []manifest, binaries []string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range ms {
+		for _, c := range m.containers() {
+			if c.name != "" && c.image != "" && slices.Contains(binaries, imageName(c.image)) {
+				out[c.name] = true
 			}
 		}
 	}
 	return out
+}
+
+// runs reports whether a container runs a command this repository builds.
+func runs(c container, binaries []string, named map[string]bool) bool {
+	if c.image == "" {
+		return c.name != "" && named[c.name]
+	}
+	return slices.Contains(binaries, imageName(c.image))
+}
+
+// imageName is the name an image was built under: the last path segment of
+// the reference, without the tag and without the digest. Matching it whole
+// is what tells a repository's own image from another built beside it.
+func imageName(image string) string {
+	ref := image
+	if i := strings.IndexByte(ref, '@'); i >= 0 {
+		ref = ref[:i]
+	}
+	ref = ref[strings.LastIndexByte(ref, '/')+1:]
+	if i := strings.IndexByte(ref, ':'); i >= 0 {
+		ref = ref[:i]
+	}
+	return ref
+}
+
+// ownPrefix is the prefix of the variables this repository is configured
+// with: a core's declared one, and the shared AUTH_ for the roles that read
+// the family's variable.
+func ownPrefix(cfg config.Identity) string {
+	if cfg.Role == config.RoleCore && cfg.ConfigPrefix != "" {
+		return cfg.ConfigPrefix + "_"
+	}
+	return sharedPrefix
 }
 
 // routes maps each host of an ingress to the paths it serves.

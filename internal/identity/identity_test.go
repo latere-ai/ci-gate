@@ -262,24 +262,24 @@ func ruleCases(core, service, client, settledService config.Identity) []ruleCase
 		// may spell the variable AUTH_AUDIENCES.
 		name: "an audience set in an overlay counts for the base, under either spelling",
 		rule: "audience", cfg: service,
-		bad: map[string]string{
+		bad: builds(map[string]string{
 			"deploy/base/app.yaml": deployment(""),
 			"deploy/prod/app.yaml": deployment(""),
-		},
-		good: map[string]string{
+		}),
+		good: builds(map[string]string{
 			"deploy/base/app.yaml": deployment(""),
 			"deploy/prod/app.yaml": deployment("        - name: AUTH_AUDIENCES\n          value: drive\n"),
-		},
+		}),
 	}, {
 		name: "an explicit audience in every deployment",
 		rule: "audience", cfg: core,
-		bad:  map[string]string{"deploy/base/app.yaml": deployment("")},
-		good: map[string]string{"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_AUDIENCE\n          value: cella\n")},
+		bad:  builds(map[string]string{"deploy/base/app.yaml": deployment("")}),
+		good: builds(map[string]string{"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_AUDIENCE\n          value: cella\n")}),
 	}, {
 		name: "the audience is a name, not the address of the issuer",
 		rule: "audience", cfg: core,
-		bad:  map[string]string{"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_AUDIENCE\n          value: https://auth.example.com\n")},
-		good: map[string]string{"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_AUDIENCE\n          value: cella\n")},
+		bad:  builds(map[string]string{"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_AUDIENCE\n          value: https://auth.example.com\n")}),
+		good: builds(map[string]string{"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_AUDIENCE\n          value: cella\n")}),
 	}, {
 		name: "a credential per endpoint",
 		rule: "bearers", cfg: core,
@@ -365,6 +365,18 @@ func withRolesOnly(cfg config.Identity) config.Identity {
 }
 
 func fmtClaims(field string) string { return strings.Replace(claimsFile, "%s", field, 1) }
+
+// builds adds the command the deployment fixtures' image names, so the
+// audience rule reads that container as this repository's workload. It
+// imports the verifier, because a tree with a Go file and no verifier is a
+// finding of another rule and not of the one under test.
+func builds(files map[string]string) map[string]string {
+	files["cmd/app/main.go"] = mainFile
+	return files
+}
+
+// mainFile is a command that imports the verifier and does nothing else.
+const mainFile = "package main\n\nimport _ \"latere.ai/x/pkg/authkit/jwt\"\n\nfunc main() {}\n"
 
 // deployment renders a one-container workload with the given env entries.
 func deployment(env string) string {
@@ -626,38 +638,186 @@ func cutLocation(line string) (string, string, bool) {
 	return rel, sentence, true
 }
 
-// A deployment with more than one container is read by which of them runs a
-// command this repository builds; a single-workload manifest is read whole.
-func TestTheContainerThatRunsThisRepository(t *testing.T) {
+// Which containers of a manifest are this repository's workload, which is
+// what the audience rule is held over. A container runs this repository when
+// the name its image was built under is exactly a command the tree builds:
+// an image built beside it under a longer name is another workload, and a
+// document holding one container of another workload holds none of this one.
+// An init container is read like the workload when it is configured like the
+// workload, and passed over when it is not.
+func TestTheWorkloadContainersOfAManifest(t *testing.T) {
 	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai"}
-	sidecar := `apiVersion: apps/v1
+	service := config.Identity{Role: config.RoleService, Audience: "drive"}
+	for _, c := range []struct {
+		name     string
+		cfg      config.Identity
+		files    map[string]string
+		want     string
+		contains string
+	}{{
+		name: "a sidecar is not this repository, the command beside it is",
+		cfg:  core,
+		files: cmdTree("cellad", `      containers:
+        - name: proxy
+          image: ghcr.io/example/proxy:1
+        - name: cellad
+          image: ghcr.io/example/cellad:1
+          env:
+            - name: CELLA_OIDC_AUDIENCE
+              value: cella
+`),
+		want: "PASS", contains: "1 container(s)",
+	}, {
+		name: "the command this repository builds, with no audience, is a finding",
+		cfg:  core,
+		files: cmdTree("cellad", `      containers:
+        - name: proxy
+          image: ghcr.io/example/proxy:1
+        - name: cellad
+          image: ghcr.io/example/cellad:1
+`),
+		want: "FAIL", contains: "1 finding(s)",
+	}, {
+		name: "an image whose name only holds the binary is another image",
+		cfg:  core,
+		files: cmdTree("cellad", `      containers:
+        - name: stubs
+          image: ghcr.io/example/cellad-stubs:candidate
+`),
+		want: "SKIP", contains: "no container in the deployment runs a command this repository builds",
+	}, {
+		name: "one container that is not this repository is no container of it",
+		cfg:  core,
+		files: cmdTree("cellad", `      containers:
+        - name: stubs
+          image: ghcr.io/example/stubs:candidate
+`),
+		want: "SKIP", contains: "no container in the deployment runs a command this repository builds",
+	}, {
+		name: "the registry, the tag and the digest are not the image's name",
+		cfg:  core,
+		files: cmdTree("cellad", `      containers:
+        - name: cellad
+          image: registry.example.com:5000/cellad@sha256:0123456789abcdef
+          env:
+            - name: CELLA_OIDC_AUDIENCE
+              value: cella
+`),
+		want: "PASS", contains: "1 container(s)",
+	}, {
+		name: "an init container configured as the node is held to the audience",
+		cfg:  core,
+		files: cmdTree("cellad", `      initContainers:
+        - name: check
+          image: ghcr.io/example/cellad:1
+          args: [check]
+          env:
+            - name: CELLA_DATA_DIR
+              value: /var/lib/cella
+      containers:
+        - name: cellad
+          image: ghcr.io/example/cellad:1
+          env:
+            - name: CELLA_OIDC_AUDIENCE
+              value: cella
+`),
+		want: "FAIL", contains: "1 finding(s)",
+	}, {
+		name: "an init container that only copies a file verifies nothing",
+		cfg:  core,
+		files: cmdTree("cellad", `      initContainers:
+        - name: copy
+          image: ghcr.io/example/cellad:1
+          command: [cp, /bin/cellad, /shared/cellad]
+          env:
+            - name: TZ
+              value: UTC
+      containers:
+        - name: cellad
+          image: ghcr.io/example/cellad:1
+          env:
+            - name: CELLA_OIDC_AUDIENCE
+              value: cella
+`),
+		want: "PASS", contains: "1 container(s)",
+	}, {
+		name: "a service's init container is held under the shared prefix",
+		cfg:  service,
+		files: cmdTree("drived", `      initContainers:
+        - name: check
+          image: ghcr.io/example/drived:1
+          env:
+            - name: AUTH_ISSUER
+              value: https://auth.example.com
+      containers:
+        - name: drived
+          image: ghcr.io/example/drived:1
+          env:
+            - name: AUTH_AUDIENCE
+              value: drive
+`),
+		want: "FAIL", contains: "1 finding(s)",
+	}, {
+		name: "an overlay patches the container it names and carries no image",
+		cfg:  core,
+		files: cmdTree("cellad", `      containers:
+        - name: cellad
+          image: ghcr.io/example/cellad:1
+`, `      containers:
+        - name: cellad
+          env:
+            - name: CELLA_OIDC_AUDIENCE
+              value: cella
+`),
+		want: "PASS", contains: "1 container(s)",
+	}, {
+		name: "an overlay's patch may name no address either",
+		cfg:  core,
+		files: cmdTree("cellad", `      containers:
+        - name: cellad
+          image: ghcr.io/example/cellad:1
+          env:
+            - name: CELLA_OIDC_AUDIENCE
+              value: cella
+`, `      containers:
+        - name: cellad
+          env:
+            - name: CELLA_OIDC_AUDIENCE
+              value: https://auth.example.com
+`),
+		want: "FAIL", contains: "1 finding(s)",
+	}} {
+		t.Run(c.name, func(t *testing.T) {
+			out, _ := run(t, c.cfg, repo(t, c.files), noHistory())
+			line := ruleLine(out, "audience")
+			if !strings.HasPrefix(line, c.want) || !strings.Contains(line, c.contains) {
+				t.Errorf("the audience rule must report %s %q:\n%s", c.want, c.contains, out)
+			}
+		})
+	}
+}
+
+// pod renders a Deployment from the container lists of its pod spec.
+func pod(spec string) string {
+	return `apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
 spec:
   template:
     spec:
-      containers:
-      - name: proxy
-        image: registry.example.com/proxy:1
-      - name: cellad
-        image: registry.example.com/cellad:1
-%s`
-	files := map[string]string{
-		"cmd/cellad/main.go": "package main\n\nfunc main() {}\n",
-		"deploy/base/app.yaml": strings.Replace(sidecar, "%s",
-			"        env:\n        - name: CELLA_OIDC_AUDIENCE\n          value: cella\n", 1),
-	}
-	out, _ := run(t, core, repo(t, files), noHistory())
-	if !strings.Contains(out, "PASS audience") || !strings.Contains(ruleLine(out, "audience"), "1 container(s)") {
-		t.Errorf("the sidecar is not this repository, so one container was read:\n%s", out)
-	}
+` + spec
+}
 
-	files["deploy/base/app.yaml"] = strings.Replace(sidecar, "%s", "", 1)
-	out, _ = run(t, core, repo(t, files), noHistory())
-	if !strings.Contains(out, "FAIL audience") {
-		t.Errorf("a container of this repository with no audience is a finding:\n%s", out)
+// cmdTree is a tree that builds one command and holds one manifest per pod
+// spec: the first is the base, the second the overlay that patches it.
+func cmdTree(command string, specs ...string) map[string]string {
+	out := map[string]string{"cmd/" + command + "/main.go": mainFile}
+	rels := []string{"deploy/base/app.yaml", "deploy/overlay/app.yaml"}
+	for i, spec := range specs {
+		out[rels[i]] = pod(spec)
 	}
+	return out
 }
 
 // The one-way check reads a real history, and a repository with no commit
@@ -683,9 +843,9 @@ func TestRolesOnlyReadsARealHistory(t *testing.T) {
 func TestWaivedRuleReportsAndHolds(t *testing.T) {
 	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai",
 		Waive: map[string]config.Waiver{"no-latere-value": {Until: "2026-12-31", Reason: "the overlay moves with id-06"}}}
-	root := repo(t, map[string]string{
+	root := repo(t, builds(map[string]string{
 		"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_ISSUERS\n          value: https://auth.latere.ai\n"),
-	})
+	}))
 	out, err := run(t, core, root, noHistory())
 	if !strings.Contains(out, "WAIV no-latere-value") || !strings.Contains(out, "1 finding(s)") {
 		t.Fatalf("the waived rule must report under WAIV with its count:\n%s", out)
