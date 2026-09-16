@@ -698,8 +698,17 @@ learns that the audience rule did not run rather than reading it as a pass.
 Two of the rules are heuristics and the report treats them as such. A file
 that both decodes unpadded base64 and splits a string on `.` is taking a token
 apart, which neither half alone would show. A container is this repository's
-when its image names a directory under `cmd/`, or when the document has one
-container. A path a heuristic reads wrong goes in `skip`.
+when the name its image was built under — the last path segment of the
+reference, without the registry, the tag and the digest — is exactly a
+directory under `cmd/`: `origo` runs `ghcr.io/latere-ai/origo:v1` and never
+`origo-stubs`, and a manifest of another workload beside this one is read as
+none of this repository's, which the rule reports as a `SKIP` with its reason.
+An `initContainers` entry is read as well when it declares a variable of the
+repository's own prefix, which is how a check that runs before the workload
+says it runs with the workload's configuration; one that declares none is a
+step that verifies nothing. An overlay that patches a container by name and
+carries no image is the container it merges into. A path a heuristic reads
+wrong goes in `skip`.
 
 A repository behind on one rule waives that rule and keeps the other ten
 running, which a gate waiver could not do:

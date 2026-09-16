@@ -15,7 +15,7 @@ affects:
   - README.md
 effort: medium
 created: 2026-09-13
-updated: 2026-09-13
+updated: 2026-09-16
 author: changkun
 dispatched_task_id: null
 ---
@@ -97,7 +97,7 @@ runs a service.
 | no auth on the request path (R2) | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` in a non-test Go file outside the paths the block's `bff` names, which hold a browser frontend that forwards the person's own token to the issuer's API |
 | one hop, no delegation (R3) | all but none | `grantor_id`, `tokens/exchange`, `actor: true`, `RFC 8693` anywhere in a non-test Go file or a non-archived document; `act`, `agent_id` and `actor_id` only where they are a token claim, which is a struct tag in a type that also carries `sub`, `aud` or `exp`, or a bare occurrence outside every struct type in a file that imports the verifier or names `Claims`. A tag in a type that carries no registered claim is a column of that type wherever the file lives: one product carries an agent identity as an attribution column, which the 2026-09-06 decision allows, and a handler that verifies tokens also renders its audit rows |
 | roles, not flags (R9) | all but none | `is_superadmin` or `IsSuperadmin` anywhere outside tests and archives; the rule is off until the family's id-09 ships and the block says `roles_only: true`, then it is on and cannot be turned off |
-| an explicit audience (D3) | core, service, platform | every container in `deploy/**` that runs the repository's binary sets the variable `audience` names, or `AUTH_AUDIENCE` for a service, to a non-empty value that is not the issuer URL |
+| an explicit audience (D3) | core, service, platform | every container in `deploy/**` that runs the repository's binary sets the variable `audience` names, or `AUTH_AUDIENCE` for a service, to a non-empty value that is not the issuer URL. A container runs the binary when the name its image was built under is exactly a directory under `cmd/`; an `initContainers` entry is read when it also declares a variable of the repository's own prefix, which is how it says it runs with the workload's configuration (the 2026-09-16 amendment) |
 | per-endpoint bearers, internal stays internal (R8) | issuer, platform, core | two environment variables of one container reading one secret key; an ingress rule whose path is `/` or a prefix of `/internal/` on a host also serving `/internal/` |
 | no Latere value in a core (open-cores invariant 5) | core | `latere.ai` or `latere.svc` in a non-test Go file, a deploy manifest, or a user document (`specs/` is the contributor's record, holds the hosted deployment's history and examples, and is not read), outside an import path, the API group the block declares in `api_group`, wherever it appears, and the paths the block's `skip` names. `go.mod` is not scanned: every occurrence in it is a module path, which the import-path exemption already covers |
 | a client presents one audience per product (id-01) | client | a string literal that is a product audience the block's `audiences` names appears in exactly one non-test Go file, the one that mints for it. The second half, that a bearer read from a token file is never written to an `Authorization` header outside that file, is dataflow and is left to the client's own tests |
@@ -172,8 +172,8 @@ with a false-positive rate, so the gate holds the first half from the block's
 **Two heuristics, named as such in the report and the README.** A file that
 both decodes unpadded base64 and splits a string on `.` is taking a token
 apart; neither half alone is evidence. A container runs this repository when
-its image names a directory under `cmd/`, or when the document holds one
-container. A path either reads wrong goes in `skip`.
+its image names a directory under `cmd/` — exactly, since the 2026-09-16
+amendment below. A path either reads wrong goes in `skip`.
 
 **Three corrections to the text above, made so the spec describes what
 shipped.** `skip` is a bare list of paths, as every other `skip` in this tool
@@ -184,3 +184,64 @@ runs no rule at all, which is also what keeps this repository's own README
 from failing its own gate. The delegation and no-Latere-value rows carry the
 scoping the family survey of 2026-09-13 found necessary: an agent identity
 used as an attribution column, and a core's own API group in its documents.
+
+## Amendment, 2026-09-16: which containers are this repository's
+
+Shipped as the `audience` rule's workload detection, found while origo
+retired its `audience` waiver (the family's `id-10-guardrail.md`, "State
+on 2026-09-16").
+
+The rule read three things wrong, and each was a guess standing in for
+the question "is this container this repository":
+
+1. A document with exactly one container was read whole, whatever that
+   container was, on the assumption that a single-container manifest is a
+   single-workload manifest. A repository's tree also holds manifests of
+   other workloads: origo's two spec 013 stub manifests run the test
+   double that mints tokens and answers authorization, and a test double
+   verifies no audience. Each was a finding on every push, and the
+   repositories worked around it with `identity.skip`, which turns off
+   every deployment rule for that path.
+2. The image was matched by substring, so `ghcr.io/latere-ai/origo-stubs`
+   ran the command `origo`. A name built beside a repository's own is the
+   normal shape of a stub, a debug build, or a migration image.
+3. `initContainers` were never read, so a container that verifies a token
+   before the workload starts — origo's `check`, which runs `origod check`
+   against the node's environment — was outside the rule the workload
+   beside it is held to.
+
+**The decision.** A container runs this repository when the name its image
+was built under is exactly a command the repository builds: the last path
+segment of the reference with the registry, the tag and the digest
+removed, compared whole against the directories under `cmd/`. `origo`
+matches `ghcr.io/latere-ai/origo:v1` and `origo`, and never
+`origo-stubs`. There is no shortcut for a lone container: a document
+holding one container that is not the workload holds no container of this
+repository, and the rule reports why rather than finding against it.
+
+A container with no image is an overlay's patch of one declared elsewhere,
+which kustomize merges by name, so it is read as the container whose name
+it carries. That keeps the decision of v0.32.2 — a container is judged
+across every file that names it, so an audience set in an overlay counts
+for the base — and keeps an address named in an overlay a finding.
+
+`initContainers` are read beside `containers`, and an init container is
+held to the audience when it declares any variable of the repository's own
+prefix (`CELLA_` for a core from `config_prefix`, `AUTH_` for a service or
+a platform). That is the manifest's own statement that the container runs
+with the workload's configuration: a check that runs against another
+environment checks nothing, and a step that copies a file into a shared
+volume verifies nothing. A variable reached through `envFrom` is not named
+in the document and does not count.
+
+**What a consumer sees.** A manifest of test doubles stops being a
+finding and the `identity.skip` entry written for one can go. A check or
+migration init container configured like the node is now held to naming
+the audience. And a deployment whose image name is not a directory under
+`cmd/` reports `SKIP audience` with its reason where the shortcut used to
+read that container: a rule that reads nothing says so, so the image is
+renamed after the command it runs or the path goes in `skip` as a
+decision.
+
+`identity.skip` is unchanged: a path it names is one the rules assert
+nothing about.
