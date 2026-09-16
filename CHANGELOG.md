@@ -10,6 +10,38 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- The `identity` gate's `audience` rule reads which containers of a manifest
+  are this repository's workload. A container runs the repository when the
+  name its image was built under — the last path segment of the reference,
+  without the registry, the tag or the digest — is exactly a command under
+  `cmd/`. It was a substring of the image, so `ghcr.io/latere-ai/origo-stubs`
+  counted as the command `origo`; and every document holding a single
+  container was read as this repository's whatever that container was. A
+  manifest of test doubles beside the workload is no longer a finding, and
+  the `identity.skip` entries repositories carry for one can go. An overlay
+  that patches a container by name and carries no image is still read as the
+  container it merges into, so an audience set in an overlay still counts for
+  the base and an address set there is still a finding.
+- The deployment rules read `initContainers` beside `containers`. An init
+  container that runs with the workload's configuration, which it says by
+  declaring a variable of the repository's own prefix (`CELLA_` for a core,
+  `AUTH_` for a service or a platform), names the audience it verifies like
+  the workload does; one that declares none, a step that copies a file, is
+  passed over. A check container that verifies tokens before the node starts
+  was invisible to the gate and is now held. The `bearers` rule reads init
+  containers too, so a credential shared between two of their variables is a
+  finding where it was not seen.
+
+### Changed
+
+- A deployment whose image name is not a directory under `cmd/` now reports
+  `SKIP audience` with the reason, where the single-container shortcut used
+  to read that container as the workload. A rule that reads nothing says so
+  rather than passing: name the image after the command it runs, or put the
+  path in `identity.skip` as a decision.
+
 ## v0.36.0 - 2026-09-15
 
 ### Added
