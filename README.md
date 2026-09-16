@@ -742,15 +742,14 @@ identity:
 A declared overlay's own files are not read by that rule, so the addresses
 one installation runs on belong there. The rule then collects every
 `latere.ai` and `latere.svc` address those files set, which is a line's value
-and not its comments, and a document may name one of them. A document line
-that names a declared overlay's path is a sentence about that overlay, so
-every address on it is admitted; a sentence about a default belongs on a line
-of its own. Everything else is held as before: the same address in a Go
-file or in a manifest outside the overlay, an address the overlay only
-mentions in prose, and any address no declared overlay carries. The exemption
-is read out of the overlay rather than listed beside it, so a repository
-cannot claim one for a value it does not deploy, and a declared path the tree
-does not hold stops the run.
+and not its comments, and a document may name one of them. That address is
+the whole of the exemption: naming the overlay's path in a sentence admits
+nothing beside it, and the same address in a Go file or in a manifest outside
+the overlay, an address the overlay only mentions in a comment, and any
+address no declared overlay carries are all held as before. The exemption is
+read out of the overlay rather than listed beside it, so a repository cannot
+claim one for a value it does not deploy, and a declared path the tree does
+not hold stops the run.
 
 `roles_only` is one way. Once a repository has set it, the gate asks git
 whether the history ever carried it, and a tree that unsets it fails: a rule
