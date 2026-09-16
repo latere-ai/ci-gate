@@ -76,6 +76,10 @@ type tree struct {
 	// binaries are the commands this repository builds, which is how a
 	// container is recognised as running it.
 	binaries []string
+	// overlayHosts are the addresses the declared overlays carry, read from
+	// the overlays themselves so the exemption is a declaration rather than
+	// a list of names beside the tree.
+	overlayHosts map[string]bool
 }
 
 // scan reads the tree once.
@@ -117,20 +121,109 @@ func scan(cfg config.Identity, root string, exec gates.Exec) (*tree, error) {
 		return nil, fmt.Errorf("reading the tree for the identity rules: %w", err)
 	}
 	t.binaries = commands(root)
+	if err := t.readOverlays(); err != nil {
+		return nil, err
+	}
 	return t, nil
 }
 
-// skipped reports whether the block named this path, as a directory or a
-// file. A path skipped here is one the rules assert nothing about.
-func (t *tree) skipped(rel string) bool {
-	for _, s := range t.cfg.Skip {
-		s = strings.Trim(filepath.ToSlash(strings.TrimSpace(s)), "/")
-		if s != "" && (rel == s || strings.HasPrefix(rel, s+"/")) {
+// readOverlays collects the addresses each declared overlay carries.
+//
+// The overlays are read here and not by the walk, because a repository that
+// declares one usually skips it as well, and a value the rules exempt must
+// come from the file that sets it rather than from a name written beside it.
+// A declared path the tree does not hold stops the run: an exemption that
+// matches nothing hides a typo, and a typo that lowers the bar is the
+// failure this binary is against.
+func (t *tree) readOverlays() error {
+	t.overlayHosts = map[string]bool{}
+	for _, rel := range clean(t.cfg.Overlays) {
+		p := filepath.Join(t.root, filepath.FromSlash(rel))
+		if _, err := os.Stat(p); err != nil {
+			return fmt.Errorf("%s: identity.overlays names %s, which this tree does not hold\n"+
+				"name the directory the company's own overlay is in, or delete the entry",
+				config.Name, rel)
+		}
+		err := filepath.WalkDir(p, func(fp string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() {
+				return nil
+			}
+			body, readErr := os.ReadFile(fp)
+			if readErr != nil {
+				return readErr
+			}
+			for line := range strings.SplitSeq(string(body), "\n") {
+				for _, h := range hosts(setting(line)) {
+					t.overlayHosts[h] = true
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("reading the overlay %s: %w", rel, err)
+		}
+	}
+	return nil
+}
+
+// setting is the part of a line before a comment, so an address an overlay
+// mentions in prose is not one it sets.
+func setting(line string) string {
+	for i := range len(line) {
+		if line[i] == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t') {
+			return line[:i]
+		}
+	}
+	return line
+}
+
+// overlay reports whether a path is inside a declared overlay, which is
+// where one company's own values belong.
+func (t *tree) overlay(rel string) bool { return under(rel, t.cfg.Overlays) }
+
+// namesOverlay reports whether a line names a declared overlay's path, which
+// makes the sentence one about that overlay rather than a default anybody
+// running this core would inherit.
+func (t *tree) namesOverlay(line string) bool {
+	for _, o := range clean(t.cfg.Overlays) {
+		if strings.Contains(line, o) {
 			return true
 		}
 	}
 	return false
 }
+
+// carries reports whether a declared overlay sets this address.
+func (t *tree) carries(host string) bool { return t.overlayHosts[host] }
+
+// clean normalises the paths of one block list, dropping the empty ones.
+func clean(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p = strings.Trim(filepath.ToSlash(strings.TrimSpace(p)), "/"); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// under reports whether a path is one of a block list's entries, or inside
+// one, which is how every list of paths in the block names a tree.
+func under(rel string, paths []string) bool {
+	for _, p := range clean(paths) {
+		if rel == p || strings.HasPrefix(rel, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// skipped reports whether the block named this path, as a directory or a
+// file. A path skipped here is one the rules assert nothing about.
+func (t *tree) skipped(rel string) bool { return under(rel, t.cfg.Skip) }
 
 // archived reports whether a path is inside an archive, where a document
 // records what was once true.
@@ -271,30 +364,14 @@ func (t *tree) line(pos token.Pos) int { return t.fset.Position(pos).Line }
 
 // passthrough reports whether a file is one the block admits as a place a
 // claim may be named, because forwarding a claim is what that file does.
-func (t *tree) passthrough(rel string) bool {
-	for _, s := range t.cfg.ClaimsPassthrough {
-		s = strings.Trim(filepath.ToSlash(strings.TrimSpace(s)), "/")
-		if s != "" && (rel == s || strings.HasPrefix(rel, s+"/")) {
-			return true
-		}
-	}
-	return false
-}
+func (t *tree) passthrough(rel string) bool { return under(rel, t.cfg.ClaimsPassthrough) }
 
 // claiming lists the Go files a claim rule reads: every non-test file the
 // block does not admit as a passthrough.
 // frontend reports whether a file is one the block names as the
 // repository's browser frontend, which forwards the person's own token to
 // the issuer's API and so may name the issuer's paths.
-func (t *tree) frontend(rel string) bool {
-	for _, s := range t.cfg.BFF {
-		s = strings.Trim(filepath.ToSlash(strings.TrimSpace(s)), "/")
-		if s != "" && (rel == s || strings.HasPrefix(rel, s+"/")) {
-			return true
-		}
-	}
-	return false
-}
+func (t *tree) frontend(rel string) bool { return under(rel, t.cfg.BFF) }
 
 func (t *tree) claiming() []goFile {
 	var out []goFile

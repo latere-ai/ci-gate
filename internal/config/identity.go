@@ -82,6 +82,13 @@ type Identity struct {
 	// Skip lists paths the scans do not enter, as a directory or a file
 	// relative to the repository root.
 	Skip []string `yaml:"skip"`
+	// Overlays lists the paths that hold one company's own deployment
+	// overlay: the manifests a hosted installation deploys from, kept in the
+	// core's tree because the tag deploys from them. The no-company-value
+	// rule reads a declared overlay rather than scanning it, so the values
+	// that overlay carries are the ones a document may name; every other
+	// rule reads it as before. Core only.
+	Overlays []string `yaml:"overlays"`
 	// RolesOnly turns on the rule that access is by role. It is one way: a
 	// tree whose history set it cannot unset it.
 	RolesOnly bool `yaml:"roles_only"`
@@ -181,6 +188,11 @@ func (i Identity) validate(path string) error {
 	if i.ReachedBy != "" && !i.Verifies() {
 		return fmt.Errorf("%s: identity.reached_by is set and identity.role is %q\n"+
 			"only a role that verifies an audience says who reaches it", path, string(i.Role))
+	}
+	if len(i.Overlays) > 0 && i.Role != RoleCore {
+		return fmt.Errorf("%s: identity.overlays is set and identity.role is %q\n"+
+			"only an open core holds one company's overlay in its tree as an exception, "+
+			"and a list nothing reads is a decision with no effect", path, string(i.Role))
 	}
 	if len(i.Audiences) > 0 && i.Role != RoleClient {
 		return fmt.Errorf("%s: identity.audiences is set and identity.role is %q\n"+

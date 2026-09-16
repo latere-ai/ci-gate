@@ -478,10 +478,21 @@ func (t *tree) everyFile() []sourceFile {
 // contributor's record, and a core extracted from a hosted deployment
 // records that deployment's history and examples there, which a fork
 // inherits as history and not as a default; so specs/ is not read.
+//
+// A declared overlay is the third thing it does not read: the block names
+// the paths one company deploys its own installation from, and the values
+// belong in them. A document may then name that overlay's path, or an
+// address the overlay sets, because the sentence describes an installation
+// the tree already holds rather than a default a fork would inherit. Code
+// and every manifest outside the overlay are held as before.
 func ruleNoCompanyValue(t *tree) (result, error) {
+	docs := map[string]bool{}
+	for _, d := range t.docs {
+		docs[d.rel] = true
+	}
 	var targets []sourceFile
 	for _, s := range t.everyFile() {
-		if strings.HasPrefix(s.rel, "specs/") {
+		if strings.HasPrefix(s.rel, "specs/") || t.overlay(s.rel) {
 			continue
 		}
 		targets = append(targets, s)
@@ -505,7 +516,17 @@ func ruleNoCompanyValue(t *tree) (result, error) {
 			if imports[s.rel][i+1] {
 				continue
 			}
-			if companyValue(line, t.cfg.APIGroup) {
+			// Only a document reads what the overlay carries: a default
+			// compiled in or deployed from the base is a value whatever
+			// sentence stands beside it.
+			carried := func(string) bool { return false }
+			if docs[s.rel] {
+				if t.namesOverlay(line) {
+					continue
+				}
+				carried = t.carries
+			}
+			if companyValue(line, t.cfg.APIGroup, carried) {
 				found = append(found, at(s.rel, i+1, companySentence))
 			}
 		}
@@ -522,8 +543,8 @@ const companySentence = "this names one company's deployment; an open core anybo
 var companyNames = []string{"latere.ai", "latere.svc"}
 
 // companyValue reports whether a line names one company outside the group
-// the core writes its own manifests under.
-func companyValue(line, group string) bool {
+// the core writes its own manifests under and outside what carried admits.
+func companyValue(line, group string, carried func(string) bool) bool {
 	for _, name := range companyNames {
 		for from := 0; ; {
 			i := strings.Index(line[from:], name)
@@ -532,19 +553,42 @@ func companyValue(line, group string) bool {
 			}
 			i += from
 			from = i + len(name)
-			if !exempt(line, i, group) {
-				return true
+			if exempt(line, i, group) {
+				continue
 			}
+			tok, _ := nameAt(line, i)
+			if carried(host(tok)) {
+				continue
+			}
+			return true
 		}
 	}
 	return false
 }
 
-// exempt reports whether an occurrence is the core's own API group, which it
-// writes into its own manifests and documents. The group is declared in the
-// block rather than guessed, and an occurrence reached through a URL is not
-// the group even when it reads like one.
-func exempt(line string, i int, group string) bool {
+// hosts are the addresses of one company a line names, read as the
+// no-company-value rule reads them, so an overlay is harvested with the
+// walk the scan matches against.
+func hosts(line string) []string {
+	var out []string
+	for _, name := range companyNames {
+		for from := 0; ; {
+			i := strings.Index(line[from:], name)
+			if i < 0 {
+				break
+			}
+			i += from
+			from = i + len(name)
+			tok, _ := nameAt(line, i)
+			out = append(out, host(tok))
+		}
+	}
+	return out
+}
+
+// nameAt is the name an occurrence sits in: the run of name bytes around it,
+// carrying the path that follows it, and where that run starts.
+func nameAt(line string, i int) (string, int) {
 	start := i
 	for start > 0 && isNameByte(line[start-1]) {
 		start--
@@ -553,7 +597,22 @@ func exempt(line string, i int, group string) bool {
 	for end < len(line) && (isNameByte(line[end]) || line[end] == '/') {
 		end++
 	}
-	tok := line[start:end]
+	return line[start:end], start
+}
+
+// host is a token without the path after it, which is the address a reader
+// of the line sees and the address an overlay sets.
+func host(tok string) string {
+	name, _, _ := strings.Cut(tok, "/")
+	return name
+}
+
+// exempt reports whether an occurrence is the core's own API group, which it
+// writes into its own manifests and documents. The group is declared in the
+// block rather than guessed, and an occurrence reached through a URL is not
+// the group even when it reads like one.
+func exempt(line string, i int, group string) bool {
+	tok, start := nameAt(line, i)
 	// The module namespace and a contact address are the project's own
 	// coordinates, which the cores' invariant names as not forbidden.
 	if strings.HasPrefix(tok, modulePrefix) {

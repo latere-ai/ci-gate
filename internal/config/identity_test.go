@@ -47,6 +47,7 @@ identity:
   api_group: cella.latere.ai
   claims_passthrough: [internal/auth/claims.go]
   skip: [deploy/prod]
+  overlays: [deploy/prod]
   roles_only: true
 `))
 	if err != nil {
@@ -64,6 +65,9 @@ identity:
 	}
 	if !slices.Equal(i.Skip, []string{"deploy/prod"}) {
 		t.Errorf("skip = %v", i.Skip)
+	}
+	if !slices.Equal(i.Overlays, []string{"deploy/prod"}) {
+		t.Errorf("overlays = %v", i.Overlays)
 	}
 	if !i.RolesOnly {
 		t.Error("roles_only = false, want true")
@@ -112,6 +116,7 @@ func TestIdentityValidationRejects(t *testing.T) {
 		{"core without api group", "identity:\n  role: core\n  audience: lux\n  config_prefix: LUX\n", "identity.api_group is empty"},
 		{"registry off the issuer", "identity:\n  role: service\n  audience: drive\n  registry: deploy/base/x.yaml\n", "identity.registry is set"},
 		{"audiences off a client", "identity:\n  role: bff\n  audiences: [origo]\n", "identity.audiences is set"},
+		{"overlays off a core", "identity:\n  role: service\n  audience: drive\n  overlays: [deploy/prod]\n", "identity.overlays is set"},
 		{"waiver without a reason", "identity:\n  role: service\n  audience: drive\n  waive:\n    verifier: {until: 2026-12-31}\n", "identity.waive entry without a reason"},
 		{"waiver without a date", "identity:\n  role: service\n  audience: drive\n  waive:\n    verifier: {reason: later}\n", "identity.waive entry without a usable until date"},
 	}

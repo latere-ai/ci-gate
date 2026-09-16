@@ -564,6 +564,96 @@ func TestSkipAndPassthroughAreHonoured(t *testing.T) {
 	}
 }
 
+// overlayIngress is one company's own overlay: the hostname its installation
+// serves on, with another address named in prose and set nowhere.
+const overlayIngress = `# Latere's own values. The handbook at docs.latere.ai says why.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cella
+spec:
+  rules:
+    - host: code.latere.ai
+`
+
+// A declared overlay is one company's own deployment, kept in the core's
+// tree because the tag deploys from it. The rule reads that overlay for the
+// addresses it sets, so a document may say where the installation runs and
+// which path it deploys from. Everything else is held as before: the same
+// sentence with no overlay declared, an address the overlay only mentions,
+// the base every fork deploys, and the code.
+func TestADeclaredOverlayIsWhatADocumentMayName(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai"}
+	readme := map[string]string{
+		"deploy/prod/ingress.yaml": overlayIngress,
+		"README.md": "Latere runs Cella at [code.latere.ai](https://code.latere.ai) for its own\n" +
+			"repositories. Anyone with a cluster and a bucket can run their own.\n",
+	}
+
+	out, err := run(t, core, repo(t, readme), noHistory())
+	if err == nil || !strings.Contains(out, "FAIL no-latere-value") {
+		t.Fatalf("with no overlay declared the sentence is a value a fork inherits:\n%s", out)
+	}
+	if !strings.Contains(out, "README.md:1") {
+		t.Fatalf("the finding names the sentence:\n%s", out)
+	}
+
+	core.Overlays = []string{"deploy/prod"}
+	out, _ = run(t, core, repo(t, readme), noHistory())
+	if !strings.Contains(out, "PASS no-latere-value") {
+		t.Fatalf("a document may name the address the declared overlay serves:\n%s", out)
+	}
+
+	for _, c := range []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{{
+		name: "a sentence that names the overlay's path is about that overlay",
+		files: map[string]string{"docs/install.md": "The hosted installation deploys from " +
+			"`deploy/prod`, which serves https://code.latere.ai.\n"},
+		want: "PASS no-latere-value",
+	}, {
+		name:  "an address the overlay only mentions is not one it sets",
+		files: map[string]string{"docs/install.md": "The handbook is at https://docs.latere.ai.\n"},
+		want:  "FAIL no-latere-value",
+	}, {
+		name:  "an address no overlay carries is a value",
+		files: map[string]string{"docs/install.md": "The reference installation is https://elsewhere.latere.ai.\n"},
+		want:  "FAIL no-latere-value",
+	}, {
+		name: "the base every fork deploys is held",
+		files: map[string]string{"deploy/base/app.yaml": deployment(
+			"        - name: CELLA_OIDC_ISSUERS\n          value: https://code.latere.ai\n")},
+		want: "FAIL no-latere-value",
+	}, {
+		name: "the code is held",
+		files: map[string]string{"internal/api/url.go": "package api\n\n" +
+			"// Public is where this node is reached.\nconst Public = \"https://code.latere.ai\"\n"},
+		want: "FAIL no-latere-value",
+	}} {
+		t.Run(c.name, func(t *testing.T) {
+			files := map[string]string{"deploy/prod/ingress.yaml": overlayIngress}
+			maps.Copy(files, c.files)
+			out, _ := run(t, core, repo(t, files), noHistory())
+			if !strings.Contains(out, c.want) {
+				t.Fatalf("want %q:\n%s", c.want, out)
+			}
+		})
+	}
+}
+
+// An overlay the tree does not hold exempts nothing, and a declaration with
+// no effect hides a typo that lowers the bar.
+func TestADeclaredOverlayMustBeInTheTree(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA",
+		APIGroup: "cella.latere.ai", Overlays: []string{"deploy/production"}}
+	_, err := run(t, core, repo(t, map[string]string{"deploy/prod/ingress.yaml": overlayIngress}), noHistory())
+	if err == nil || !strings.Contains(err.Error(), "deploy/production") {
+		t.Fatalf("a declared overlay the tree does not hold must stop the run: %v", err)
+	}
+}
+
 // A document inside an archive records what was once true, so it is not a
 // description of the system that exists.
 func TestArchivedDocumentsAreNotDescriptions(t *testing.T) {
