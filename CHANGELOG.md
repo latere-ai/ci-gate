@@ -16,14 +16,15 @@ committed: the commit log already holds that.
   overlay, which an open core keeps in its tree because the tag deploys from
   it. The `no-latere-value` rule reads a declared overlay instead of scanning
   it: the overlay's own files are not a finding, and the `latere.ai` and
-  `latere.svc` addresses those files set are the ones a document may name,
-  alongside the overlay's own path. A core that had to waive the rule for a
-  README sentence saying where the hosted installation runs can declare the
-  overlay and keep the rule. Nothing else moves: the same address in code or
-  in a manifest outside the overlay is still a finding, an address the overlay
-  only mentions in a comment is not exempt, and a declared path the tree does
-  not hold stops the run rather than exempting nothing quietly. The key is
-  core only.
+  `latere.svc` addresses those files set are the ones a document may name. A
+  core that had to waive the rule for a README sentence saying where the
+  hosted installation runs can declare the overlay and keep the rule. Nothing
+  else moves: the exemption is that address and nothing beside it, so naming
+  the overlay's path in a sentence admits no other address, the same address
+  in code or in a manifest outside the overlay is still a finding, an address
+  the overlay only mentions in a comment is not exempt, and a declared path
+  the tree does not hold stops the run rather than exempting nothing quietly.
+  The key is core only.
 
 ## v0.37.0 - 2026-09-16
 
