@@ -10,6 +10,26 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- The `identity` gate's `roles` rule reads the frontend. It read Go files,
+  documents and deploy manifests, so a page that branched on the retired
+  `is_superadmin` flag passed the gate while the Go beside it was clean; the
+  identity epic's verification found three such frontends behind a green
+  `roles` line. The rule now also reads `.ts`, `.tsx`, `.vue`, `.svelte` and
+  `.js` under the repository, and matches a third spelling, the camel case
+  `isSuperadmin`, beside `is_superadmin` and `IsSuperadmin`.
+
+  Four things in a frontend tree are not decisions and are not read: a test
+  (a `.test` or `.spec` segment before the extension, or a `__tests__`
+  directory), because the assertion a repository writes after retiring the
+  flag is that the flag confers nothing, and reading it as a decision would
+  make the regression test the finding; a bundler's output (`dist/`,
+  `build/`, a `.min` or `.bundle` file, or a file carrying a generated
+  header); `node_modules/` and `testdata/`; and an archive. Inside a file
+  that is read, a comment is prose: the sentence saying why a file stopped
+  reading the flag is not a use of it, while a name in a string still is.
+
 ## v0.41.0 - 2026-09-17
 
 ### Fixed
