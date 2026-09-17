@@ -104,7 +104,11 @@ of them.
 The window is `HEAD` and its ancestors back to the previous release tag, the
 same commits the section under `## Unreleased` describes. For each workflow
 that has a completed run on the default branch at one of those commits, the
-guard takes the latest such run. A `failure` or a `cancelled` is a refusal.
+guard takes the latest such run. Any conclusion that is not an answer is a
+refusal: `failure`, `cancelled`, `timed_out`, `startup_failure` and
+`action_required`. A run that never started, one that died on the clock and
+one waiting for somebody to approve it are all runs whose answer nobody has.
+`neutral`, `skipped` and `stale` are answers, so they are not refusals.
 
 The set of workflows is derived from the runs the API returns, not from the
 files in `.github/workflows/`. A workflow that triggers only on tags, like
@@ -112,8 +116,8 @@ files in `.github/workflows/`. A workflow that triggers only on tags, like
 guard refuse forever.
 
 **(b) The previous tag's release run.** The run at the previous release
-tag's commit whose head ref is that tag. A `failure` or a `cancelled` is a
-refusal, which is exactly the Origo case: the run that deployed and did not
+tag's commit whose head ref is that tag. The same conclusions refuse it,
+which covers exactly the Origo case: the run that deployed and did not
 publish.
 
 **(c) The Release the previous tag should have.** If (b) succeeded, the
@@ -142,6 +146,17 @@ the log, because a run can be red before any job produced output.
 | | | `x509: certificate signed by unknown authority` |
 | | | `dial tcp: lookup ghcr.io: no such host` |
 | `CODE` | anything else | `--- FAIL: TestCutRefusesADirtyTree (0.00s)` |
+
+Two conclusions carry a rule of their own, read after the budget signals and
+before the infrastructure ones:
+
+| Conclusion | Actor | Why |
+|---|---|---|
+| `timed_out` | `INFRA`, unless the log names a test | A run that died on the clock is a wedged read until the suite is what ran out. `--- FAIL:`, `=== RUN `, `panic: test timed out` and `*** Test killed` are the marks that say otherwise, and then it is `CODE`: running it again only spends the clock twice. |
+| `startup_failure` | whatever its message names | A run that never started has no job log of its own, so its message is all there is. One naming an org policy refusal or an exhausted allowance is `BUDGET`; one naming nothing is `CODE`, because `CODE` is the fallback. |
+
+`action_required` takes no rule of its own: it is red, and its message
+classifies it like any other.
 
 Precedence is `BUDGET`, then `INFRA`, then `CODE`. A log holds both a reset
 connection and a usage limit when a runner dies mid-pull on an exhausted
@@ -288,7 +303,12 @@ like every other key.
 7. `release.require_green: false` skips the guard, makes no API call, and
    cuts; `contract` reports `release.require_green` when a file restates
    `true`.
-8. A `cancelled` run refuses exactly as a `failure` does.
+8. A `cancelled`, `timed_out`, `startup_failure` or `action_required` run
+   refuses exactly as a `failure` does, and the refusal names the conclusion.
+   A `timed_out` run whose log names no test ends `INFRA`; one whose log holds
+   `panic: test timed out` ends `CODE`; a `startup_failure` whose message
+   names an org policy refusal ends `BUDGET`. `neutral`, `skipped` and `stale`
+   are not refusals.
 9. The job log is read through a 302 to a host that rejects the token, and
    the classification still reads the body.
 10. Each package in this repository stays at or above the coverage floor.
@@ -326,6 +346,6 @@ Two things moved that the decision above did not name:
   vX.Y.Z`, because the flag set is parsed before the positional argument. The
   usage line says so.
 
-Left for whoever needs it: `timed_out` and `startup_failure` are red
-conclusions this guard does not refuse on, because the decision named
-`failure` and `cancelled` and nothing else.
+The conclusion set widened before the first tag that carries this shipped:
+`timed_out`, `startup_failure` and `action_required` refuse the cut alongside
+`failure` and `cancelled`, with the two conclusion rules in the table above.
