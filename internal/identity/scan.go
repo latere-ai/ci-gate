@@ -545,8 +545,6 @@ func (t *tree) line(pos token.Pos) int { return t.fset.Position(pos).Line }
 // claim may be named, because forwarding a claim is what that file does.
 func (t *tree) passthrough(rel string) bool { return under(rel, t.cfg.ClaimsPassthrough) }
 
-// claiming lists the Go files a claim rule reads: every non-test file the
-// block does not admit as a passthrough.
 // frontend reports whether a file is one the block names as the
 // repository's browser frontend, which forwards the person's own token to
 // the issuer's API and so may name the issuer's paths.
@@ -570,6 +568,8 @@ func (t *tree) declaring() []goFile {
 	return out
 }
 
+// claiming lists the Go files a claim rule reads: every non-test file the
+// block does not admit as a passthrough.
 func (t *tree) claiming() []goFile {
 	var out []goFile
 	for _, g := range t.goFiles {
