@@ -307,15 +307,13 @@ func TestStreamedOutputIsSerialised(t *testing.T) {
 	const writers, each = 8, 64
 	var wg sync.WaitGroup
 	for range writers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range each {
 				if _, err := io.WriteString(w, "x"); err != nil {
 					t.Error(err)
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if sb.Len() != writers*each {
