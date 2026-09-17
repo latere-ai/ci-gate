@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.41.0 - 2026-09-17
+
 ### Fixed
 
 - `lateregate prepush` honours a dated `waive: lint`. The full gate reported
