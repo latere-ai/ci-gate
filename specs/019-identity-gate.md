@@ -15,7 +15,7 @@ affects:
   - README.md
 effort: medium
 created: 2026-09-13
-updated: 2026-09-16
+updated: 2026-09-17
 author: changkun
 dispatched_task_id: null
 ---
@@ -96,7 +96,7 @@ runs a service.
 | one contract (C3) | core | `latere.ai/x/pkg/authz` imported; no hand-rolled `POST` to a path named `authorize` outside it |
 | no auth on the request path (R2) | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` in a non-test Go file outside the paths the block's `bff` names, which hold a browser frontend that forwards the person's own token to the issuer's API |
 | one hop, no delegation (R3) | all but none | `grantor_id`, `tokens/exchange`, `actor: true`, `RFC 8693` anywhere in a non-test Go file or a non-archived document; `act`, `agent_id` and `actor_id` only where they are a token claim, which is a struct tag in a type that also carries `sub`, `aud` or `exp`, or a bare occurrence outside every struct type in a file that imports the verifier or names `Claims`. A tag in a type that carries no registered claim is a column of that type wherever the file lives: one product carries an agent identity as an attribution column, which the 2026-09-06 decision allows, and a handler that verifies tokens also renders its audit rows |
-| roles, not flags (R9) | all but none | `is_superadmin` or `IsSuperadmin` anywhere outside tests and archives; the rule is off until the family's id-09 ships and the block says `roles_only: true`, then it is on and cannot be turned off |
+| roles, not flags (R9) | all but none | `is_superadmin`, `IsSuperadmin` or `isSuperadmin` anywhere outside tests and archives, in a Go file, a document, a manifest, or a frontend source (`.ts`, `.tsx`, `.vue`, `.svelte`, `.js`), which is the one rule that reads a frontend because a page decides access as surely as a handler does; a bundler's output and a package manager's tree are read as nobody's decision, and a comment inside a file that is read is prose (the 2026-09-17 amendment); the rule is off until the family's id-09 ships and the block says `roles_only: true`, then it is on and cannot be turned off |
 | an explicit audience (D3) | core, service, platform | every container in `deploy/**` that runs the repository's binary sets the variable `audience` names, or `AUTH_AUDIENCE` for a service, to a non-empty value that is not the issuer URL. A container runs the binary when the name its image was built under is exactly a directory under `cmd/`; an `initContainers` entry is read when it also declares a variable of the repository's own prefix, which is how it says it runs with the workload's configuration (the 2026-09-16 amendment) |
 | per-endpoint bearers, internal stays internal (R8) | issuer, platform, core | two environment variables of one container reading one secret key; an ingress rule whose path is `/` or a prefix of `/internal/` on a host also serving `/internal/` |
 | no Latere value in a core (open-cores invariant 5) | core | `latere.ai` or `latere.svc` in a non-test Go file, a deploy manifest, or a user document (`specs/` is the contributor's record, holds the hosted deployment's history and examples, and is not read), outside an import path, the API group the block declares in `api_group`, wherever it appears, and the paths the block's `skip` names. `go.mod` is not scanned: every occurrence in it is a module path, which the import-path exemption already covers |
@@ -283,3 +283,56 @@ module the envelope is declared in, is that wire shape written a second
 time. Tag names match whole. `identity.envelope_exempt` names the files
 whose types carry those names for a reason of their own, declared per
 repository; a path the tree does not hold stops the run.
+
+
+## Amendment, 2026-09-17: the roles rule reads the frontend
+
+Found by the identity epic's verification: three repositories held a green
+`roles` line over a frontend that branched on the retired flag. The rule read
+Go files, documents and deploy manifests, so the half of the product a person
+actually clicks was never read, and the flag it was written to retire lived on
+in `.tsx` and `.vue` behind a clean Go tree. A rule that reads one language of
+a two-language repository reports the language, not the shape.
+
+**The scan target.** `.ts`, `.tsx`, `.vue`, `.svelte` and `.js` under the
+repository. This is the one rule that reads them, in a bucket of its own
+rather than in `everyFile`: the rules written against Go, documents and
+manifests keep the target they were written against, so extending this one
+weakens none of them.
+
+**The patterns.** Three plain case-sensitive substrings, `is_superadmin`,
+`IsSuperadmin` and `isSuperadmin`, on every target the rule reads. The third
+is the spelling a browser gives the same field, and a `strings.Contains` for
+`IsSuperadmin` never matched it.
+
+**What is not read.** Four classes, each for a reason rather than for
+convenience:
+
+| Not read | Why |
+|---|---|
+| a `.test` or `.spec` segment before the extension, a `__tests__` directory | a test asserts and does not decide, which is why the Go half skips `_test.go`. The assertion a repository writes after retiring a flag is that the flag confers nothing, and that assertion names the flag: read as a decision, the regression test becomes the finding |
+| `dist/`, `build/`, a `.min` or `.bundle` file, a file whose first five lines carry `@generated`, `Code generated by` or `DO NOT EDIT` | a bundle is the build's output. The decision belongs to the source it was built from, and that source is read |
+| `node_modules/`, `testdata/` | nobody in the repository wrote them |
+| an archive | a record may name what it retired, as everywhere else in this gate |
+
+The telling is always the path, never the assertion inside the file. Reading
+intent out of a test would be a guess; a filename is a decision the repository
+already made.
+
+**A comment is prose.** Inside a file that is read, comment spans are blanked
+before matching: `//` to end of line, `/* */`, and `<!-- -->` in a single-file
+component's template, each tracked across lines, with quotes tracked so a `//`
+inside a string is text. A file that says "the token carries `roles` since
+id-09 retired the `is_superadmin` flag" is describing the correction, not
+making the decision. String contents stay, because a name quoted as a property
+or read out of a template still decides. This is the same distinction the
+document scan already makes with `record`, applied inside a file rather than
+to a whole one; wallfacer's `frontend/src/lib/accountRole.ts` is the live case,
+and it passes.
+
+**Evidence.** Against each repository at the commit before its frontend was
+corrected, the old build reports `PASS roles` and the new build reports the
+lines: platform `StorageSection.tsx:73` and `OrgScreens.tsx:230`, lectio
+`api/types.ts:24` and `AccountControl.vue:35`, eval `App.tsx:61`. agents,
+replichai and wallfacer pass under both, wallfacer with a comment and a test
+that both name the flag.
