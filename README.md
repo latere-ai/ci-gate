@@ -788,15 +788,35 @@ that both decodes unpadded base64 and splits a string on `.` is taking a token
 apart, which neither half alone would show. A container is this repository's
 when the name its image was built under — the last path segment of the
 reference, without the registry, the tag and the digest — is exactly a
-directory under `cmd/`: `origo` runs `ghcr.io/latere-ai/origo:v1` and never
-`origo-stubs`, and a manifest of another workload beside this one is read as
-none of this repository's, which the rule reports as a `SKIP` with its reason.
-An `initContainers` entry is read as well when it declares a variable of the
-repository's own prefix, which is how a check that runs before the workload
-says it runs with the workload's configuration; one that declares none is a
-step that verifies nothing. An overlay that patches a container by name and
-carries no image is the container it merges into. A path a heuristic reads
-wrong goes in `skip`.
+command the repository builds: `origo` runs `ghcr.io/latere-ai/origo:v1` and
+never `origo-stubs`, and a manifest of another workload beside this one is
+read as none of this repository's, which the rule reports as a `SKIP` with its
+reason. An `initContainers` entry is read as well when it declares a variable
+of the repository's own prefix, which is how a check that runs before the
+workload says it runs with the workload's configuration; one that declares
+none is a step that verifies nothing. An overlay that patches a container by
+name and carries no image is the container it merges into. A path a heuristic
+reads wrong goes in `skip`.
+
+A command is a directory under `cmd/`, and it is also the module root when
+the root is itself a `package main`: that repository builds one binary, `go
+build` names it after the module, and there is no `cmd/` to read it from.
+A repository whose image was built under neither name declares it, because
+an image name the rule guessed at would be a rule that stops checking as
+soon as it guesses wrong:
+
+```yaml
+identity:
+  role: service
+  audience: wallfacer
+  image: wallfacerd       # the module is wallfacer; the workload is wallfacerd
+```
+
+The value is that one segment: a registry, a path, a tag or a digest in it is
+refused, because the rule compares the segment and would never match the rest.
+The key belongs to `service`, `bff` and `core`, the roles that deploy a
+workload of their own; anywhere else it is a name nothing reads, and the load
+refuses it.
 
 A repository behind on one rule waives that rule and keeps the other ten
 running, which a gate waiver could not do:
@@ -1060,6 +1080,7 @@ identity:                  # mandatory: a repository with no block fails the gat
   claims_passthrough: []   # the files of a core that may name a claim
   skip: []                 # paths the scans do not enter
   overlays: []             # the paths holding one company's own deployment overlay; core
+  image: ""                # the segment this workload's image was built under; service, bff, core
   roles_only: false        # turn on the roles rule; one way once set
   registry: deploy/base/clients.yaml   # the client registry; issuer, and the default
   audiences: []            # the product audiences this client presents; client

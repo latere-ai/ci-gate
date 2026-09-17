@@ -271,6 +271,27 @@ func ruleCases(core, service, client, settledService config.Identity) []ruleCase
 			"deploy/prod/app.yaml": deployment("        - name: AUTH_AUDIENCES\n          value: drive\n"),
 		}),
 	}, {
+		// A repository whose only main package is the module root builds
+		// one binary, named after the module. The rule reads the container
+		// that runs it, so a root command is held like a cmd/ one.
+		name: "a command at the module root is a command this repository builds",
+		rule: "audience", cfg: service,
+		bad: rootBuilds(map[string]string{"deploy/base/app.yaml": deployment("")}),
+		good: rootBuilds(map[string]string{
+			"deploy/base/app.yaml": deployment("        - name: AUTH_AUDIENCE\n          value: drive\n"),
+		}),
+	}, {
+		// An image built under a third name is declared, because a name a
+		// rule inferred is a rule that stops checking as soon as it infers
+		// wrong.
+		name: "a declared image is the container this repository runs",
+		rule: "audience", cfg: withImage(service, "appd"),
+		bad: rootBuilds(map[string]string{"deploy/base/app.yaml": deploymentImage("registry.example.com/appd:1", "")}),
+		good: rootBuilds(map[string]string{
+			"deploy/base/app.yaml": deploymentImage("registry.example.com/appd:1",
+				"        - name: AUTH_AUDIENCE\n          value: drive\n"),
+		}),
+	}, {
 		name: "an explicit audience in every deployment",
 		rule: "audience", cfg: core,
 		bad:  builds(map[string]string{"deploy/base/app.yaml": deployment("")}),
@@ -364,6 +385,11 @@ func withRolesOnly(cfg config.Identity) config.Identity {
 	return cfg
 }
 
+func withImage(cfg config.Identity, image string) config.Identity {
+	cfg.Image = image
+	return cfg
+}
+
 func fmtClaims(field string) string { return strings.Replace(claimsFile, "%s", field, 1) }
 
 // builds adds the command the deployment fixtures' image names, so the
@@ -378,8 +404,20 @@ func builds(files map[string]string) map[string]string {
 // mainFile is a command that imports the verifier and does nothing else.
 const mainFile = "package main\n\nimport _ \"latere.ai/x/pkg/authkit/jwt\"\n\nfunc main() {}\n"
 
+// rootBuilds puts the command at the module root rather than under cmd/,
+// which is the shape of a repository whose only main package is the root:
+// it builds one binary, named after the module, and has no cmd/ to read.
+func rootBuilds(files map[string]string) map[string]string {
+	files["main.go"] = mainFile
+	return files
+}
+
 // deployment renders a one-container workload with the given env entries.
-func deployment(env string) string {
+func deployment(env string) string { return deploymentImage("registry.example.com/app:1", env) }
+
+// deploymentImage renders the same workload under a named image, for the
+// repository whose image was built under neither a command name nor its own.
+func deploymentImage(image, env string) string {
 	body := `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -389,7 +427,7 @@ spec:
     spec:
       containers:
       - name: app
-        image: registry.example.com/app:1
+        image: ` + image + `
 `
 	if env != "" {
 		body += "        env:\n" + env

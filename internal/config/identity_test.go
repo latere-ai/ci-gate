@@ -48,6 +48,7 @@ identity:
   claims_passthrough: [internal/auth/claims.go]
   skip: [deploy/prod]
   overlays: [deploy/prod]
+  image: cellad
   roles_only: true
 `))
 	if err != nil {
@@ -68,6 +69,9 @@ identity:
 	}
 	if !slices.Equal(i.Overlays, []string{"deploy/prod"}) {
 		t.Errorf("overlays = %v", i.Overlays)
+	}
+	if i.Image != "cellad" {
+		t.Errorf("image = %q", i.Image)
 	}
 	if !i.RolesOnly {
 		t.Error("roles_only = false, want true")
@@ -117,6 +121,8 @@ func TestIdentityValidationRejects(t *testing.T) {
 		{"registry off the issuer", "identity:\n  role: service\n  audience: drive\n  registry: deploy/base/x.yaml\n", "identity.registry is set"},
 		{"audiences off a client", "identity:\n  role: bff\n  audiences: [origo]\n", "identity.audiences is set"},
 		{"overlays off a core", "identity:\n  role: service\n  audience: drive\n  overlays: [deploy/prod]\n", "identity.overlays is set"},
+		{"image off a deploying role", "identity:\n  role: client\n  image: wallfacerd\n", "identity.image is set"},
+		{"image with a registry and a tag", "identity:\n  role: service\n  audience: wallfacer\n  image: ghcr.io/changkun/wallfacerd:main\n", "carries a registry, a tag or a digest"},
 		{"waiver without a reason", "identity:\n  role: service\n  audience: drive\n  waive:\n    verifier: {until: 2026-12-31}\n", "identity.waive entry without a reason"},
 		{"waiver without a date", "identity:\n  role: service\n  audience: drive\n  waive:\n    verifier: {reason: later}\n", "identity.waive entry without a usable until date"},
 	}

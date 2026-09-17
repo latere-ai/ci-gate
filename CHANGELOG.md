@@ -10,6 +10,28 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- The `identity` gate's `audience` and `bearers` rules see a repository whose
+  only command is at the module root. They recognise a container by the name
+  its image was built under, and that name was read from the directories
+  under `cmd/` alone, so a repository that moved its `main` to the root
+  reported `SKIP audience no container in the deployment runs a command this
+  repository builds` and its `AUTH_AUDIENCE` went unchecked. A module root
+  that is `package main` now names a command, called after the module's last
+  segment, which is the name `go build` gives the binary.
+
+### Added
+
+- `identity.image` names the segment a repository's workload image was built
+  under, for an image that carries neither a command name under `cmd/` nor the
+  module's own: a module called `wallfacer` that deploys `wallfacerd` writes
+  `image: wallfacerd`. It is a declaration and not a guess, so the deployment
+  rules keep checking a repository whose image and module were named apart.
+  The value is the one segment the rules compare: a registry, a path, a tag or
+  a digest in it is refused, and so is the key outside `service`, `bff` and
+  `core`, the roles that deploy a workload of their own.
+
 ## v0.39.0 - 2026-09-17
 
 ### Added

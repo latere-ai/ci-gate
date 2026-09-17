@@ -43,9 +43,12 @@ const (
 var Roles = []Role{RoleIssuer, RoleCore, RolePlatform, RoleService, RoleBFF, RoleClient, RoleNone}
 
 // RoleList renders the vocabulary for a message.
-func RoleList() string {
-	names := make([]string, len(Roles))
-	for i, r := range Roles {
+func RoleList() string { return roleNames(Roles) }
+
+// roleNames renders a set of roles for a message.
+func roleNames(roles []Role) string {
+	names := make([]string, len(roles))
+	for i, r := range roles {
 		names[i] = string(r)
 	}
 	return strings.Join(names, ", ")
@@ -57,6 +60,10 @@ const DefaultRegistry = "deploy/base/clients.yaml"
 
 // audienceRoles verify an audience of their own, so they must name it.
 var audienceRoles = []Role{RoleCore, RoleService, RolePlatform}
+
+// imageRoles deploy a workload of their own under an image name, which is
+// what identity.image declares.
+var imageRoles = []Role{RoleService, RoleBFF, RoleCore}
 
 // Identity declares which layer of the family's identity shape a repository
 // is, and holds the values that layer's rules need.
@@ -89,6 +96,15 @@ type Identity struct {
 	// that overlay carries are the ones a document may name; every other
 	// rule reads it as before. Core only.
 	Overlays []string `yaml:"overlays"`
+	// Image is the name this repository's workload image was built under,
+	// for a repository whose image carries neither a command name under
+	// cmd/ nor the module's own name. The deployment rules recognise a
+	// container by the last path segment of its image, without the
+	// registry, the tag and the digest, so the value here is that segment
+	// alone. It is a declaration and not a rename: a repository that
+	// deploys wallfacerd out of a module called wallfacer says so here.
+	// Service, bff and core only.
+	Image string `yaml:"image"`
 	// RolesOnly turns on the rule that access is by role. It is one way: a
 	// tree whose history set it cannot unset it.
 	RolesOnly bool `yaml:"roles_only"`
@@ -188,6 +204,19 @@ func (i Identity) validate(path string) error {
 	if i.ReachedBy != "" && !i.Verifies() {
 		return fmt.Errorf("%s: identity.reached_by is set and identity.role is %q\n"+
 			"only a role that verifies an audience says who reaches it", path, string(i.Role))
+	}
+	if name := strings.TrimSpace(i.Image); name != "" {
+		if !slices.Contains(imageRoles, i.Role) {
+			return fmt.Errorf("%s: identity.image is set and identity.role is %q\n"+
+				"only a repository that deploys a workload of its own names the image it "+
+				"was built under, one of %s; a name nothing reads is a decision with no effect",
+				path, string(i.Role), roleNames(imageRoles))
+		}
+		if strings.ContainsAny(name, "/:@") {
+			return fmt.Errorf("%s: identity.image %q carries a registry, a tag or a digest\n"+
+				"name the segment the image was built under and nothing else, such as wallfacerd: "+
+				"that is the part of the reference the deployment rules compare", path, name)
+		}
 	}
 	if len(i.Overlays) > 0 && i.Role != RoleCore {
 		return fmt.Errorf("%s: identity.overlays is set and identity.role is %q\n"+

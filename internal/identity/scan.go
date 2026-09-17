@@ -120,7 +120,7 @@ func scan(cfg config.Identity, root string, exec gates.Exec) (*tree, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading the tree for the identity rules: %w", err)
 	}
-	t.binaries = commands(root)
+	t.binaries = t.commands()
 	if err := t.readOverlays(); err != nil {
 		return nil, err
 	}
@@ -331,20 +331,68 @@ func (t *tree) readManifest(p, rel string) error {
 	return nil
 }
 
-// commands lists the binaries a repository builds, by the directories under
-// cmd/. A container whose image names one of them runs this repository.
-func commands(root string) []string {
-	entries, err := os.ReadDir(filepath.Join(root, "cmd"))
-	if err != nil {
-		return nil
-	}
+// commands lists the binaries a repository builds. A container whose image
+// names one of them runs this repository.
+//
+// Three things name a binary. A directory under cmd/ is one, and is the
+// shape most repositories have. A repository whose only main package is the
+// module root is the second: it builds one binary, go build calls it the
+// last segment of the module path, and there is no cmd/ to read it from. The
+// third is the block's own image, for a workload whose image was built under
+// neither name; it is a declaration rather than a guess, because an image
+// name a rule inferred would be a rule that stops checking as soon as it
+// infers wrong.
+func (t *tree) commands() []string {
 	var out []string
-	for _, e := range entries {
-		if e.IsDir() {
-			out = append(out, e.Name())
+	if entries, err := os.ReadDir(filepath.Join(t.root, "cmd")); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				out = append(out, e.Name())
+			}
 		}
 	}
+	if name := t.rootCommand(); name != "" {
+		out = append(out, name)
+	}
+	if image := strings.TrimSpace(t.cfg.Image); image != "" {
+		out = append(out, image)
+	}
 	return out
+}
+
+// rootCommand is what the module root builds when the root is itself a
+// command, and "" when it is not. The package clause of a file at the root
+// says whether it is one; the module path says what the binary is called.
+func (t *tree) rootCommand() string {
+	root := false
+	for _, g := range t.goFiles {
+		if !strings.Contains(g.rel, "/") && g.file.Name != nil && g.file.Name.Name == "main" {
+			root = true
+			break
+		}
+	}
+	if !root {
+		return ""
+	}
+	module := modulePath(t.root)
+	if module == "" {
+		return ""
+	}
+	return path.Base(module)
+}
+
+// modulePath is the module line of go.mod, or "" where there is none.
+func modulePath(root string) string {
+	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for line := range strings.SplitSeq(string(body), "\n") {
+		if p, ok := strings.CutPrefix(strings.TrimSpace(line), "module "); ok {
+			return strings.TrimSpace(p)
+		}
+	}
+	return ""
 }
 
 // line reports the 1-based line of a position in a parsed file.
