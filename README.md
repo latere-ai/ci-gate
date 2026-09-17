@@ -167,7 +167,10 @@ blocks a push nor aborts it. It is here and not in the pre-commit because a
 push is rare and already waits on the network, and a hook that adds a
 minute to every commit is one people bypass. The shared script
 captures stdin once, so a repository that adds its own check below the
-delegation reads `$refs`, not stdin.
+delegation reads `$refs`, not stdin. A dated `waive: lint` covers the hook
+as it covers the full gate: until the day it names the push prints
+`lint is waived until <date>; nothing to lint`, and the day after, the
+hook lints again.
 
 `vuln`, `tempdir`, `race`, `cover`, and `hermetic` are in neither hook: the
 first needs the network and changes verdict with no commit, and the rest run

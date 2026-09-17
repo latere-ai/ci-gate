@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
@@ -36,7 +37,20 @@ const zeroSHA = "0000000000000000000000000000000000000000"
 // package CI passes. A push is rare and already waits on the network, and
 // this run does not take the linter's machine-wide lock, so a lint in
 // another checkout neither blocks it nor is blocked by it.
-func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io.Writer, run gates.Exec) error {
+//
+// A dated waiver of the lint gate covers the hook too, until the day it
+// names: the full gate reports WAIV lint and runs nothing, and a hook that
+// held the same tree to more would refuse every push touching a package
+// the waiver was written for. now is the day the waiver is read against.
+func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io.Writer, run gates.Exec, now time.Time) error {
+	if w, ok := cfg.Waive["lint"]; ok {
+		// Validated at load, so it parses; inclusive, like the full gate.
+		until, _ := w.UntilDate()
+		if now.Before(until.AddDate(0, 0, 1)) {
+			_, _ = fmt.Fprintf(out, "lint is waived until %s; nothing to lint\n", w.Until)
+			return nil
+		}
+	}
 	pkgs := map[string]bool{}
 	refs := 0
 	scanner := bufio.NewScanner(in)

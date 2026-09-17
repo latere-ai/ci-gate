@@ -188,7 +188,7 @@ func run(argv []string, out io.Writer) error {
 		if err := changelog.Prepush(*root, bytes.NewReader(refs), out, ctx.Exec); err != nil {
 			return err
 		}
-		return golangci.Prepush(*root, cfg, *goBin, bytes.NewReader(refs), out, ctx.Exec)
+		return golangci.Prepush(*root, cfg, *goBin, bytes.NewReader(refs), out, ctx.Exec, time.Now())
 	case "release-notes":
 		args := fs.Args()
 		if len(args) < 1 || len(args) > 2 {

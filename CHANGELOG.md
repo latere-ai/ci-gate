@@ -10,6 +10,17 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- `lateregate prepush` honours a dated `waive: lint`. The full gate reported
+  `WAIV lint` on a tree with such a waiver while the pre-push hook ran the
+  linter anyway over every package a push changed, so a repository that had
+  written the waiver could not push any change touching a package the
+  waiver was written for, whatever the change was: a fix beside waived debt
+  was refused for the debt. The hook now reads the same waiver on the same
+  inclusive date, prints `lint is waived until <date>; nothing to lint`,
+  and lints again the day after.
+
 ## v0.40.0 - 2026-09-17
 
 ### Fixed

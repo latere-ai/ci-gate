@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -47,8 +48,49 @@ func prepush(t *testing.T, refs string, run func([]string, bool, string, ...stri
 		t.Fatal(err)
 	}
 	var sb strings.Builder
-	err = Prepush(dir, cfg, "go", strings.NewReader(refs), &sb, run)
+	err = Prepush(dir, cfg, "go", strings.NewReader(refs), &sb, run, time.Date(2026, 9, 17, 0, 0, 0, 0, time.UTC))
 	return sb.String(), err
+}
+
+// prepushWaived is prepush on a module whose .lateregate.yaml waives the
+// lint gate until 2026-10-31, read on the given day.
+func prepushWaived(t *testing.T, now time.Time, run func([]string, bool, string, ...string) ([]byte, error)) (string, error) {
+	t.Helper()
+	dir := module(t)
+	waiver := "waive:\n  lint:\n    reason: the shared config holds linters this tree never ran\n    until: 2026-10-31\n"
+	if err := os.WriteFile(filepath.Join(dir, ".lateregate.yaml"), []byte(waiver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	err = Prepush(dir, cfg, "go", strings.NewReader("refs/heads/main "+sha2+" refs/heads/main "+sha1+"\n"), &sb, run, now)
+	return sb.String(), err
+}
+
+// A dated lint waiver covers the hook: the full gate reports WAIV lint on
+// this tree, and a push touching a waived package must not be refused for
+// findings the waiver was written for. The day after the waiver, the hook
+// lints again.
+func TestPrepushHonoursADatedLintWaiver(t *testing.T) {
+	var calls []call
+	out, err := prepushWaived(t, time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC), replay(&calls, errors.New("exit 1"), "a.go\x00"))
+	if err != nil {
+		t.Fatalf("waived lint refused the push: %v", err)
+	}
+	if len(calls) != 0 {
+		t.Errorf("a waived hook runs nothing; ran %v", calls)
+	}
+	if !strings.Contains(out, "lint is waived until 2026-10-31") {
+		t.Errorf("output:\n%s", out)
+	}
+	calls = nil
+	_, err = prepushWaived(t, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), replay(&calls, errors.New("exit 1"), "a.go\x00"))
+	if err == nil || !strings.Contains(err.Error(), "reported findings") {
+		t.Fatalf("an expired waiver must lint again; got %v", err)
+	}
 }
 
 // A branch push diffs against the remote's commit, and the linter runs on
@@ -166,7 +208,7 @@ func TestPrepushSkipsPackagesInNestedModules(t *testing.T) {
 	}
 	var sb strings.Builder
 	err = Prepush(dir, cfg, "go", strings.NewReader("refs/heads/main "+sha2+" refs/heads/main "+sha1+"\n"), &sb,
-		replay(&calls, nil, "tools/spike/main.go\x00tools/spike/sub/x.go\x00internal/a/a.go\x00"))
+		replay(&calls, nil, "tools/spike/main.go\x00tools/spike/sub/x.go\x00internal/a/a.go\x00"), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
