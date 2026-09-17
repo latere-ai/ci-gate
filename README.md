@@ -770,6 +770,7 @@ mechanism it retired. Nothing here runs a service.
 | `claims` | core | an identifier `OrgID`, `Roles`, `IsSuperadmin`, `PrincipalType`, or a string `org_id`, `roles`, `is_superadmin`, `principal_type`, outside `claims_passthrough` |
 | `verifier` | core, service, platform, bff | nothing imports `latere.ai/x/pkg/authkit/jwt` (a bff is exempt from this half: it forwards and verifies nothing); a second token library; a token taken apart by hand |
 | `authorizer` | core | nothing imports `latere.ai/x/pkg/authz`; a hand-rolled `POST` to a path named `authorize` |
+| `envelope` | all but none | a struct whose JSON tags name `action` beside `subject` or `resource`, or `allow` beside `ttl` and `reason`, outside the shared module and outside `envelope_exempt` |
 | `request-path` | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` |
 | `delegation` | all but none | `grantor_id`, `tokens/exchange`, `RFC 8693`, `actor: true` anywhere; `act`, `agent_id`, `actor_id` as a JSON key or a struct tag where they are a token claim |
 | `roles` | all but none | `is_superadmin` or `IsSuperadmin`, once the block sets `roles_only: true` |
@@ -864,6 +865,32 @@ address no declared overlay carries are all held as before. The exemption is
 read out of the overlay rather than listed beside it, so a repository cannot
 claim one for a value it does not deploy, and a declared path the tree does
 not hold stops the run.
+
+The `authorizer` rule catches a repository that asks the authorizer in a
+shape of its own. `envelope` catches the other half: a repository that
+answers in one, or that decodes the answer into fields it wrote itself. The
+evidence is the JSON tags of a struct in a non-test Go file, because a type
+that marshals the envelope is what puts the shape on the wire; a Go field
+with no tag names nothing a reader of the wire sees. Tag names are matched
+whole, so an `actions` list, an `allowed_hosts` set, a `ttl_seconds` figure
+and a `reasons` array are not the envelope. The module the envelope is
+declared in, `latere.ai/x/pkg`, is where declaring it is the point, and the
+rule reports a `SKIP` there.
+
+Two shapes carry the envelope's field names for reasons of their own: a
+core's `limits` type, whose ceilings are the core's, and the page a list
+action answers with, which carries `allow` and `reason` and no `ttl` because
+a page is not a verdict. Neither is written into the gate. A repository that
+holds one names it:
+
+```yaml
+identity:
+  role: core
+  envelope_exempt: [authorizer/limits.go]
+```
+
+A declared path the tree does not hold stops the run, the same way an
+overlay's does: an exemption that matches nothing hides a typo.
 
 `roles_only` is one way. Once a repository has set it, the gate asks git
 whether the history ever carried it, and a tree that unsets it fails: a rule
@@ -1087,6 +1114,7 @@ identity:                  # mandatory: a repository with no block fails the gat
   claims_passthrough: []   # the files of a core that may name a claim
   skip: []                 # paths the scans do not enter
   overlays: []             # the paths holding one company's own deployment overlay; core
+  envelope_exempt: []      # the files whose types carry the envelope's field names for a reason
   image: ""                # the segment this workload's image was built under; service, bff, core
   roles_only: false        # turn on the roles rule; one way once set
   registry: deploy/base/clients.yaml   # the client registry; issuer, and the default

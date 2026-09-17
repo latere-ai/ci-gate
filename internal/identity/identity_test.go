@@ -225,6 +225,19 @@ func ruleCases(core, service, client, settledService config.Identity) []ruleCase
 		bad:  map[string]string{"internal/api/h.go": "package api\n\nvar key = \"roles\"\n"},
 		good: map[string]string{"internal/api/h.go": "package api\n\nimport _ \"example.com/app/internal/roles\"\n"},
 	}, {
+		// The authorizer rule catches a repository that asks in a shape of
+		// its own; this one catches a repository that writes the wire shape
+		// out a second time, whichever half it writes.
+		name: "the envelope is declared once, not restated",
+		rule: "envelope", cfg: service,
+		bad:  map[string]string{"internal/ask/wire.go": askWire},
+		good: map[string]string{"internal/ask/wire.go": nearWire},
+	}, {
+		name: "the decision is declared once, not restated",
+		rule: "envelope", cfg: service,
+		bad:  map[string]string{"internal/ask/wire.go": answerWire},
+		good: map[string]string{"internal/ask/wire.go": nearWire},
+	}, {
 		name: "no issuer call on a request path",
 		rule: "request-path", cfg: service,
 		bad:  map[string]string{"internal/api/h.go": "package api\n\nvar teams = \"/tokeninfo\"\n"},
@@ -399,6 +412,51 @@ func ruleCases(core, service, client, settledService config.Identity) []ruleCase
 		good: map[string]string{"README.md": "Sign in with the shared client.\n"},
 	}}
 }
+
+// askWire is the authorizer's question written out a second time.
+const askWire = `package ask
+
+type request struct {
+	Subject  string ` + "`json:\"subject\"`" + `
+	Action   string ` + "`json:\"action\"`" + `
+	Resource string ` + "`json:\"resource\"`" + `
+}
+`
+
+// answerWire is the authorizer's decision written out a second time.
+const answerWire = `package ask
+
+type decision struct {
+	Allow  bool   ` + "`json:\"allow\"`" + `
+	Reason string ` + "`json:\"reason\"`" + `
+	TTL    int    ` + "`json:\"ttl\"`" + `
+}
+`
+
+// nearWire is every shape that shares letters with the envelope and is not
+// it: the page a list action answers with, which carries no ttl because a
+// page is not a verdict; a core's limits, whose ceilings are its own; and a
+// request that dispatches on an action and names neither who asks nor what
+// about.
+const nearWire = `package ask
+
+type refusal struct {
+	Allow  bool   ` + "`json:\"allow\"`" + `
+	Reason string ` + "`json:\"reason\"`" + `
+}
+
+type limits struct {
+	RequestsPerMinute int ` + "`json:\"requests_per_minute\"`" + `
+	TTLSeconds        int ` + "`json:\"ttl_seconds\"`" + `
+}
+
+type dispatch struct {
+	Action       string   ` + "`json:\"action\"`" + `
+	Actions      []string ` + "`json:\"actions\"`" + `
+	Reasons      []string ` + "`json:\"reasons\"`" + `
+	AllowedHosts []string ` + "`json:\"allowed_hosts\"`" + `
+}
+`
 
 // verifying is the smallest file that holds the one-verifier rule, so a test
 // of another rule is not also a test of that one.
@@ -1072,5 +1130,55 @@ func TestABFFNeedsNoVerifierOfItsOwn(t *testing.T) {
 	service := config.Identity{Role: config.RoleService, Audience: "drive"}
 	if out, _ := run(t, service, root, noHistory()); !strings.Contains(out, "FAIL verifier") {
 		t.Fatalf("a service with no verifier import must fail the verifier rule:\n%s", out)
+	}
+}
+
+// The envelope rule's exemptions are declared. A type that carries the
+// envelope's field names for a reason of its own is named in the block, and
+// a name the tree does not hold stops the run rather than passing over.
+func TestEnvelopeExemptionsAreDeclared(t *testing.T) {
+	cfg := config.Identity{Role: config.RoleService, Audience: "drive"}
+	files := map[string]string{
+		"internal/ask/wire.go": answerWire,
+		// A file left outside the exemption, so the exempt tree passes the
+		// rule rather than skipping it: a rule with nothing to read proves
+		// nothing about the rule.
+		"internal/api/api.go": verifying,
+	}
+
+	out, err := run(t, cfg, repo(t, files), noHistory())
+	if err == nil || !strings.Contains(out, "FAIL envelope") {
+		t.Fatalf("a type that restates the decision is a finding:\n%s", out)
+	}
+
+	exempt := cfg
+	exempt.EnvelopeExempt = []string{"internal/ask/wire.go"}
+	out, err = run(t, exempt, repo(t, files), noHistory())
+	if !strings.Contains(out, "PASS envelope") {
+		t.Fatalf("a declared exemption is not read (%v):\n%s", err, out)
+	}
+
+	missing := cfg
+	missing.EnvelopeExempt = []string{"internal/ask/absent.go"}
+	_, err = run(t, missing, repo(t, files), noHistory())
+	if err == nil || !strings.Contains(err.Error(), "which this tree does not hold") {
+		t.Fatalf("an exemption the tree does not hold stops the run:\n%v", err)
+	}
+}
+
+// The shared package is where the envelope is declared, so the rule does not
+// hold it to importing its own declaration.
+func TestEnvelopeSkipsTheSharedModule(t *testing.T) {
+	root := repo(t, map[string]string{
+		"go.mod":              "module latere.ai/x/pkg\n\ngo 1.27\n",
+		"authz/authz.go":      answerWire,
+		"internal/api/api.go": verifying,
+	})
+	out, err := run(t, config.Identity{Role: config.RoleService, Audience: "drive"}, root, noHistory())
+	if err != nil {
+		t.Fatalf("the shared package declares the envelope: %v\n%s", err, out)
+	}
+	if line := ruleLine(out, "envelope"); !strings.HasPrefix(line, "SKIP") {
+		t.Errorf("the rule says why it did not run here:\n%s", line)
 	}
 }

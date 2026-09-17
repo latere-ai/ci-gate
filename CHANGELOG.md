@@ -30,6 +30,22 @@ committed: the commit log already holds that.
 
 ### Added
 
+- The `identity` gate holds an `envelope` rule, which every role but `none`
+  runs. The authorizer's question and its decision are declared once, in
+  `latere.ai/x/pkg`; a struct in a non-test Go file whose JSON tags name
+  `action` beside `subject` or `resource`, or `allow` beside `ttl` and
+  `reason`, is that wire shape written out a second time, and the second copy
+  stops matching the first on the day the first changes. Tag names are
+  matched whole, so an `actions` list, an `allowed_hosts` set, a `ttl_seconds`
+  figure and a `reasons` array are not the envelope. The rule skips inside the
+  module the envelope is declared in. This is the row of the family's id-11
+  that the `authorizer` rule never held: that one catches a repository that
+  asks in a shape of its own, not one that answers in one.
+- `identity.envelope_exempt` names the files whose types carry the envelope's
+  field names for a reason of their own: a core's `limits` type, and the page
+  a list action answers with. The two reasons are declared per repository
+  rather than written into the gate, and a declared path the tree does not
+  hold stops the run, the way an overlay's does.
 - `identity.image` names the segment a repository's workload image was built
   under, for an image that carries neither a command name under `cmd/` nor the
   module's own: a module called `wallfacer` that deploys `wallfacerd` writes

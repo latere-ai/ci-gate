@@ -80,6 +80,9 @@ type tree struct {
 	// the overlays themselves so the exemption is a declaration rather than
 	// a list of names beside the tree.
 	overlayHosts map[string]bool
+	// module is the module path of the tree, which is how a repository says
+	// it is the shared package rather than one of its callers.
+	module string
 }
 
 // scan reads the tree once.
@@ -120,11 +123,29 @@ func scan(cfg config.Identity, root string, exec gates.Exec) (*tree, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading the tree for the identity rules: %w", err)
 	}
+	t.module = modulePath(root)
 	t.binaries = t.commands()
 	if err := t.readOverlays(); err != nil {
 		return nil, err
 	}
+	if err := t.checkEnvelopeExempt(); err != nil {
+		return nil, err
+	}
 	return t, nil
+}
+
+// checkEnvelopeExempt refuses a declared exemption the tree does not hold.
+// An exemption that matches nothing hides a typo, and a typo that lowers the
+// bar is the failure this binary is against.
+func (t *tree) checkEnvelopeExempt() error {
+	for _, rel := range clean(t.cfg.EnvelopeExempt) {
+		if _, err := os.Stat(filepath.Join(t.root, filepath.FromSlash(rel))); err != nil {
+			return fmt.Errorf("%s: identity.envelope_exempt names %s, which this tree does not hold\n"+
+				"name the file whose type carries the envelope's field names for a reason "+
+				"of its own, or delete the entry", config.Name, rel)
+		}
+	}
+	return nil
 }
 
 // readOverlays collects the addresses each declared overlay carries.
@@ -374,11 +395,10 @@ func (t *tree) rootCommand() string {
 	if !root {
 		return ""
 	}
-	module := modulePath(t.root)
-	if module == "" {
+	if t.module == "" {
 		return ""
 	}
-	return path.Base(module)
+	return path.Base(t.module)
 }
 
 // modulePath is the module line of go.mod, or "" where there is none.
@@ -408,6 +428,24 @@ func (t *tree) passthrough(rel string) bool { return under(rel, t.cfg.ClaimsPass
 // repository's browser frontend, which forwards the person's own token to
 // the issuer's API and so may name the issuer's paths.
 func (t *tree) frontend(rel string) bool { return under(rel, t.cfg.BFF) }
+
+// shared reports whether this tree is the package the envelope is declared
+// in, where declaring it is the point.
+func (t *tree) shared() bool {
+	return t.module == sharedModule || strings.HasPrefix(t.module, sharedModule+"/")
+}
+
+// declaring lists the Go files the envelope rule reads: every non-test file
+// the block does not exempt.
+func (t *tree) declaring() []goFile {
+	var out []goFile
+	for _, g := range t.goFiles {
+		if !under(g.rel, t.cfg.EnvelopeExempt) {
+			out = append(out, g)
+		}
+	}
+	return out
+}
 
 func (t *tree) claiming() []goFile {
 	var out []goFile

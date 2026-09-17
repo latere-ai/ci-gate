@@ -87,6 +87,7 @@ var rules = []rule{
 	{name: "claims", roles: []config.Role{config.RoleCore}, run: ruleClaims},
 	{name: "verifier", roles: verifies, run: ruleVerifier},
 	{name: "authorizer", roles: []config.Role{config.RoleCore}, run: ruleAuthorizer},
+	{name: "envelope", roles: integrating, run: ruleEnvelope},
 	{name: "request-path", roles: serving, run: ruleRequestPath},
 	{name: "delegation", roles: integrating, run: ruleDelegation},
 	{name: "roles", roles: integrating, run: ruleRoles},

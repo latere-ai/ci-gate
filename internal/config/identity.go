@@ -105,6 +105,13 @@ type Identity struct {
 	// deploys wallfacerd out of a module called wallfacer says so here.
 	// Service, bff and core only.
 	Image string `yaml:"image"`
+	// EnvelopeExempt lists the files whose types carry the envelope's field
+	// names for a reason of their own: a core's limits type, and the page a
+	// list action answers with. The envelope rule does not read them. The
+	// two reasons are declared here rather than written into the gate, so a
+	// repository that grows a third writes it down beside them, and a
+	// declared path the tree does not hold stops the run.
+	EnvelopeExempt []string `yaml:"envelope_exempt"`
 	// RolesOnly turns on the rule that access is by role. It is one way: a
 	// tree whose history set it cannot unset it.
 	RolesOnly bool `yaml:"roles_only"`
@@ -217,6 +224,11 @@ func (i Identity) validate(path string) error {
 				"name the segment the image was built under and nothing else, such as wallfacerd: "+
 				"that is the part of the reference the deployment rules compare", path, name)
 		}
+	}
+	if len(i.EnvelopeExempt) > 0 && i.Role == RoleNone {
+		return fmt.Errorf("%s: identity.envelope_exempt is set and identity.role is none\n"+
+			"a library or a tool runs no rule of the shape, so an exemption from one "+
+			"is a decision with no effect", path)
 	}
 	if len(i.Overlays) > 0 && i.Role != RoleCore {
 		return fmt.Errorf("%s: identity.overlays is set and identity.role is %q\n"+

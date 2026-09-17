@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -19,6 +20,26 @@ const verifierPackage = "latere.ai/x/pkg/authkit/jwt"
 
 // authorizerPackage carries the one authorizer contract a core asks over.
 const authorizerPackage = "latere.ai/x/pkg/authz"
+
+// sharedModule is the module the envelope is declared in. The repository
+// that is that module declares the shape; every other repository sends and
+// decodes the declaration rather than writing the fields again.
+const sharedModule = "latere.ai/x/pkg"
+
+// envelopeAsk is the question the authorizer contract carries: what is
+// being done, by whom, and to what. A type that names the action beside
+// either of the other two is the envelope written out again; the action
+// alone is a discriminator, which a repository names for whatever it
+// dispatches on, so it is not a finding by itself.
+var envelopeAsk = []string{"subject", "resource"}
+
+// envelopeAnswer is the decision the contract answers with: whether it is
+// allowed, how long that holds, and why. A page is not a verdict and
+// carries no ttl, so all three are required together.
+var envelopeAnswer = []string{"allow", "ttl", "reason"}
+
+// actionTag is the tag every ask carries.
+const actionTag = "action"
 
 // otherTokenLibraries are the libraries that would be a second verifier.
 // The dependency gate's allow list carries the same decision.
@@ -258,6 +279,85 @@ const noContractSentence = "nothing here imports the shared authorizer client, s
 
 const handRolledAskSentence = "this posts to an authorizer by hand; the shared client carries the " +
 	"envelope, the cache rules and the failure rules, and the leaf id-03 is where it ships"
+
+// ruleEnvelope holds the envelope and its decision to one declaration.
+//
+// The authorizer rule catches a repository that asks in a shape of its own.
+// This one catches a repository that answers in one, or that decodes the
+// answer into fields it wrote itself: either way the wire shape is declared
+// twice, and the second copy stops matching the first on the day the first
+// changes. The evidence is the JSON tags of a struct, because a type that
+// marshals the envelope is what puts the shape on the wire; a Go field with
+// no tag names nothing a reader of the wire sees.
+//
+// Tag names are matched whole. An actions list, an allowed-hosts set, a
+// ttl in seconds and a reasons array share letters with the envelope and
+// are not it.
+func ruleEnvelope(t *tree) (result, error) {
+	if t.shared() {
+		return result{skip: "this is the module the envelope is declared in"}, nil
+	}
+	files := t.declaring()
+	if len(files) == 0 {
+		return result{skip: "no non-test Go file outside the declared envelope exemptions"}, nil
+	}
+	var found []Finding
+	for _, g := range files {
+		inspect(g.file, func(n ast.Node) bool {
+			st, ok := n.(*ast.StructType)
+			if !ok || st.Fields == nil {
+				return true
+			}
+			tags := jsonTags(st)
+			switch {
+			case tags[actionTag] && slices.ContainsFunc(envelopeAsk, func(name string) bool { return tags[name] }):
+				found = append(found, at(g.rel, t.line(st.Pos()), envelopeAskSentence))
+			case holdsAll(tags, envelopeAnswer):
+				found = append(found, at(g.rel, t.line(st.Pos()), envelopeAnswerSentence))
+			}
+			return true
+		})
+	}
+	return result{findings: found,
+		note: fmt.Sprintf("%d Go file(s) declare no envelope of their own", len(files))}, nil
+}
+
+const envelopeAskSentence = "this type puts the authorizer's question on the wire in fields of its " +
+	"own; one shared package declares that shape, so send and decode through it"
+
+const envelopeAnswerSentence = "this type puts the authorizer's decision on the wire in fields of " +
+	"its own; one shared package declares that shape, so send and decode through it"
+
+// holdsAll reports whether every name is a tag of the type.
+func holdsAll(tags map[string]bool, names []string) bool {
+	for _, n := range names {
+		if !tags[n] {
+			return false
+		}
+	}
+	return true
+}
+
+// jsonTags is the set of wire names one struct type marshals, read from the
+// json tag of each field. An embedded field and a field with no tag name
+// nothing on the wire of their own; a tag of "-" names nothing at all.
+func jsonTags(st *ast.StructType) map[string]bool {
+	out := map[string]bool{}
+	for _, f := range st.Fields.List {
+		if f.Tag == nil || len(f.Names) == 0 {
+			continue
+		}
+		text, ok := literalText(f.Tag)
+		if !ok {
+			continue
+		}
+		name, _, _ := strings.Cut(reflect.StructTag(text).Get("json"), ",")
+		if name != "" && name != "-" {
+			out[name] = true
+		}
+	}
+	return out
+}
 
 // posts reports whether a file builds a POST request.
 func posts(g goFile) bool {
