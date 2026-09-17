@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -33,6 +34,12 @@ type Exec func(env []string, stream bool, name string, args ...string) ([]byte, 
 // -C: a check that reads its config from one repository and shells out in
 // another reports on the wrong tree.
 func OSExec(dir string, out io.Writer) Exec {
+	// One lock for every command this Exec runs: a streamed command's stdout
+	// and stderr are copied by two goroutines, and handing the same writer to
+	// both races on any writer that does not synchronise itself. os.Stdout
+	// hides it behind a file descriptor; a strings.Builder in a test does not,
+	// and neither would a log sink a caller passes in.
+	safe := &syncWriter{w: out}
 	return func(env []string, stream bool, name string, args ...string) ([]byte, error) {
 		cmd := exec.CommandContext(context.Background(), name, args...)
 		cmd.Dir = dir
@@ -41,8 +48,8 @@ func OSExec(dir string, out io.Writer) Exec {
 		}
 		var buf strings.Builder
 		if stream {
-			cmd.Stdout = io.MultiWriter(out, &buf)
-			cmd.Stderr = out
+			cmd.Stdout = io.MultiWriter(safe, &buf)
+			cmd.Stderr = safe
 		} else {
 			cmd.Stdout = &buf
 			// A gate that reads a diff decides on the diff alone. `go fix`
@@ -53,6 +60,18 @@ func OSExec(dir string, out io.Writer) Exec {
 		err := cmd.Run()
 		return []byte(buf.String()), err
 	}
+}
+
+// syncWriter serialises the writes of the two pipes a streamed command holds.
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (s *syncWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
 }
 
 // Hermetic runs the test suite with only the Go toolchain and the explicitly

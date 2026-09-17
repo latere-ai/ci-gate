@@ -5,9 +5,11 @@ package gates
 
 import (
 	"errors"
+	"io"
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"latere.ai/x/ci-gate/internal/config"
@@ -293,4 +295,30 @@ func pathOf(env []string) string {
 		}
 	}
 	return ""
+}
+
+// A streamed command's stdout and stderr are copied by two goroutines, and
+// the writer they share is whatever the caller passed. The race detector
+// caught that on a strings.Builder; the lock is what makes the contract hold
+// for every writer, not only the ones that synchronise themselves.
+func TestStreamedOutputIsSerialised(t *testing.T) {
+	var sb strings.Builder
+	w := &syncWriter{w: &sb}
+	const writers, each = 8, 64
+	var wg sync.WaitGroup
+	for range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range each {
+				if _, err := io.WriteString(w, "x"); err != nil {
+					t.Error(err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if sb.Len() != writers*each {
+		t.Errorf("wrote %d bytes, want %d", sb.Len(), writers*each)
+	}
 }
