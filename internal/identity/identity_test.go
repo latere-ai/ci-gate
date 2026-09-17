@@ -4,6 +4,7 @@
 package identity
 
 import (
+	"errors"
 	"io"
 	"maps"
 	"os"
@@ -650,6 +651,54 @@ func TestRolesReadsTheFrontend(t *testing.T) {
 		if strings.Contains(out, quiet) {
 			t.Errorf("%s names the flag and decides nothing, so it is not a finding:\n%s", quiet, out)
 		}
+	}
+}
+
+// ignoring answers as a tree whose .gitignore names the given paths. git
+// writes the ignored paths it was asked about, one per line, and exits
+// non-zero when none of them is ignored.
+func ignoring(paths ...string) gates.Exec {
+	return func(_ []string, _ bool, _ string, args ...string) ([]byte, error) {
+		if len(args) == 0 || args[0] != "check-ignore" {
+			return nil, nil
+		}
+		var out strings.Builder
+		for _, arg := range args[1:] {
+			if slices.Contains(paths, arg) {
+				out.WriteString(arg + "\n")
+			}
+		}
+		if out.Len() == 0 {
+			return nil, errors.New("exit status 1")
+		}
+		return []byte(out.String()), nil
+	}
+}
+
+// Build residue is not the repository. One frontend tree leaves a .vue.js
+// sidecar beside every component and ignores it; a file that is on a laptop
+// and not in a checkout would make the gate red locally and green on the
+// runner, which is the one direction a gate must never fail in.
+func TestRolesReadsNoFileTheRepositoryIgnores(t *testing.T) {
+	files := frontendTree()
+	files["web/src/Nav.tsx"] = "export const Nav = (p: Principal) => p.roles[0];\n"
+	files["web/src/Menu.vue"] = "<script setup lang=\"ts\">\nconst admin = props.roles[0];\n</script>\n"
+	files["web/src/keys.ts"] = "export const keys = [\"roles\"];\n"
+	// The residue the toolchain wrote, holding what the source no longer does.
+	files["web/src/Menu.vue.js"] = "const admin = props.isSuperadmin;\n"
+	root := repo(t, files)
+
+	out, err := run(t, withRolesOnly(config.Identity{Role: config.RoleService, Audience: "drive"}), root, noHistory())
+	if err == nil || !strings.Contains(out, "web/src/Menu.vue.js:1:") {
+		t.Fatalf("a tree that ignores nothing reads the file:\n%s", out)
+	}
+
+	out, err = run(t, withRolesOnly(config.Identity{Role: config.RoleService, Audience: "drive"}), root, ignoring("web/src/Menu.vue.js"))
+	if err != nil {
+		t.Fatalf("a file the repository ignores is not read:\n%s", out)
+	}
+	if !strings.HasPrefix(ruleLine(out, "roles"), "PASS") {
+		t.Errorf("the roles rule passes over ignored residue:\n%s", out)
 	}
 }
 
