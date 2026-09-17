@@ -10,6 +10,29 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- `lateregate release` reads CI through the GitHub API before it runs the bar
+  and refuses to cut while the repository is red. It checks the latest
+  completed run of every workflow on the default branch for `HEAD` and its
+  ancestors back to the previous release tag, the previous tag's own release
+  run, and whether a GitHub Release actually exists for that tag: a run that
+  finished green and published nothing is the failure this catches, and it is
+  the one that let three tags deploy without notes. A window where nothing has
+  completed yet is unknown rather than green, and is refused too.
+- Every refusal names the run, the failing job and its URL, and ends with one
+  line saying who acts, read from the failing job's log:
+  `BUDGET: the maintainer must act (…)` for Actions minutes, billing, a usage
+  limit, runner capacity or an org policy refusal, with the phrase that
+  matched so it can be forwarded; `INFRA: re-run the job, then cut again` for
+  a registry refusal, a reset connection, a certificate or a name that did not
+  resolve; and `CODE: fix and push, then cut again` for anything else,
+  including a log that could not be read.
+- `release.require_green` in `.lateregate.yaml` is `true` when the file says
+  nothing. Setting it to `false` turns the guard off, and the README says what
+  that costs. `lateregate release -force-red vX.Y.Z` cuts over the findings
+  instead: it still reads CI, and prints everything it is overriding.
+
 ## v0.38.0 - 2026-09-17
 
 ### Added
