@@ -220,7 +220,10 @@ three things:
 
 - **A red run in this tag's window.** For every workflow with a completed run
   on the default branch at `HEAD` or an ancestor back to the previous release
-  tag, the latest such run must not be `failure` or `cancelled`.
+  tag, the latest such run must have ended on an answer. `failure`,
+  `cancelled`, `timed_out`, `startup_failure` and `action_required` are not
+  answers: a run that never started, one that died on the clock and one
+  waiting for approval are all runs nobody has a result from.
 - **A red release run on the previous tag.** The run the last tag started.
 - **A previous tag with no release to show for it.** If that run went green,
   a GitHub Release must exist for the tag. A workflow can finish and publish
@@ -249,6 +252,13 @@ The last line is read from the failing job's log:
 | `BUDGET: the maintainer must act (…)` | Actions minutes, billing, a usage or spending limit, runner capacity, an org policy refusal. Nobody but the maintainer can move it, and the phrase that matched is in the parenthesis so it can be forwarded as evidence. |
 | `INFRA: re-run the job, then cut again` | A registry refusal, a reset connection, a certificate or a name that did not resolve. |
 | `CODE: fix and push, then cut again` | Anything else, including a log that could not be read. |
+
+Two conclusions decide themselves. A `timed_out` run is `INFRA` unless its log
+names a test (`--- FAIL:`, `panic: test timed out` and the rest), because a
+suite that ran out of time is the suite's problem and re-running it only spends
+the clock twice. A `startup_failure` has no job log of its own, so its message
+is what classifies it: one naming an org policy refusal or an exhausted
+allowance is `BUDGET`, one naming nothing is `CODE`.
 
 A tag whose run went green and published nothing reads:
 
