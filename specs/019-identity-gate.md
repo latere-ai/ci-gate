@@ -245,3 +245,41 @@ decision.
 
 `identity.skip` is unchanged: a path it names is one the rules assert
 nothing about.
+
+## Amendment, 2026-09-17: what a command is, what a string is, and the answering half
+
+Shipped as ci-gate v0.40.0, found by the family during the identity epic's
+close (the family's `id-10-guardrail.md` and `id-11-contract-2-authorizer.md`).
+
+**A command at the module root.** The 2026-09-16 amendment says a container
+runs this repository when its image names a directory under `cmd/`. A module
+whose only `main` is at its root has no such directory, and `go build` names
+that binary after the module's last segment, so the rules now read the
+root's package clause and count that segment as a command. wallfacer moved
+its command to the root and was reporting `SKIP audience`, with
+`AUTH_AUDIENCE` unchecked; that was the gap.
+
+**A declared image.** A repository whose image was built under a name that is
+neither a `cmd/` directory nor the module's last segment (`wallfacer`
+deploying `wallfacerd`) declares it as `identity.image: wallfacerd`. The
+value is the one segment the rules compare; a registry, tag or digest in it
+is refused, and so is the key outside `issuer`, `core`, `service` and
+`platform`, the roles whose deployments the `audience` and `bearers` rules
+read. It is data beside `overlays`, not a guess in the gate.
+
+**An import path is not a string the file carries.** The scan read every
+string literal in a Go file, import paths included, so a file that imported
+a test double whose path holds `authorize` was a finding of the `authorizer`
+rule, and `claims` read a package path holding a membership claim. The scan
+now stops at an import spec. origo's three `identity.skip` entries written
+for this can go.
+
+**The `envelope` rule, every role but `none`.** The `authorizer` rule catches
+a repository that asks the authorizer in a shape of its own. The family's
+id-11 named the other half, a repository that answers in one, and no rule
+held it. A struct in a non-test Go file whose JSON tags name `action` beside
+`subject` or `resource`, or `allow` beside `ttl` and `reason`, outside the
+module the envelope is declared in, is that wire shape written a second
+time. Tag names match whole. `identity.envelope_exempt` names the files
+whose types carry those names for a reason of their own, declared per
+repository; a path the tree does not hold stops the run.

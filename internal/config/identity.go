@@ -61,9 +61,9 @@ const DefaultRegistry = "deploy/base/clients.yaml"
 // audienceRoles verify an audience of their own, so they must name it.
 var audienceRoles = []Role{RoleCore, RoleService, RolePlatform}
 
-// imageRoles deploy a workload of their own under an image name, which is
-// what identity.image declares.
-var imageRoles = []Role{RoleService, RoleBFF, RoleCore}
+// imageRoles are the roles whose deployments the audience and bearers
+// rules read, which is where identity.image is looked up.
+var imageRoles = []Role{RoleIssuer, RoleCore, RoleService, RolePlatform}
 
 // Identity declares which layer of the family's identity shape a repository
 // is, and holds the values that layer's rules need.
@@ -215,8 +215,8 @@ func (i Identity) validate(path string) error {
 	if name := strings.TrimSpace(i.Image); name != "" {
 		if !slices.Contains(imageRoles, i.Role) {
 			return fmt.Errorf("%s: identity.image is set and identity.role is %q\n"+
-				"only a repository that deploys a workload of its own names the image it "+
-				"was built under, one of %s; a name nothing reads is a decision with no effect",
+				"only a role whose deployment the audience or bearers rule reads names the "+
+				"image it was built under, one of %s; a name nothing reads is a decision with no effect",
 				path, string(i.Role), roleNames(imageRoles))
 		}
 		if strings.ContainsAny(name, "/:@") {

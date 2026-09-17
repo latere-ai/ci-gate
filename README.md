@@ -822,9 +822,9 @@ identity:
 
 The value is that one segment: a registry, a path, a tag or a digest in it is
 refused, because the rule compares the segment and would never match the rest.
-The key belongs to `service`, `bff` and `core`, the roles that deploy a
-workload of their own; anywhere else it is a name nothing reads, and the load
-refuses it.
+The key belongs to `issuer`, `core`, `service` and `platform`, the roles
+whose deployments the `audience` and `bearers` rules read; anywhere else it
+is a name nothing reads, and the load refuses it.
 
 A repository behind on one rule waives that rule and keeps the other ten
 running, which a gate waiver could not do:
@@ -1115,7 +1115,7 @@ identity:                  # mandatory: a repository with no block fails the gat
   skip: []                 # paths the scans do not enter
   overlays: []             # the paths holding one company's own deployment overlay; core
   envelope_exempt: []      # the files whose types carry the envelope's field names for a reason
-  image: ""                # the segment this workload's image was built under; service, bff, core
+  image: ""                # the segment this workload's image was built under; issuer, core, service, platform
   roles_only: false        # turn on the roles rule; one way once set
   registry: deploy/base/clients.yaml   # the client registry; issuer, and the default
   audiences: []            # the product audiences this client presents; client

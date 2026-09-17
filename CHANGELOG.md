@@ -52,8 +52,9 @@ committed: the commit log already holds that.
   `image: wallfacerd`. It is a declaration and not a guess, so the deployment
   rules keep checking a repository whose image and module were named apart.
   The value is the one segment the rules compare: a registry, a path, a tag or
-  a digest in it is refused, and so is the key outside `service`, `bff` and
-  `core`, the roles that deploy a workload of their own.
+  a digest in it is refused, and so is the key outside `issuer`, `core`,
+  `service` and `platform`, the roles whose deployments the `audience` and
+  `bearers` rules read.
 
 ## v0.39.0 - 2026-09-17
 
