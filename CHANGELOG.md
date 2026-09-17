@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.40.0 - 2026-09-17
+
 ### Fixed
 
 - The `identity` gate reads a Go file's string literals without descending
