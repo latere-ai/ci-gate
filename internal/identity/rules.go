@@ -68,8 +68,11 @@ var retiredMechanisms = []string{"grantor_id", "tokens/exchange", "RFC 8693", "a
 // the system, which a live document may not describe.
 var retiredNames = []string{"pkg/oidclogin", "pkg/jwtauth", "pkg/oidc/", "identity fabric", "delegated token"}
 
-// flagNames are the flag that access was once decided by.
-var flagNames = []string{"is_superadmin", "IsSuperadmin"}
+// flagNames are the flag that access was once decided by, in the three
+// spellings the family writes it: the claim and the column, Go's exported
+// field, and the camel case a browser gives the same field. Each is a plain
+// case-sensitive substring.
+var flagNames = []string{"is_superadmin", "IsSuperadmin", "isSuperadmin"}
 
 // rolesOnlyKey is the line the history is searched for, so the rule cannot
 // be turned off once it is on.
@@ -536,21 +539,114 @@ func ruleRoles(t *tree) (result, error) {
 		return result{skip: "the block does not set roles_only, and the history never did"}, nil
 	}
 	targets := t.everyFile()
-	if len(targets) == 0 {
-		return result{skip: "no non-test Go file, document or manifest to read"}, nil
+	if len(targets) == 0 && len(t.frontendFiles) == 0 {
+		return result{skip: "no non-test Go file, frontend source, document or manifest to read"}, nil
 	}
 	var found []Finding
 	for _, s := range targets {
-		for i, line := range s.lines {
-			for _, flag := range flagNames {
-				if strings.Contains(line, flag) {
-					found = append(found, at(s.rel, i+1, flagSentence))
-				}
+		found = append(found, flagHits(s, s.lines)...)
+	}
+	// A frontend keeps its sentences in the file rather than in a document
+	// beside it, so the comment a repository writes about the flag it stopped
+	// reading would be the finding. What decides is the code.
+	for _, s := range t.frontendFiles {
+		found = append(found, flagHits(s, code(s.lines))...)
+	}
+	return result{findings: found,
+		note: fmt.Sprintf("%d file(s) decide by role and not by a flag", len(targets)+len(t.frontendFiles))}, nil
+}
+
+// flagHits reports every line of lines that names the flag. lines is read by
+// index, so a caller that rewrites a line keeps its position.
+func flagHits(s sourceFile, lines []string) []Finding {
+	var found []Finding
+	for i, line := range lines {
+		for _, flag := range flagNames {
+			if strings.Contains(line, flag) {
+				found = append(found, at(s.rel, i+1, flagSentence))
 			}
 		}
 	}
-	return result{findings: found,
-		note: fmt.Sprintf("%d file(s) decide by role and not by a flag", len(targets))}, nil
+	return found
+}
+
+// code returns the lines with their comment spans blanked and everything else
+// where it was, so a line's index is still its line number.
+//
+// String contents stay: a name read out of a template or quoted as a property
+// is a decision. What goes is prose, which is where a file says why it no
+// longer reads a name.
+func code(lines []string) []string {
+	out := make([]string, len(lines))
+	var c commentScan
+	for i, line := range lines {
+		out[i] = c.code(line)
+	}
+	return out
+}
+
+// commentScan carries what one line leaves open for the next: a block comment,
+// an HTML comment in a single-file component's template, or a template
+// literal, each of which spans lines.
+type commentScan struct{ block, html, template bool }
+
+// code returns line without its comments and advances the scan.
+//
+// Quotes are tracked so a // inside a string is text and not a comment; a bare
+// URL outside a string is the one shape this reads as a comment, and nothing
+// after it on that line is read.
+func (c *commentScan) code(line string) string {
+	var b strings.Builder
+	var quote byte
+	for i := 0; i < len(line); i++ {
+		switch {
+		case c.block:
+			if strings.HasPrefix(line[i:], "*/") {
+				c.block = false
+				i++
+			}
+			continue
+		case c.html:
+			if strings.HasPrefix(line[i:], "-->") {
+				c.html = false
+				i += 2
+			}
+			continue
+		case c.template, quote != 0:
+			if line[i] == '\\' {
+				b.WriteByte(line[i])
+				i++
+				if i < len(line) {
+					b.WriteByte(line[i])
+				}
+				continue
+			}
+			if (c.template && line[i] == '`') || line[i] == quote {
+				c.template, quote = false, 0
+			}
+			b.WriteByte(line[i])
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line[i:], "//"):
+			return b.String()
+		case strings.HasPrefix(line[i:], "/*"):
+			c.block = true
+			i++
+		case strings.HasPrefix(line[i:], "<!--"):
+			c.html = true
+			i += 3
+		case line[i] == '`':
+			c.template = true
+			b.WriteByte(line[i])
+		case line[i] == '\'' || line[i] == '"':
+			quote = line[i]
+			b.WriteByte(line[i])
+		default:
+			b.WriteByte(line[i])
+		}
+	}
+	return b.String()
 }
 
 const oneWaySentence = "the history of this file set roles_only and the file no longer does; the " +
