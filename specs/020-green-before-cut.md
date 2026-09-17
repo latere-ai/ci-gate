@@ -1,13 +1,16 @@
 ---
 title: Green before you cut, and the refusal says who acts
-status: draft
+status: complete
 depends_on:
   - 012-a-tag-is-a-release.md
 affects:
   - cmd/lateregate/
   - internal/greencut/ (new)
   - internal/config/
+  - internal/contract/
+  - internal/gates/
   - README.md
+  - CHANGELOG.md
 effort: medium
 created: 2026-09-17
 updated: 2026-09-17
@@ -204,16 +207,16 @@ Nothing has run yet:
 
 ```
 lateregate: not releasing v0.39.0: no completed run on main for v0.38.0..HEAD
-  push and wait for ci, or cut with --force-red
+  push and wait for ci, or cut with -force-red
 ```
 
 ### `--force-red`
 
-`lateregate release vX --force-red` runs the guard, prints every finding it
+`lateregate release -force-red vX` runs the guard, prints every finding it
 would have refused on, and cuts anyway:
 
 ```
---force-red: overriding 1 finding
+--force-red: overriding ci is red
   ci #1284 failure, job "gate (cover)"
   https://github.com/latere-ai/ci-gate/actions/runs/1284
   CODE: fix and push, then cut again
@@ -280,7 +283,7 @@ like every other key.
    says `vX-1 deployed but published nothing`.
 5. `release vX` against a fake API with no completed run in the window
    refuses naming the branch and the window.
-6. `release vX --force-red` against any of the red cases prints every
+6. `release -force-red vX` against any of the red cases prints every
    finding with its actor line and then cuts.
 7. `release.require_green: false` skips the guard, makes no API call, and
    cuts; `contract` reports `release.require_green` when a file restates
@@ -304,3 +307,25 @@ precedence rule is one more row holding two signals at once.
 
 `cmd/lateregate` keeps the end-to-end case: the flag parses, the base URL
 reaches the guard, and a refusal exits non-zero with the message on stderr.
+
+## Outcome
+
+Shipped on 2026-09-17 in `internal/greencut`, wired into `lateregate release`
+ahead of the bar. Every acceptance criterion holds. The package sits at 91.9%
+coverage, and `Classify` is a pure function over the conclusion and the log
+tail, so the whole classification table is a table test.
+
+Two things moved that the decision above did not name:
+
+- `internal/gates.OSExec` handed the same writer to a streamed command's
+  stdout and stderr, which two goroutines copy. The race detector caught it as
+  soon as a test drove `release` into the bar with a `strings.Builder` sink.
+  `os.Stdout` hid it behind a file descriptor. The writer is behind a mutex
+  now, with a test that fails without it.
+- `--force-red` is written before the version, `lateregate release -force-red
+  vX.Y.Z`, because the flag set is parsed before the positional argument. The
+  usage line says so.
+
+Left for whoever needs it: `timed_out` and `startup_failure` are red
+conclusions this guard does not refuse on, because the decision named
+`failure` and `cancelled` and nothing else.
