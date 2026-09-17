@@ -30,6 +30,12 @@ committed: the commit log already holds that.
   that is read, a comment is prose: the sentence saying why a file stopped
   reading the flag is not a use of it, while a name in a string still is.
 
+  A file the repository ignores is not read either, asked of `git
+  check-ignore` rather than guessed. A frontend tree holds build residue
+  beside its sources, and a file that is on a laptop and not in a checkout
+  would make the gate red locally and green on the runner. git deciding
+  nothing leaves every file read.
+
 ## v0.41.0 - 2026-09-17
 
 ### Fixed
