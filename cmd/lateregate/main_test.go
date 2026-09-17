@@ -4,6 +4,10 @@
 package main
 
 import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -204,11 +208,17 @@ func TestReleaseNotesPrintsTheSection(t *testing.T) {
 	}
 }
 
-// A release runs the whole bar first and refuses to cut when it cannot pass:
-// the temp directory is not a checkout, so the bar stops before any gate,
-// and the error names the refusal and the version before anything is tagged.
+// A release runs the whole bar and refuses to cut when it cannot pass: the
+// temp directory is not a checkout, so the bar stops before any gate, and the
+// error names the refusal and the version before anything is tagged.
+//
+// require_green is off here so the bar is what refuses. The guard in front of
+// it has its own tests.
 func TestReleaseRefusesToCutOnARedBar(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".lateregate.yaml"), []byte("release:\n  require_green: false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "CHANGELOG.md"), []byte("## Unreleased\n\n- a note\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -222,6 +232,105 @@ func TestReleaseRefusesToCutOnARedBar(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(dir, ".git")); statErr == nil {
 		t.Error("the refusal must not create a repository or a tag")
 	}
+}
+
+// The guard runs before the bar, so a red CI costs no gate time: the fake API
+// answers with a failed run, and the refusal carries the run URL, the failing
+// job and the line naming who acts, before any gate has started.
+func TestReleaseRefusesBeforeTheBarWhenCIIsRed(t *testing.T) {
+	dir := checkout(t)
+	seed(t, dir)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/repos/o/r":
+			_, _ = io.WriteString(w, `{"default_branch":"main"}`)
+		case r.URL.Path == "/repos/o/r/actions/runs" && r.URL.Query().Get("page") == "1":
+			_, _ = fmt.Fprintf(w, `{"workflow_runs":[{"id":7,"name":"ci","run_number":12,"workflow_id":3,`+
+				`"head_sha":%q,"head_branch":"main","status":"completed","conclusion":"failure",`+
+				`"html_url":"https://github.com/o/r/actions/runs/7"}]}`, head(t, dir))
+		case r.URL.Path == "/repos/o/r/actions/runs/7/jobs":
+			_, _ = io.WriteString(w, `{"jobs":[{"id":9,"name":"gate (cover)","conclusion":"failure"}]}`)
+		case r.URL.Path == "/repos/o/r/actions/jobs/9/logs":
+			_, _ = io.WriteString(w, "--- FAIL: TestSomething\n")
+		default:
+			_, _ = io.WriteString(w, `{"workflow_runs":[]}`)
+		}
+	}))
+	defer api.Close()
+	t.Setenv("GITHUB_API_URL", api.URL)
+	t.Setenv("GH_TOKEN", "t")
+
+	_, err := out(t, "release", "-C", dir, "v1.0.0")
+	if err == nil {
+		t.Fatal("a red ci released")
+	}
+	want := "not releasing v1.0.0: ci is red\n" +
+		"  ci #12 failure, job \"gate (cover)\"\n" +
+		"  https://github.com/o/r/actions/runs/7\n" +
+		"CODE: fix and push, then cut again"
+	if err.Error() != want {
+		t.Fatalf("error:\n%s\nwant:\n%s", err, want)
+	}
+	if tags, _ := exec.Command("git", "-C", dir, "tag").Output(); len(tags) != 0 {
+		t.Errorf("the refusal must tag nothing, got %q", tags)
+	}
+}
+
+// --force-red is the maintainer's escape hatch: it reads CI all the same and
+// prints what it is cutting over. The bar refuses afterwards, which is what
+// proves the guard let it through.
+func TestForceRedOverridesAndSaysSo(t *testing.T) {
+	dir := checkout(t)
+	seed(t, dir)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/repos/o/r":
+			_, _ = io.WriteString(w, `{"default_branch":"main"}`)
+		default:
+			_, _ = io.WriteString(w, `{"workflow_runs":[]}`)
+		}
+	}))
+	defer api.Close()
+	t.Setenv("GITHUB_API_URL", api.URL)
+	t.Setenv("GH_TOKEN", "t")
+
+	s, err := out(t, "release", "-C", dir, "-force-red", "v1.0.0")
+	if !strings.Contains(s, "--force-red: overriding no completed run on main") {
+		t.Errorf("the override must print what it overrides, got %q", s)
+	}
+	if err == nil || strings.Contains(err.Error(), "ci is red") {
+		t.Errorf("the bar refuses after the override, got %v", err)
+	}
+}
+
+// seed writes the changelog and one commit with an origin the guard can read.
+func seed(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "CHANGELOG.md"), []byte("## Unreleased\n\n- a note\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"remote", "add", "origin", "ssh://github.com/o/r"},
+		{"add", "CHANGELOG.md"},
+		{"commit", "-q", "-m", "seed"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		if b, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, b)
+		}
+	}
+}
+
+func head(t *testing.T, dir string) string {
+	t.Helper()
+	b, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(b))
 }
 
 func TestHookFailsOutsideACheckout(t *testing.T) {

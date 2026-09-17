@@ -29,6 +29,7 @@ import (
 	"latere.ai/x/ci-gate/internal/enumsetup"
 	"latere.ai/x/ci-gate/internal/gates"
 	"latere.ai/x/ci-gate/internal/golangci"
+	"latere.ai/x/ci-gate/internal/greencut"
 	"latere.ai/x/ci-gate/internal/identity"
 	"latere.ai/x/ci-gate/internal/license"
 )
@@ -51,7 +52,8 @@ Usage:
 	                           install configured frontend dependencies from tracked lockfiles
 	lateregate release-notes TAG [REF]
 	                           print the CHANGELOG.md section for TAG, read at REF (default: the working tree), or fail
-	lateregate release VERSION move the notes under "## Unreleased" into a section for VERSION, commit, tag, push
+	lateregate release [-force-red] VERSION
+	                           refuse while CI is red, then move the notes under "## Unreleased" into a section for VERSION, commit, tag, push
 
 Gates, in the order check runs them:
 GATES
@@ -114,6 +116,8 @@ func run(argv []string, out io.Writer) error {
 	goBin := fs.String("go", "go", "Go toolchain to run")
 	asJSON := fs.Bool("json", false, "print the plan as JSON (list)")
 	write := fs.Bool("w", false, "write the declared notice on every file that has none (license)")
+	forceRed := fs.Bool("force-red", false,
+		"cut over a red CI, printing what it overrides (release); the maintainer's escape hatch, and in no pipeline")
 	var profiles profileList
 	fs.Var(&profiles, "profile",
 		"coverage profile to read (cover); repeat the flag for each test tier")
@@ -202,7 +206,24 @@ func run(argv []string, out io.Writer) error {
 		return nil
 	case "release":
 		if len(fs.Args()) != 1 {
-			return fmt.Errorf("usage: lateregate release vX.Y.Z")
+			return fmt.Errorf("usage: lateregate release [-force-red] vX.Y.Z")
+		}
+		// The guard runs before the bar: a red default branch is three API
+		// reads, the bar is a full instrumented suite, and paying for the
+		// second to learn the first is the wrong order.
+		if cfg.Release.Green() {
+			guard := &greencut.Guard{
+				Root: *root,
+				// Every runner sets GITHUB_API_URL, and an enterprise
+				// install points it at its own host.
+				API:   os.Getenv("GITHUB_API_URL"),
+				Run:   ctx.Exec,
+				Out:   out,
+				Force: *forceRed,
+			}
+			if err := guard.Check(); err != nil {
+				return fmt.Errorf("not releasing %s: %w", fs.Args()[0], err)
+			}
 		}
 		// A release is the one push that must never go out red: the whole
 		// bar runs on the tree about to be tagged, and a failure stops the
