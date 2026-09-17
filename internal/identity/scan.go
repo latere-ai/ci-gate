@@ -259,7 +259,13 @@ func isManifest(rel, name string) bool {
 // frontendExts are the browser sources a decision can be written in. A page
 // that branches on a retired flag decides access as surely as a handler does,
 // and the Go half of this scan cannot see it.
-var frontendExts = []string{".ts", ".tsx", ".vue", ".svelte", ".js"}
+//
+// The list is every extension a person in this family writes a component or a
+// module in, not a sample of them: .jsx is what .tsx is without the types, and
+// .mjs and .cjs are what .js is when a package pins the module system. An
+// extension left out is a file the rule passes over in silence, which is the
+// gap this rule was extended to close.
+var frontendExts = []string{".ts", ".tsx", ".jsx", ".vue", ".svelte", ".js", ".mjs", ".cjs"}
 
 // frontendSkipDirs hold what no person in this repository wrote: a package
 // manager's tree, a bundler's output, a fixture. They are skipped here and not
