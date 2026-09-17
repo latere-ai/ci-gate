@@ -28,6 +28,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 017 | [TypeScript enum domains use named types and members](017-typescript-enum-domains.md) | complete | Type-aware TypeScript and Vue enum checks through the project compiler |
 | 018 | [Enum gates run from the shared plan locally and in CI](018-enum-gate-wiring.md) | complete | Strict policy configuration, gate dispatch, frontend preparation and CI wiring |
 | 019 | [Gate the identity shape every repository integrates](019-identity-gate.md) | partial | An `identity` gate: a role per repository in `.lateregate.yaml`, static rules per role for the family's identity shape, and a family check across repositories |
+| 020 | [Green before you cut, and the refusal says who acts](020-green-before-cut.md) | draft | `release` reads CI through the GitHub API before the bar runs: a red run on the default branch, or a previous tag that deployed and published no Release, refuses with the run URL, the failing job, and a line naming BUDGET, INFRA or CODE |
 
 ## Conventions
 
