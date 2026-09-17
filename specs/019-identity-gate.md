@@ -96,7 +96,7 @@ runs a service.
 | one contract (C3) | core | `latere.ai/x/pkg/authz` imported; no hand-rolled `POST` to a path named `authorize` outside it |
 | no auth on the request path (R2) | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` in a non-test Go file outside the paths the block's `bff` names, which hold a browser frontend that forwards the person's own token to the issuer's API |
 | one hop, no delegation (R3) | all but none | `grantor_id`, `tokens/exchange`, `actor: true`, `RFC 8693` anywhere in a non-test Go file or a non-archived document; `act`, `agent_id` and `actor_id` only where they are a token claim, which is a struct tag in a type that also carries `sub`, `aud` or `exp`, or a bare occurrence outside every struct type in a file that imports the verifier or names `Claims`. A tag in a type that carries no registered claim is a column of that type wherever the file lives: one product carries an agent identity as an attribution column, which the 2026-09-06 decision allows, and a handler that verifies tokens also renders its audit rows |
-| roles, not flags (R9) | all but none | `is_superadmin`, `IsSuperadmin` or `isSuperadmin` anywhere outside tests and archives, in a Go file, a document, a manifest, or a frontend source (`.ts`, `.tsx`, `.vue`, `.svelte`, `.js`), which is the one rule that reads a frontend because a page decides access as surely as a handler does; a bundler's output and a package manager's tree are read as nobody's decision, and a comment inside a file that is read is prose (the 2026-09-17 amendment); the rule is off until the family's id-09 ships and the block says `roles_only: true`, then it is on and cannot be turned off |
+| roles, not flags (R9) | all but none | `is_superadmin`, `IsSuperadmin` or `isSuperadmin` anywhere outside tests and archives, in a Go file, a document, a manifest, or a frontend source (`.ts`, `.tsx`, `.jsx`, `.vue`, `.svelte`, `.js`, `.mjs`, `.cjs`), which is the one rule that reads a frontend because a page decides access as surely as a handler does; a bundler's output and a package manager's tree are read as nobody's decision, and a comment inside a file that is read is prose (the 2026-09-17 amendment); the rule is off until the family's id-09 ships and the block says `roles_only: true`, then it is on and cannot be turned off |
 | an explicit audience (D3) | core, service, platform | every container in `deploy/**` that runs the repository's binary sets the variable `audience` names, or `AUTH_AUDIENCE` for a service, to a non-empty value that is not the issuer URL. A container runs the binary when the name its image was built under is exactly a directory under `cmd/`; an `initContainers` entry is read when it also declares a variable of the repository's own prefix, which is how it says it runs with the workload's configuration (the 2026-09-16 amendment) |
 | per-endpoint bearers, internal stays internal (R8) | issuer, platform, core | two environment variables of one container reading one secret key; an ingress rule whose path is `/` or a prefix of `/internal/` on a host also serving `/internal/` |
 | no Latere value in a core (open-cores invariant 5) | core | `latere.ai` or `latere.svc` in a non-test Go file, a deploy manifest, or a user document (`specs/` is the contributor's record, holds the hosted deployment's history and examples, and is not read), outside an import path, the API group the block declares in `api_group`, wherever it appears, and the paths the block's `skip` names. `go.mod` is not scanned: every occurrence in it is a module path, which the import-path exemption already covers |
@@ -294,8 +294,12 @@ actually clicks was never read, and the flag it was written to retire lived on
 in `.tsx` and `.vue` behind a clean Go tree. A rule that reads one language of
 a two-language repository reports the language, not the shape.
 
-**The scan target.** `.ts`, `.tsx`, `.vue`, `.svelte` and `.js` under the
-repository. This is the one rule that reads them, in a bucket of its own
+**The scan target.** `.ts`, `.tsx`, `.jsx`, `.vue`, `.svelte`, `.js`, `.mjs` and `.cjs` under the
+repository: every extension a person in this family writes a component or a
+module in, not a sample of them. `.jsx` is `.tsx` without the types, and
+`.mjs` and `.cjs` are `.js` with a package's module system pinned; an
+extension left out is a file the rule passes over in silence, which is the
+gap this amendment exists to close. This is the one rule that reads them, in a bucket of its own
 rather than in `everyFile`: the rules written against Go, documents and
 manifests keep the target they were written against, so extending this one
 weakens none of them.

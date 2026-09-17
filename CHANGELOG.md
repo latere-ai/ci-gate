@@ -16,8 +16,8 @@ committed: the commit log already holds that.
   documents and deploy manifests, so a page that branched on the retired
   `is_superadmin` flag passed the gate while the Go beside it was clean; the
   identity epic's verification found three such frontends behind a green
-  `roles` line. The rule now also reads `.ts`, `.tsx`, `.vue`, `.svelte` and
-  `.js` under the repository, and matches a third spelling, the camel case
+  `roles` line. The rule now also reads `.ts`, `.tsx`, `.jsx`, `.vue`, `.svelte`, `.js`, `.mjs` and `.cjs`
+  under the repository, and matches a third spelling, the camel case
   `isSuperadmin`, beside `is_superadmin` and `IsSuperadmin`.
 
   Four things in a frontend tree are not decisions and are not read: a test
