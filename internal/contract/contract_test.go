@@ -244,6 +244,22 @@ func TestARestatedDefaultIsNamed(t *testing.T) {
 	}
 }
 
+// The cut reads CI unless a repository says not to, so writing `true` is a
+// line the next default change makes wrong. Writing `false` is the decision
+// the key exists for and is not drift.
+func TestRestatingRequireGreenIsNamed(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, ".lateregate.yaml", "identity:\n  role: none\nrelease:\n  require_green: true\n")
+	_, err := check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(err.Error(), "restates a default: release.require_green") {
+		t.Fatalf("got %v", err)
+	}
+	write(t, dir, ".lateregate.yaml", "identity:\n  role: none\nrelease:\n  # nobody reads ci here, and somebody checks by hand.\n  require_green: false\n")
+	if _, err := check(t, dir, untracked("")); err != nil {
+		t.Fatalf("turning the guard off is a decision, not drift: %v", err)
+	}
+}
+
 // A target named for a gate delegates or is deleted. One that runs its own
 // tiers and then delegates is delegating.
 func TestAGateNamedTargetMustDelegate(t *testing.T) {
