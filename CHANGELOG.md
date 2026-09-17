@@ -18,7 +18,7 @@ committed: the commit log already holds that.
   rule report a file that imports a test double whose path holds `authorize`,
   and the `claims` rule report a package whose path holds a membership claim.
   Repositories had been putting those files in `identity.skip`, which stopped
-  every other rule from reading them too; the entries can go.
+  every other rule from reading them too; from v0.40.0 those entries can go.
 - The `identity` gate's `audience` and `bearers` rules see a repository whose
   only command is at the module root. They recognise a container by the name
   its image was built under, and that name was read from the directories
