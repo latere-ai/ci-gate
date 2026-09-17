@@ -20,6 +20,11 @@ committed: the commit log already holds that.
   finished green and published nothing is the failure this catches, and it is
   the one that let three tags deploy without notes. A window where nothing has
   completed yet is unknown rather than green, and is refused too.
+- A run refuses the cut on every conclusion that is not an answer:
+  `failure`, `cancelled`, `timed_out`, `startup_failure` and
+  `action_required`. A run that never started, one that died on the clock and
+  one waiting for approval are all runs nobody has a result from. `neutral`,
+  `skipped` and `stale` are answers and pass.
 - Every refusal names the run, the failing job and its URL, and ends with one
   line saying who acts, read from the failing job's log:
   `BUDGET: the maintainer must act (…)` for Actions minutes, billing, a usage
@@ -27,7 +32,10 @@ committed: the commit log already holds that.
   matched so it can be forwarded; `INFRA: re-run the job, then cut again` for
   a registry refusal, a reset connection, a certificate or a name that did not
   resolve; and `CODE: fix and push, then cut again` for anything else,
-  including a log that could not be read.
+  including a log that could not be read. Two conclusions decide themselves:
+  a `timed_out` run is `INFRA` unless its log names a test, because re-running
+  a suite that ran out of time only spends the clock twice, and a
+  `startup_failure` has no job log of its own, so its message classifies it.
 - `release.require_green` in `.lateregate.yaml` is `true` when the file says
   nothing. Setting it to `false` turns the guard off, and the README says what
   that costs. `lateregate release -force-red vX.Y.Z` cuts over the findings
