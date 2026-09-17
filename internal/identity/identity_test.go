@@ -201,6 +201,30 @@ func ruleCases(core, service, client, settledService config.Identity) []ruleCase
 			"func Ask() (*http.Request, error) {\n\treturn http.NewRequest(http.MethodPost, \"/internal/authorize\", nil)\n}\n"},
 		good: map[string]string{"internal/ask/ask.go": "package ask\n\nimport _ \"latere.ai/x/pkg/authz\"\n"},
 	}, {
+		// An import path is a string in the grammar and a dependency in the
+		// file. A conformance case that posts and imports a test double
+		// whose path holds the word asks nothing by hand.
+		name: "an import path is not a hand-rolled ask",
+		rule: "authorizer", cfg: core,
+		bad: map[string]string{
+			"internal/ask/ask.go": "package ask\n\nimport _ \"latere.ai/x/pkg/authz\"\n",
+			"test/conformance/cases.go": "package conformance\n\nimport \"net/http\"\n\n" +
+				"func Ask() (*http.Request, error) {\n\treturn http.NewRequest(http.MethodPost, \"/internal/authorize\", nil)\n}\n",
+		},
+		good: map[string]string{
+			"internal/ask/ask.go": "package ask\n\nimport _ \"latere.ai/x/pkg/authz\"\n",
+			"test/conformance/cases.go": "package conformance\n\nimport (\n\t\"net/http\"\n\n" +
+				"\t_ \"example.com/app/test/stubs/authorizer\"\n)\n\n" +
+				"func Probe() (*http.Request, error) {\n\treturn http.NewRequest(http.MethodPost, \"/healthz\", nil)\n}\n",
+		},
+	}, {
+		// The same decision for the claims rule: a package whose path holds
+		// a membership claim is imported, not read for meaning.
+		name: "an import path is not a claim read for meaning",
+		rule: "claims", cfg: core,
+		bad:  map[string]string{"internal/api/h.go": "package api\n\nvar key = \"roles\"\n"},
+		good: map[string]string{"internal/api/h.go": "package api\n\nimport _ \"example.com/app/internal/roles\"\n"},
+	}, {
 		name: "no issuer call on a request path",
 		rule: "request-path", cfg: service,
 		bad:  map[string]string{"internal/api/h.go": "package api\n\nvar teams = \"/tokeninfo\"\n"},

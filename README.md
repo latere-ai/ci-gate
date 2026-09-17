@@ -783,6 +783,13 @@ Each finding is a file, a line, and a sentence saying what to do. A rule with
 nothing to read prints `SKIP` and why, so a repository with no `deploy/`
 learns that the audience rule did not run rather than reading it as a pass.
 
+The rules that read string literals read what a file says and not what it
+imports. An import path is a string in the grammar and a dependency in the
+file, so a conformance case that posts and imports a test double whose path
+holds `authorize`, or a package whose path holds `roles`, is neither a
+hand-rolled ask nor a claim read for meaning. The rules that ask what a file
+imports, `verifier` and `authorizer`, read the import list itself.
+
 Two of the rules are heuristics and the report treats them as such. A file
 that both decodes unpadded base64 and splits a string on `.` is taking a token
 apart, which neither half alone would show. A container is this repository's

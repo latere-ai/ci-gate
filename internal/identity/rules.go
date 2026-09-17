@@ -94,7 +94,7 @@ func ruleClaims(t *tree) (result, error) {
 	}
 	var found []Finding
 	for _, g := range files {
-		ast.Inspect(g.file, func(n ast.Node) bool {
+		inspect(g.file, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.Ident:
 				if slices.Contains(claimIdentifiers, x.Name) {

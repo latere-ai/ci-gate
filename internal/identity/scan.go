@@ -424,11 +424,29 @@ func inDir(rel, dir string) bool {
 	return slices.Contains(strings.Split(path.Dir(rel), "/"), dir)
 }
 
+// inspect walks a file's syntax without descending into an import spec.
+//
+// An import path is a string in the grammar and a dependency in the file:
+// nothing the file says, and nothing a reader of it could rewrite without
+// dropping the package. A rule that reads it as a literal reports the name
+// of what a file imports as a value the file carries, which is how three
+// conformance files came to be skipped for importing a test double. The
+// rules that ask what a file imports read the import list itself.
+func inspect(n ast.Node, fn func(ast.Node) bool) {
+	ast.Inspect(n, func(n ast.Node) bool {
+		if _, ok := n.(*ast.ImportSpec); ok {
+			return false
+		}
+		return fn(n)
+	})
+}
+
 // stringLiterals collects every string literal under a node, so a literal
-// built by concatenation or handed to a formatter is still read.
+// built by concatenation or handed to a formatter is still read. An import
+// path is not one of them.
 func stringLiterals(n ast.Node) []*ast.BasicLit {
 	var out []*ast.BasicLit
-	ast.Inspect(n, func(n ast.Node) bool {
+	inspect(n, func(n ast.Node) bool {
 		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
 			out = append(out, lit)
 		}
