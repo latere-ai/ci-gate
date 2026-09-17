@@ -247,8 +247,13 @@ func (g *Guard) latestPerWorkflow(owner, repo, branch string, window map[string]
 // releaseRun is the completed run at the previous tag's commit whose head ref
 // is that tag: the run the tag itself started.
 func (g *Guard) releaseRun(owner, repo, tag string) (run, bool, error) {
+	// The tag came from this checkout's own tag list, so a commit that will
+	// not resolve is a broken checkout and not an absent run.
 	sha, err := g.git("rev-list", "-n", "1", tag)
-	if err != nil || sha == "" {
+	if err != nil {
+		return run{}, false, fmt.Errorf("git rev-list -n 1 %s: %w", tag, err)
+	}
+	if sha == "" {
 		return run{}, false, nil
 	}
 	var body runsPage
