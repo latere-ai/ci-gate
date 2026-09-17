@@ -203,6 +203,83 @@ The binary writes no draft from the commit log: a note is written for
 whoever uses the release, and the commit log is written for whoever reads
 the diff.
 
+### `release` reads CI before it tags, and says who acts on the red
+
+The bar a cut runs is the local one. It says the tree about to be tagged is
+sound, and nothing about what the last push to the default branch did.
+
+Three tags went out one night after a release run had started failing at its
+publish job. Each one deployed, none of them published a release, and nobody
+noticed for a day, because a CI failure reaches a person only if a person
+reads CI. Between a tag push and the next cut there is one moment where a
+machine is already looking at the repository and somebody is already waiting,
+and that is the cut.
+
+So before it runs the bar, `lateregate release` reads GitHub and refuses on
+three things:
+
+- **A red run in this tag's window.** For every workflow with a completed run
+  on the default branch at `HEAD` or an ancestor back to the previous release
+  tag, the latest such run must not be `failure` or `cancelled`.
+- **A red release run on the previous tag.** The run the last tag started.
+- **A previous tag with no release to show for it.** If that run went green,
+  a GitHub Release must exist for the tag. A workflow can finish and publish
+  nothing, and this is the only check that catches it.
+
+A window where nothing has completed yet is not green either. It is unknown,
+and the guard says so rather than passing.
+
+The guard runs before the bar, not after: a red default branch is three API
+reads and the bar is a full instrumented suite.
+
+Every refusal names the run, the failing job and its URL, and ends with one
+line saying who acts:
+
+```
+lateregate: not releasing v0.39.0: ci is red
+  ci #1284 failure, job "gate (cover)"
+  https://github.com/latere-ai/ci-gate/actions/runs/1284
+CODE: fix and push, then cut again
+```
+
+The last line is read from the failing job's log:
+
+| Line | What the log named |
+|---|---|
+| `BUDGET: the maintainer must act (…)` | Actions minutes, billing, a usage or spending limit, runner capacity, an org policy refusal. Nobody but the maintainer can move it, and the phrase that matched is in the parenthesis so it can be forwarded as evidence. |
+| `INFRA: re-run the job, then cut again` | A registry refusal, a reset connection, a certificate or a name that did not resolve. |
+| `CODE: fix and push, then cut again` | Anything else, including a log that could not be read. |
+
+A tag whose run went green and published nothing reads:
+
+```
+lateregate: not releasing v0.39.0: v0.38.0 deployed but published nothing
+  release #1201 success, no GitHub Release exists for v0.38.0
+  https://github.com/latere-ai/ci-gate/actions/runs/1201
+CODE: fix and push, then cut again
+```
+
+`lateregate release -force-red vX.Y.Z` cuts anyway. It does not skip the
+check, it overrides the result, and prints every finding it is overriding.
+It is the maintainer's escape hatch and belongs in no pipeline.
+
+The reads go to the GitHub REST API. The token comes from `GH_TOKEN`, then
+`GITHUB_TOKEN`, then `gh auth token`, so an authenticated `gh` on a laptop
+and a runner's own token both work with nothing to configure.
+`GITHUB_API_URL` points the reads at an enterprise host.
+
+```yaml
+release:
+  require_green: true   # the default; do not restate it
+```
+
+Setting `require_green: false` turns the guard off. This repository does not,
+and the reason is the night above: without it the tag still deploys, the
+notes still may not publish, and the first person to find out is a reader who
+wanted to know what changed. A repository that sets it to `false` is deciding
+that nobody will read CI and nobody needs to, and the comment beside the key
+should say who checks instead.
+
 ## The gates in detail
 
 ### `cover` gates per package, not on average
@@ -956,6 +1033,10 @@ depcheck:
 
 cgo_free: {skip: []}
 otel_client: {skip: []}
+
+release:
+  require_green: true      # the default; do not restate it. false skips the CI guard before a cut
+  stamp: []                # entries: {file, pattern}; the vX.Y.Z inside each match moves to the version being cut
 
 registers:                 # applies when user_surfaces names a function
   user_surfaces: []        # package path and function: internal/api.WriteError
