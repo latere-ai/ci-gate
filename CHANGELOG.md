@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.42.0 - 2026-09-17
+
 ### Fixed
 
 - The `identity` gate's `roles` rule reads the frontend. It read Go files,
