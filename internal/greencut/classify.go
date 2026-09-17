@@ -5,6 +5,7 @@ package greencut
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -28,6 +29,20 @@ const (
 	// names somebody.
 	Code Actor = "CODE"
 )
+
+// redConclusions are the conclusions a cut refuses on. A run that never
+// started, one that died on the clock, and one waiting for somebody to
+// approve it are all runs whose answer nobody has, which is not green.
+// `neutral`, `skipped` and `stale` are answers, so they are not here.
+var redConclusions = []string{"failure", "cancelled", "timed_out", "startup_failure", "action_required"}
+
+// isRed reports whether a completed run refuses the cut. A run still in
+// progress has an empty conclusion and never reaches here.
+func isRed(conclusion string) bool { return slices.Contains(redConclusions, conclusion) }
+
+// testSignals are the marks a Go suite leaves in a log. They decide a
+// `timed_out` run, which is infrastructure until the suite is what ran out.
+var testSignals = []string{"--- fail:", "=== run ", "panic: test timed out", "*** test killed"}
 
 // LogLines is the tail of a failing job's log Classify reads. The error is at
 // the end of a log, and a job that printed a hundred thousand lines before it
@@ -76,22 +91,42 @@ var infraSignals = []string{
 // budget" is not a thing to forward.
 func Classify(conclusion, log string) (Actor, string) {
 	c, l := strings.ToLower(conclusion), strings.ToLower(log)
-	for _, actor := range []struct {
-		name    Actor
-		signals []string
-	}{{Budget, budgetSignals}, {Infra, infraSignals}} {
-		for _, s := range actor.signals {
-			if strings.Contains(c, s) {
-				return actor.name, fmt.Sprintf("the run concluded %q", conclusion)
-			}
-		}
-		for _, s := range actor.signals {
+	if actor, evidence, ok := match(Budget, budgetSignals, conclusion, c, l); ok {
+		return actor, evidence
+	}
+	// A run that died on the clock is a wedged read until the log names a
+	// test. A suite that ran out of time is the suite's problem, and running
+	// it again only spends the clock twice. The budget signals are read
+	// first, because a runner that stalls on an exhausted account times out
+	// like any other.
+	if c == "timed_out" {
+		for _, s := range testSignals {
 			if strings.Contains(l, s) {
-				return actor.name, fmt.Sprintf("the log names %q", s)
+				return Code, ""
 			}
 		}
+		return Infra, fmt.Sprintf("the run concluded %q", conclusion)
+	}
+	if actor, evidence, ok := match(Infra, infraSignals, conclusion, c, l); ok {
+		return actor, evidence
 	}
 	return Code, ""
+}
+
+// match reads one actor's signals against the conclusion and then the log, so
+// the evidence says which of the two named it.
+func match(actor Actor, signals []string, conclusion, c, l string) (Actor, string, bool) {
+	for _, s := range signals {
+		if strings.Contains(c, s) {
+			return actor, fmt.Sprintf("the run concluded %q", conclusion), true
+		}
+	}
+	for _, s := range signals {
+		if strings.Contains(l, s) {
+			return actor, fmt.Sprintf("the log names %q", s), true
+		}
+	}
+	return "", "", false
 }
 
 // Line is the single line a refusal ends with.

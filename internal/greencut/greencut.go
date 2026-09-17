@@ -231,11 +231,6 @@ func span(prev string) string {
 	return prev + "..HEAD"
 }
 
-// isRed is the two conclusions the rule names. A run still in progress has an
-// empty conclusion and is neither red nor green; it is not completed, so it
-// never reaches here.
-func isRed(conclusion string) bool { return conclusion == "failure" || conclusion == "cancelled" }
-
 // explain turns a red run into the finding a refusal prints, by reading the
 // failing job's log and classifying it.
 func (g *Guard) explain(owner, repo string, r run) (finding, error) {

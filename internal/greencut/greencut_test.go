@@ -586,3 +586,38 @@ func TestRunsArePagedAndTheNewestPerWorkflowWins(t *testing.T) {
 		t.Error("a full first page must be followed by a second")
 	}
 }
+
+// Each of the conclusions a run can end on that is not an answer refuses the
+// cut, and the actor line follows the conclusion's own rule.
+func TestEveryRedConclusionRefusesTheCut(t *testing.T) {
+	for _, tc := range []struct {
+		conclusion string
+		log        string
+		want       string
+	}{
+		{"timed_out", "Waiting for the registry...\n", "INFRA: re-run the job, then cut again"},
+		{"timed_out", "panic: test timed out after 10m0s\n", "CODE: fix and push, then cut again"},
+		{"startup_failure", "GitHub Actions is not permitted to create or approve pull requests.\n",
+			"BUDGET: the maintainer must act (the log names \"not permitted to create or approve pull requests\")"},
+		{"startup_failure", "", "CODE: fix and push, then cut again"},
+		{"action_required", "", "CODE: fix and push, then cut again"},
+	} {
+		t.Run(tc.conclusion+" "+tc.want[:5], func(t *testing.T) {
+			a := green()
+			a.runs = []run{redRun(1284, "ci", tc.conclusion)}
+			a.jobs[1284] = []job{{ID: 77, Name: "gate (race)", Conclusion: tc.conclusion}}
+			a.logs[77] = tc.log
+
+			err := guard(t, a, false, &strings.Builder{}).Check()
+			if err == nil {
+				t.Fatalf("a %s run released", tc.conclusion)
+			}
+			if !strings.Contains(err.Error(), "ci #1284 "+tc.conclusion) {
+				t.Errorf("the refusal must name the conclusion, got %v", err)
+			}
+			if !strings.HasSuffix(err.Error(), tc.want) {
+				t.Errorf("error %q does not end with %q", err, tc.want)
+			}
+		})
+	}
+}

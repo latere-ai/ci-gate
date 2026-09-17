@@ -169,3 +169,66 @@ func TestLastLinesKeepsTheEnd(t *testing.T) {
 type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("boom") }
+
+// A run that never started or died on the clock is not green either.
+func TestTheRedConclusions(t *testing.T) {
+	for _, tc := range []struct {
+		conclusion string
+		red        bool
+	}{
+		{"failure", true},
+		{"cancelled", true},
+		{"timed_out", true},
+		{"startup_failure", true},
+		{"action_required", true},
+		{"success", false},
+		{"neutral", false},
+		{"skipped", false},
+		{"stale", false},
+		{"", false},
+	} {
+		if got := isRed(tc.conclusion); got != tc.red {
+			t.Errorf("isRed(%q) = %v, want %v", tc.conclusion, got, tc.red)
+		}
+	}
+}
+
+// A run that died on the clock is a wedged read until the log says otherwise,
+// and a suite that ran out of time is the suite's problem.
+func TestATimeOutIsInfraUnlessTheLogNamesATest(t *testing.T) {
+	got, evidence := Classify("timed_out", "Waiting for the registry to answer...\n")
+	if got != Infra {
+		t.Errorf("Classify = %s, want %s", got, Infra)
+	}
+	if want := `the run concluded "timed_out"`; evidence != want {
+		t.Errorf("evidence = %q, want %q", evidence, want)
+	}
+	for _, log := range []string{
+		"panic: test timed out after 10m0s\n",
+		"--- FAIL: TestSlow (600.00s)\n",
+		"=== RUN   TestSlow\n",
+		"*** Test killed with quit: ran too long\n",
+	} {
+		if got, _ := Classify("timed_out", log); got != Code {
+			t.Errorf("Classify(timed_out, %q) = %s, want %s", log, got, Code)
+		}
+	}
+	// A budget signal still outranks the conclusion's own default.
+	if got, _ := Classify("timed_out", "You have exceeded your included usage limit.\n"); got != Budget {
+		t.Errorf("Classify = %s, want %s", got, Budget)
+	}
+}
+
+// A run that never started has no job log of its own, so its message is what
+// classifies it, and CODE stays the fallback.
+func TestAStartupFailureIsClassifiedByItsMessage(t *testing.T) {
+	if got, _ := Classify("startup_failure", "GitHub Actions is not permitted to create or approve pull requests.\n"); got != Budget {
+		t.Errorf("a startup_failure naming the budget is the maintainer's")
+	}
+	if got, _ := Classify("startup_failure", ""); got != Code {
+		t.Errorf("a startup_failure that names nothing still names somebody")
+	}
+	if got, _ := Classify("action_required", ""); got != Code {
+		t.Errorf("action_required with no message falls back to CODE")
+	}
+}
