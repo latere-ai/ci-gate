@@ -132,6 +132,7 @@ func scan(cfg config.Identity, root string, exec gates.Exec) (*tree, error) {
 	}
 	t.module = modulePath(root)
 	t.binaries = t.commands()
+	t.dropIgnoredFrontend()
 	if err := t.readOverlays(); err != nil {
 		return nil, err
 	}
@@ -313,6 +314,49 @@ func generated(text string) bool {
 		}
 	}
 	return false
+}
+
+// dropIgnoredFrontend removes the frontend sources the repository ignores.
+//
+// A frontend tree holds build residue beside its sources. One repository's
+// .gitignore names `frontend/src/**/*.js`, where the Vue toolchain leaves a
+// `.vue.js` sidecar next to every component; those files are on a laptop and
+// not in a checkout, so reading them makes the gate red locally and green on
+// the runner, which is the one thing a gate must never be. What git ignores is
+// not the repository, and the directory names this scan carries are that same
+// statement written a second time.
+//
+// git deciding nothing, because there is no repository, no git, or nothing
+// ignored, leaves every file read. A scan that reads too much reports a
+// finding a person can see and argue with; a scan that reads too little
+// reports nothing at all, and that is the failure this binary is against.
+func (t *tree) dropIgnoredFrontend() {
+	ignored := map[string]bool{}
+	// In batches, because the paths go on a command line.
+	const batch = 1000
+	for i := 0; i < len(t.frontendFiles); i += batch {
+		args := []string{"check-ignore"}
+		for _, f := range t.frontendFiles[i:min(i+batch, len(t.frontendFiles))] {
+			args = append(args, f.rel)
+		}
+		// A non-zero status is how git says nothing in the batch is ignored.
+		out, _ := t.exec(nil, false, "git", args...)
+		for line := range strings.SplitSeq(string(out), "\n") {
+			if rel := strings.TrimSpace(line); rel != "" {
+				ignored[filepath.ToSlash(rel)] = true
+			}
+		}
+	}
+	if len(ignored) == 0 {
+		return
+	}
+	kept := t.frontendFiles[:0]
+	for _, f := range t.frontendFiles {
+		if !ignored[f.rel] {
+			kept = append(kept, f)
+		}
+	}
+	t.frontendFiles = kept
 }
 
 func (t *tree) readFrontendSource(p, rel string) error {
