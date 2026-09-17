@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.39.0 - 2026-09-17
+
 ### Added
 
 - `lateregate release` reads CI through the GitHub API before it runs the bar
