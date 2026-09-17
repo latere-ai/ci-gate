@@ -652,3 +652,33 @@ func TestTheLongestMatchingCoverSuffixNamesTheReason(t *testing.T) {
 		}
 	}
 }
+
+// require_green is true when the file says nothing, so a repository adopts
+// the guard by adopting the binary. Turning it off is a decision; restating
+// the default is drift the contract report names.
+func TestReleaseRequireGreenDefaultsOn(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		green    bool
+		restated bool
+	}{
+		{name: "absent", yaml: "cover:\n  threshold: 80.0\n", green: true},
+		{name: "no release key", yaml: "release:\n  stamp: []\n", green: true},
+		{name: "restated", yaml: "release:\n  require_green: true\n", green: true, restated: true},
+		{name: "turned off", yaml: "release:\n  require_green: false\n", green: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := Load(write(t, tc.yaml))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := c.Release.Green(); got != tc.green {
+				t.Errorf("Green() = %v, want %v", got, tc.green)
+			}
+			if got := slices.Contains(c.Restated, "release.require_green"); got != tc.restated {
+				t.Errorf("restated = %v, want %v (%v)", got, tc.restated, c.Restated)
+			}
+		})
+	}
+}

@@ -73,7 +73,16 @@ type Release struct {
 	// Stamp lists files whose version marker the cut rewrites to the version
 	// it is releasing, added to the same commit as the changelog.
 	Stamp []Stamp `yaml:"stamp"`
+
+	// RequireGreen decides whether the cut reads CI through the GitHub API
+	// before it runs the bar. Unset is true: a repository adopts the bar by
+	// adopting the binary, and a guard that had to be switched on is a guard
+	// the repositories that need it most would not have.
+	RequireGreen *bool `yaml:"require_green"`
 }
+
+// Green reports whether `lateregate release` reads CI before it tags.
+func (r Release) Green() bool { return r.RequireGreen == nil || *r.RequireGreen }
 
 // Stamp is one file whose `vX.Y.Z` the release rewrites. Pattern is a
 // regular expression that must match the file exactly once and hold exactly
@@ -666,6 +675,11 @@ func defaults(c *Config, dir string) *Config {
 		if _, err := os.Stat(filepath.Join(dir, DefaultSpecIndex)); err == nil {
 			c.Spec.Index = DefaultSpecIndex
 		}
+	}
+	// Only `true` restates the default; `false` is the decision this key
+	// exists for, and the README says what it costs.
+	if c.Release.RequireGreen != nil && *c.Release.RequireGreen {
+		c.Restated = append(c.Restated, "release.require_green")
 	}
 	if c.Identity.Registry == DefaultRegistry {
 		c.Restated = append(c.Restated, "identity.registry")
