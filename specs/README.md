@@ -30,6 +30,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 019 | [Gate the identity shape every repository integrates](019-identity-gate.md) | partial | An `identity` gate: a role per repository in `.lateregate.yaml`, static rules per role for the family's identity shape, and a family check across repositories |
 | 020 | [Green before you cut, and the refusal says who acts](020-green-before-cut.md) | complete | `release` reads CI through the GitHub API before the bar runs: a red run on the default branch, or a previous tag that deployed and published no Release, refuses with the run URL, the failing job, and a line naming BUDGET, INFRA or CODE |
 | 021 | [Gate the Postgres role every repository declares](021-postgres-gate.md) | complete | A `postgres` gate: a role per repository in `.lateregate.yaml`, `none`, `direct` or `pooled`; a client import scan for the first, static reads of the pooled and direct DSN names for the last, and an undeclared consumer caught by its imports |
+| 022 | [The postgres gate takes the two names, it does not derive them](022-postgres-names-are-declared.md) | complete | `postgres.direct_env` and `postgres.pool_env`: a repository writes the two environment names it reads instead of having them derived from a prefix, because the variable name is the service's surface and the Secret key is the family contract |
 
 ## Conventions
 

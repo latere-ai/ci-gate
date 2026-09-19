@@ -943,15 +943,26 @@ on every push. Every repository says what it does with the database:
 
 ```yaml
 postgres:
-  role: pooled        # none | direct | pooled
-  prefix: EVAL        # pooled only: the names are then EVAL_DATABASE_POOL_URL and EVAL_DATABASE_URL
+  role: pooled                 # none | direct | pooled
+  direct_env: LUX_DB_URL       # pooled only: the two names this repository reads, written out
+  pool_env: LUX_DB_POOL_URL
 ```
+
+A repository whose names end in `DATABASE_URL` writes neither key and the
+gate reads `DATABASE_POOL_URL` and `DATABASE_URL`; one whose Secret carries a
+prefix may write `prefix: EVAL` instead, which derives
+`EVAL_DATABASE_POOL_URL` and `EVAL_DATABASE_URL`. `direct_env` and `pool_env`
+are declared together, never beside `prefix`, never under any role but
+`pooled`, and they name two different variables. The gate asks whether both
+endpoints are read, not how a service spells them: the variable name is the
+service's own surface and the Secret key is the family contract, and a
+Deployment maps the one to the other.
 
 | Role | What is checked | What fails |
 | --- | --- | --- |
 | `none` | no non-test Go file imports a Postgres client | any client import; the finding names the file and the line and says to declare `direct` or `pooled` |
 | `direct` | nothing, in this release; the row says it passed by declaration | nothing. A later release makes `direct` require a dated reason, once the family's cutovers land |
-| `pooled` | a client is imported; some file reads `DATABASE_POOL_URL`; some file reads `DATABASE_URL` | the missing one of the three, named |
+| `pooled` | a client is imported; some file reads the pooled name; some file reads the direct name | the missing one of the three, named |
 | absent | no client is imported | any client import; the finding names the file and the three roles. A tree with no client passes and the report says the decision came from the imports |
 
 A Postgres client is the pgx tree at any version, `lib/pq`, golang-migrate's
@@ -1193,6 +1204,8 @@ identity:                  # mandatory: a repository with no block fails the gat
 postgres:                  # optional: an absent block is decided from the imports, and a client import under it fails
   role: ""                 # none | direct | pooled
   prefix: ""               # pooled only: EVAL makes the names EVAL_DATABASE_POOL_URL and EVAL_DATABASE_URL
+  direct_env: ""           # pooled only, with pool_env and without prefix: the direct name, written out
+  pool_env: ""             # pooled only, with direct_env and without prefix: the pooled name, written out
 
 enums:
   go:

@@ -10,6 +10,35 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- `postgres.direct_env` and `postgres.pool_env`: a `pooled` repository
+  writes out the two environment names it reads.
+
+  ```yaml
+  postgres:
+    role: pooled
+    direct_env: LUX_DB_URL
+    pool_env: LUX_DB_POOL_URL
+  ```
+
+  The gate's question is whether the serving path reads a pooled endpoint
+  and falls back to a direct one, and whether the migrator receives the
+  direct one. How a service spells those two variables is the service's
+  own surface; the key inside the Secret is the family's contract, and a
+  Deployment already maps the one to the other. `postgres.prefix` derived
+  the names from that spelling, which made the gate refuse a service
+  satisfying the rule under a name of its own, and charged an open core a
+  breaking configuration rename for nothing.
+
+  The two keys are declared together, never beside `prefix`, never under a
+  role but `pooled`, each shaped like an environment variable name, and
+  they name two different variables. Each refusal says which rule it is.
+
+  Nothing changes for a repository that writes neither key: the names are
+  the bare `DATABASE_POOL_URL` and `DATABASE_URL`, or the pair `prefix`
+  derives, exactly as in v0.43.0.
+
 ## v0.43.0 - 2026-09-19
 
 ### Added
