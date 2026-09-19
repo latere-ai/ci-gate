@@ -97,10 +97,18 @@ var Gates = []Gate{
 		// No Applies: a repository with no block is precisely the gap, so
 		// the absence fails inside the gate rather than skipping it.
 		Run: func(c Ctx) error { return identity.Run(c.Cfg.Identity, c.Root, c.Out, c.Exec, c.Now) }},
-	{Name: "postgres", Doc: "the repository's Postgres role holds: no client under none, the pooled and direct DSN names read under pooled",
+	{Name: "postgres", Doc: "the repository's Postgres role holds: no client under none, a dated waiver under direct, the pooled and direct DSN names read under pooled",
 		// No Applies: an absent role is decided from the imports inside the
 		// gate, so an undeclared consumer is a finding and not a skip.
-		Run: func(c Ctx) error { return postgres.Run(c.Cfg.Postgres, c.Root, c.Out) }},
+		//
+		// The gate takes its own waiver because the direct role turns on one:
+		// a live waiver is what makes that role pass, and this gate also runs
+		// from `lateregate postgres`, which never builds a plan. A waiver the
+		// plan has already expired reaches the gate too, which is what lets
+		// the refusal be the postgres rule's own rather than a date.
+		Run: func(c Ctx) error {
+			return postgres.Run(c.Cfg.Postgres, c.Cfg.WaiverFor("postgres"), c.Root, c.Out, c.Now)
+		}},
 	{Name: "enum-go", Doc: "declared Go enums use named types, named members and exhaustive switches",
 		Applies: func(c Ctx) (bool, string, error) {
 			return len(c.Cfg.Enums.Go.Types) > 0, "enums.go.types names no domain", nil
@@ -252,9 +260,8 @@ func Plan(c Ctx) ([]Entry, error) {
 		if w, ok := c.Cfg.Waive[g.Name]; ok {
 			// Validated at load, so it parses. It names a day and is
 			// inclusive: the waiver dies when the day after it begins.
-			until, _ := w.UntilDate()
 			e.Until = w.Until
-			if c.Now.Before(until.AddDate(0, 0, 1)) {
+			if w.Live(c.Now) {
 				e.Status, e.Reason = Waived, w.Reason
 			} else {
 				e.Reason = "waiver expired " + w.Until + ": " + w.Reason

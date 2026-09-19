@@ -430,6 +430,36 @@ func TestPostgresSubcommand(t *testing.T) {
 	}
 }
 
+// One gate run by name builds no plan, so the waiver the direct role turns on
+// is read by the gate itself. A repository that declares direct fails here
+// until its file carries a dated reason, and passes once it does.
+func TestPostgresSubcommandReadsTheWaiver(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pg.go"), []byte("package app\n\nimport _ \"github.com/jackc/pgx/v5\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	write := func(body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, config.Name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("postgres:\n  role: direct\n")
+	s, err := out(t, "postgres", "-C", dir)
+	if err == nil || !strings.Contains(s, "FAIL direct") {
+		t.Fatalf("direct with nothing recorded fails: %v\n%s", err, s)
+	}
+
+	// A date far enough out that the suite does not start failing on a
+	// calendar day; the gate's own tests hold the boundary.
+	write("postgres:\n  role: direct\n\nwaive:\n  postgres:\n    reason: the consumer owns the connection and this opens none\n    until: 2099-01-01\n")
+	s, err = out(t, "postgres", "-C", dir)
+	if err != nil || !strings.Contains(s, "PASS direct") || !strings.Contains(s, "waived until 2099-01-01") {
+		t.Fatalf("a dated reason holds the role open: %v\n%s", err, s)
+	}
+}
+
 // `identity` alone is the gate for this repository; `identity family` reads
 // a directory of checkouts and carries its own flags.
 func TestIdentityAndItsFamilySubcommand(t *testing.T) {

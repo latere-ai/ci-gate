@@ -143,6 +143,35 @@ func (w Waiver) UntilDate() (time.Time, bool) {
 	return t, err == nil
 }
 
+// Live reports whether the waiver still covers its gate on the given day.
+//
+// Until is inclusive, so the waiver dies when the day after it begins. This
+// is the one definition of a live waiver: the plan reads it to decide
+// whether a gate runs, and a gate whose own rule turns on a waiver reads the
+// same method, so a date can never mean two things in one run.
+//
+// A date that does not parse is not live. Load rejects one before any gate
+// reads it, so this covers a waiver built in memory rather than read.
+func (w Waiver) Live(now time.Time) bool {
+	until, ok := w.UntilDate()
+	if !ok {
+		return false
+	}
+	return now.Before(until.AddDate(0, 0, 1))
+}
+
+// WaiverFor is the waiver covering a gate, or nil where the file carries
+// none. A gate whose rule turns on a waiver takes the result rather than the
+// map, because the map is keyed on gate names and a gate reaching into it by
+// name is a second place the key is spelled.
+func (c *Config) WaiverFor(gate string) *Waiver {
+	w, ok := c.Waive[gate]
+	if !ok {
+		return nil
+	}
+	return &w
+}
+
 // License configures the per-file licence notice gate.
 //
 // There is no default for any of it. Every other gate here defaults to

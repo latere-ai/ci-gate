@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/registers"
@@ -33,11 +34,27 @@ func repo(t *testing.T, files map[string]string) string {
 	return root
 }
 
+// today is the day every run below is read against, so a waiver's date is
+// read against a fixed calendar rather than the one the suite happens to run
+// on.
+var today = time.Date(2026, 9, 19, 10, 0, 0, 0, time.UTC)
+
 func run(t *testing.T, cfg config.Postgres, root string) (string, error) {
 	t.Helper()
+	return runWaived(t, cfg, nil, root)
+}
+
+// runWaived is one run with this gate's waiver in hand, read against today.
+func runWaived(t *testing.T, cfg config.Postgres, waiver *config.Waiver, root string) (string, error) {
+	t.Helper()
 	var sb strings.Builder
-	err := Run(cfg, root, &sb)
+	err := Run(cfg, waiver, root, &sb, today)
 	return sb.String(), err
+}
+
+// waiver is one entry of the repository's waiver map, as Load would carry it.
+func waiver(reason, until string) *config.Waiver {
+	return &config.Waiver{Reason: reason, Until: until}
 }
 
 // declared is a block naming the role, as Load would carry it.
@@ -201,18 +218,88 @@ func TestWhatIsNotRead(t *testing.T) {
 	}
 }
 
-// direct passes, and the row says it passed by declaration rather than by
-// anything read, so the seam the family's step 4 opens is visible.
-func TestRoleDirectPassesByDeclaration(t *testing.T) {
-	out, err := run(t, declared(config.PostgresDirect), repo(t, direct))
+// direct is an exception, so it needs a reason and a date. A repository that
+// declares it and carries no waiver of this gate fails, and the refusal names
+// both ways out: cut over to pooled, or record the decision to stay.
+func TestRoleDirectWithoutAWaiverFails(t *testing.T) {
+	out, err := runWaived(t, declared(config.PostgresDirect), nil, repo(t, direct))
+	if err == nil {
+		t.Fatalf("direct with nothing recorded fails:\n%s", out)
+	}
+	if !strings.Contains(out, "FAIL direct") || !strings.Contains(out, config.Name+":1:") {
+		t.Errorf("the finding is at the file the fix goes in:\n%s", out)
+	}
+	if !strings.Contains(out, "declare pooled") || !strings.Contains(out, "waiver of this gate") {
+		t.Errorf("the refusal names both ways out:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "role direct") {
+		t.Errorf("the failure names the role: %v", err)
+	}
+}
+
+// A live waiver is what makes the role pass, and the row carries the reason
+// and the date, so a reader of the report sees the exception rather than a
+// green line.
+func TestRoleDirectWithALiveWaiverPasses(t *testing.T) {
+	w := waiver("the consumer owns the connection and this library opens none", "2026-12-19")
+	out, err := runWaived(t, declared(config.PostgresDirect), w, repo(t, direct))
 	if err != nil {
-		t.Fatalf("direct passes in this release: %v\n%s", err, out)
+		t.Fatalf("a dated reason holds the role open: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "PASS direct") || !strings.Contains(out, "passes by declaration") {
-		t.Errorf("the row says how it passed:\n%s", out)
+	if !strings.Contains(out, "PASS direct") || !strings.Contains(out, "waived until 2026-12-19") {
+		t.Errorf("the row carries the date:\n%s", out)
 	}
-	if !strings.Contains(out, "later release requires a dated reason") {
-		t.Errorf("the row says what is coming:\n%s", out)
+	if !strings.Contains(out, "the consumer owns the connection") {
+		t.Errorf("the row carries the reason:\n%s", out)
+	}
+}
+
+// The date is what retires an exception. A waiver runs out at the end of the
+// day it names, and the day after it the role fails again, naming the date
+// and what the waiver claimed.
+func TestRoleDirectWithAnExpiredWaiverFails(t *testing.T) {
+	// today is 2026-09-19: the same day passes, the day before it does not.
+	live := waiver("the lease row that frees the session is still being built", "2026-09-19")
+	if out, err := runWaived(t, declared(config.PostgresDirect), live, repo(t, direct)); err != nil {
+		t.Fatalf("the until date is inclusive, so its own day still passes: %v\n%s", err, out)
+	}
+
+	dead := waiver("the lease row that frees the session is still being built", "2026-09-18")
+	out, err := runWaived(t, declared(config.PostgresDirect), dead, repo(t, direct))
+	if err == nil {
+		t.Fatalf("a waiver a day past its date no longer holds the role open:\n%s", out)
+	}
+	if !strings.Contains(out, "ran out on 2026-09-18") || !strings.Contains(out, "the lease row") {
+		t.Errorf("the finding names the date and what the waiver claimed:\n%s", out)
+	}
+	if !strings.Contains(out, "a reason that still holds") {
+		t.Errorf("the finding says what renewing it costs:\n%s", out)
+	}
+}
+
+// The waiver is the direct role's own business. none and pooled are decided
+// from the tree, and one of them carrying a waiver of this gate changes
+// neither verdict.
+func TestTheWaiverIsTheDirectRolesAlone(t *testing.T) {
+	w := waiver("the reason a direct repository would write", "2026-12-19")
+	if out, err := runWaived(t, declared(config.PostgresNone), w, repo(t, noneClean)); err != nil {
+		t.Errorf("none is decided from the tree: %v\n%s", err, out)
+	}
+	out, err := runWaived(t, declared(config.PostgresNone), w, repo(t, nonePgx))
+	if err == nil || !strings.Contains(out, "FAIL client-free") {
+		t.Errorf("a waiver does not admit a client under none: %v\n%s", err, out)
+	}
+	if out, err := runWaived(t, declared(config.PostgresPooled), w, repo(t, pooledComplete)); err != nil {
+		t.Errorf("pooled is decided from the tree: %v\n%s", err, out)
+	}
+	out, err = runWaived(t, declared(config.PostgresPooled), w, repo(t, pooledMissingPool))
+	if err == nil || !strings.Contains(out, "FAIL pool-url") {
+		t.Errorf("a waiver does not supply a read the pooled role asks for: %v\n%s", err, out)
+	}
+	// An absent block is still decided from the imports.
+	out, err = runWaived(t, absent, w, repo(t, nonePgx))
+	if err == nil || !strings.Contains(out, "FAIL declared") {
+		t.Errorf("a waiver does not declare a role: %v\n%s", err, out)
 	}
 }
 
@@ -397,18 +484,21 @@ func TestAnUnreadableTreeIsAnError(t *testing.T) {
 // file path. The tells are the registers gate's own.
 func TestPostgresFindingsAreUserRegister(t *testing.T) {
 	runs := []struct {
-		cfg  config.Postgres
-		tree map[string]string
+		cfg    config.Postgres
+		waiver *config.Waiver
+		tree   map[string]string
 	}{
-		{absent, nonePgx},
-		{declared(config.PostgresNone), nonePgx},
-		{declared(config.PostgresPooled), pooledMissingPool},
-		{declared(config.PostgresPooled), pooledMissingPgx},
-		{declared(config.PostgresPooled), map[string]string{"internal/store/pg.go": pgFile("DATABASE_POOL_URL")}},
+		{absent, nil, nonePgx},
+		{declared(config.PostgresNone), nil, nonePgx},
+		{declared(config.PostgresDirect), nil, direct},
+		{declared(config.PostgresDirect), waiver("the work that ends this is not finished", "2026-01-31"), direct},
+		{declared(config.PostgresPooled), nil, pooledMissingPool},
+		{declared(config.PostgresPooled), nil, pooledMissingPgx},
+		{declared(config.PostgresPooled), nil, map[string]string{"internal/store/pg.go": pgFile("DATABASE_POOL_URL")}},
 	}
 	sentences := 0
 	for _, r := range runs {
-		out, _ := run(t, r.cfg, repo(t, r.tree))
+		out, _ := runWaived(t, r.cfg, r.waiver, repo(t, r.tree))
 		for line := range strings.SplitSeq(out, "\n") {
 			line = strings.TrimSpace(line)
 			_, sentence, ok := cutLocation(line)

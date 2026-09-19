@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func write(t *testing.T, body string) string {
@@ -390,6 +391,40 @@ waive:
 	}
 	if _, ok := w.UntilDate(); !ok {
 		t.Errorf("until %q must parse", w.Until)
+	}
+	if got := c.WaiverFor("cover"); got == nil || got.Until != w.Until {
+		t.Errorf("the gate is handed the entry that covers it: %v", got)
+	}
+	if got := c.WaiverFor("license"); got != nil {
+		t.Errorf("a gate with no entry is handed none: %v", got)
+	}
+}
+
+// Until names a day and covers all of it, so the waiver dies when the day
+// after it begins. One definition, because the plan and a gate whose rule
+// turns on a waiver both read it.
+func TestAWaiverIsLiveThroughTheDayItNames(t *testing.T) {
+	w := Waiver{Reason: "the work that ends this is not finished", Until: "2026-09-19"}
+	day := func(d int, h int) time.Time { return time.Date(2026, 9, d, h, 0, 0, 0, time.UTC) }
+	for _, tc := range []struct {
+		when time.Time
+		live bool
+	}{
+		{day(18, 12), true},
+		{day(19, 0), true},
+		{day(19, 23), true},
+		{day(20, 0), false},
+		{day(21, 12), false},
+	} {
+		if got := w.Live(tc.when); got != tc.live {
+			t.Errorf("on %s the waiver until %s is live=%v, want %v",
+				tc.when.Format(time.DateOnly), w.Until, got, tc.live)
+		}
+	}
+	// A date nothing can read is not a date a gate may be held open by.
+	unreadable := Waiver{Reason: "r", Until: "soon"}
+	if unreadable.Live(day(19, 12)) {
+		t.Error("a waiver whose date does not parse is not live")
 	}
 }
 

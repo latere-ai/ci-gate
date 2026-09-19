@@ -18,6 +18,13 @@
 // here is type-checked and nothing runs a service. An absent role is decided
 // from the imports, so an undeclared consumer is the finding and a tool with
 // no client passes without writing a block.
+//
+// direct is the role a waiver holds open. The serving path of a repository
+// that declares it reaches the database on the endpoint the migrator needs,
+// which is the claim the pool exists to take off the cluster, so the role
+// passes only while the repository carries a dated waiver of this gate
+// saying why. Without one it fails, which makes the direct endpoint a
+// recorded exception rather than the default a new service falls into.
 package postgres
 
 import (
@@ -34,6 +41,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -93,9 +101,9 @@ type check struct {
 // checks maps a role to what it runs. The absent role has its own entry
 // under PostgresUnset, because deciding from the imports is a check too.
 //
-// direct runs one check that passes by declaration. The family's build order
-// makes it require a dated waiver once the first cutovers land, and that
-// release changes ruleDirect and nothing else here.
+// direct runs one check, and it reads the waiver rather than the tree: what
+// a repository on the direct endpoint owes is a reason and a date, not a
+// shape in its Go files.
 var checks = map[config.PostgresRole][]check{
 	config.PostgresUnset:  {{name: "declared", run: ruleDeclared}},
 	config.PostgresNone:   {{name: "client-free", run: ruleClientFree}},
@@ -108,7 +116,11 @@ var checks = map[config.PostgresRole][]check{
 }
 
 // Run applies the checks of the declared role to the tree.
-func Run(cfg config.Postgres, root string, out io.Writer) error {
+//
+// waiver is this gate's entry in the repository's waiver map, or nil where
+// it has none, and now is the day the waiver is read against. Only the
+// direct role reads either: every other role is decided from the files.
+func Run(cfg config.Postgres, waiver *config.Waiver, root string, out io.Writer, now time.Time) error {
 	role := cfg.Role
 	if !cfg.Present {
 		role = config.PostgresUnset
@@ -120,6 +132,7 @@ func Run(cfg config.Postgres, root string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	t.waiver, t.now = waiver, now
 	var failed, skipped []string
 	rows := checks[role]
 	for _, c := range rows {
@@ -197,13 +210,32 @@ func ruleClientFree(t *tree) result {
 	return result{findings: found, note: fmt.Sprintf("no Postgres client across %d Go file(s)", len(t.files))}
 }
 
-// ruleDirect passes by declaration. This is the seam the family's build order
-// step 4 opens: a direct repository will need a dated waiver naming why it
-// stays on the direct endpoint, and that check is written here when the first
-// ten cutovers have landed.
+// ruleDirect holds a repository on the direct endpoint to a dated reason.
+//
+// Nothing in the tree decides this one. A direct repository's serving path
+// claims a connection slot the pooled path would hand back, and what the
+// family asks for that claim is a sentence somebody wrote and a date they
+// are held to, which no scan of the files could find. A live waiver of this
+// gate is that sentence. Without one the role fails, and an expired one
+// fails naming the date it carried, so an exception is renewed by somebody
+// deciding again rather than by nobody noticing.
 func ruleDirect(t *tree) result {
-	return result{note: fmt.Sprintf("passes by declaration in this release, %d Go file(s) unread; "+
-		"a later release requires a dated reason for staying on the direct endpoint", len(t.files))}
+	if t.waiver == nil {
+		return result{findings: []Finding{at(config.Name, 1,
+			"this repository declares the direct role and nothing records why it stays there; "+
+				"cut the serving path over to the pooled name with a fallback to the direct one "+
+				"and declare pooled, or record staying direct as a waiver of this gate, with a "+
+				"reason and the date the reason stops working")}}
+	}
+	until, reason := strings.TrimSpace(t.waiver.Until), strings.TrimSpace(t.waiver.Reason)
+	if !t.waiver.Live(t.now) {
+		return result{findings: []Finding{at(config.Name, 1,
+			"the waiver for staying on the direct endpoint ran out on %s, where it said: %s; "+
+				"cut the serving path over to the pooled name with a fallback to the direct one "+
+				"and declare pooled, or write a later date beside a reason that still holds",
+			until, reason)}}
+	}
+	return result{note: fmt.Sprintf("waived until %s: %s", until, reason)}
 }
 
 // ruleClient: a pooled repository imports a client, because one that does
@@ -302,6 +334,11 @@ type clientImport struct {
 type tree struct {
 	cfg   config.Postgres
 	files []goFile
+	// waiver is this gate's waiver, or nil where the repository carries
+	// none, and now is the day it is read against. The direct role decides
+	// from them; no other check reads them.
+	waiver *config.Waiver
+	now    time.Time
 }
 
 // clientImports lists the files that import a client, each at its first
