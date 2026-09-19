@@ -52,6 +52,7 @@ type Config struct {
 	Registers  Registers  `yaml:"registers"`
 	Enums      Enums      `yaml:"enums"`
 	Identity   Identity   `yaml:"identity"`
+	Postgres   Postgres   `yaml:"postgres"`
 	Release    Release    `yaml:"release"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
@@ -617,17 +618,19 @@ func Load(dir string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	// Whether the file carried the identity block at all is what the gate
-	// reports on, and an empty block and an absent one unmarshal alike. A
-	// second pass over the same bytes into a pointer is what tells them
-	// apart.
+	// Whether the file carried the identity and postgres blocks at all is
+	// what those gates report on, and an empty block and an absent one
+	// unmarshal alike. A second pass over the same bytes into pointers is
+	// what tells them apart.
 	var raw struct {
 		Identity *Identity `yaml:"identity"`
+		Postgres *Postgres `yaml:"postgres"`
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	c.Identity.Present = raw.Identity != nil
+	c.Postgres.Present = raw.Postgres != nil
 	c.Identity.Settled = c.Spec.Settled
 	if err := c.validate(path); err != nil {
 		return nil, err
@@ -712,6 +715,9 @@ func (c *Config) validate(path string) error {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	if err := c.Identity.validate(path); err != nil {
+		return err
+	}
+	if err := c.Postgres.validate(path); err != nil {
 		return err
 	}
 	var bad []string
