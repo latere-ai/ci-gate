@@ -59,6 +59,13 @@ const (
 // before the underscore, in the spelling identity.config_prefix uses.
 var prefixShape = regexp.MustCompile(`^[A-Z][A-Z0-9_]*[A-Z0-9]$|^[A-Z]$`)
 
+// envNameShape is what an environment variable name looks like: uppercase
+// letters, digits and underscores, opening on a letter and closing on a
+// letter or a digit. It constrains a whole name where prefixShape
+// constrains a fragment, so the two are separate and their refusals say
+// different things.
+var envNameShape = regexp.MustCompile(`^[A-Z][A-Z0-9_]*[A-Z0-9]$|^[A-Z]$`)
+
 // Postgres declares a repository's relationship to the shared database,
 // and holds the one value the pooled checks need.
 //
@@ -72,17 +79,36 @@ type Postgres struct {
 	// carries a prefixed name, such as EVAL for EVAL_DATABASE_URL. Without
 	// the trailing underscore. Pooled only.
 	Prefix string `yaml:"prefix"`
+	// DirectEnv and PoolEnv are the two environment names this repository
+	// reads, written out. A service names its own variables, and the gate
+	// asks whether both endpoints are read rather than how they are spelled,
+	// so a repository that reads LUX_DB_URL and LUX_DB_POOL_URL says so here
+	// instead of bending its names to a derivation. Declared together, never
+	// beside Prefix, pooled only.
+	DirectEnv string `yaml:"direct_env"`
+	PoolEnv   string `yaml:"pool_env"`
 	// Present reports whether the file carried the block at all. Computed by
 	// Load; not part of the file.
 	Present bool `yaml:"-"`
 }
 
-// PoolURL is the environment name the serving path reads first.
-func (p Postgres) PoolURL() string { return p.prefixed(PoolURLName) }
+// PoolURL is the environment name the serving path reads first: the
+// declared one, the prefixed one, or the bare one.
+func (p Postgres) PoolURL() string {
+	if name := strings.TrimSpace(p.PoolEnv); name != "" {
+		return name
+	}
+	return p.prefixed(PoolURLName)
+}
 
 // DirectURL is the environment name the serving path falls back to and the
-// migrator receives.
-func (p Postgres) DirectURL() string { return p.prefixed(DirectURLName) }
+// migrator receives: the declared one, the prefixed one, or the bare one.
+func (p Postgres) DirectURL() string {
+	if name := strings.TrimSpace(p.DirectEnv); name != "" {
+		return name
+	}
+	return p.prefixed(DirectURLName)
+}
 
 func (p Postgres) prefixed(name string) string {
 	if prefix := strings.TrimSpace(p.Prefix); prefix != "" {
@@ -105,6 +131,9 @@ func (p Postgres) validate(path string) error {
 		return fmt.Errorf("%s: postgres.role %q is not a relationship to the shared database\n"+
 			"one of %s", path, string(p.Role), PostgresRoleList())
 	}
+	if err := p.validateNames(path); err != nil {
+		return err
+	}
 	if prefix := strings.TrimSpace(p.Prefix); prefix != "" {
 		if p.Role != PostgresPooled {
 			return fmt.Errorf("%s: postgres.prefix is set and postgres.role is %q\n"+
@@ -116,6 +145,51 @@ func (p Postgres) validate(path string) error {
 				"write it as EVAL for EVAL_%s: uppercase letters, digits and underscores, "+
 				"without the trailing underscore", path, prefix, DirectURLName, DirectURLName)
 		}
+	}
+	return nil
+}
+
+// validateNames holds the two written-out names to their rules: declared
+// together, never beside a prefix, shaped like an environment variable, and
+// read by the pooled role alone.
+func (p Postgres) validateNames(path string) error {
+	direct, pool := strings.TrimSpace(p.DirectEnv), strings.TrimSpace(p.PoolEnv)
+	if (direct == "") != (pool == "") {
+		written, missing := "postgres.direct_env", "postgres.pool_env"
+		if direct == "" {
+			written, missing = "postgres.pool_env", "postgres.direct_env"
+		}
+		return fmt.Errorf("%s: %s is set and %s is not\n"+
+			"the serving path reads one of the two and falls back to the other, so a "+
+			"repository that writes one of them out writes both", path, written, missing)
+	}
+	if direct == "" {
+		return nil
+	}
+	if strings.TrimSpace(p.Prefix) != "" {
+		return fmt.Errorf("%s: postgres.prefix is set beside postgres.direct_env and postgres.pool_env\n"+
+			"a prefix derives the two names and the two keys write them out; keep the "+
+			"written-out names and delete the prefix", path)
+	}
+	if p.Role != PostgresPooled {
+		return fmt.Errorf("%s: postgres.direct_env and postgres.pool_env are set and postgres.role is %q\n"+
+			"only a pooled repository is checked for the names it reads, so the two names "+
+			"under any other role are a decision with no effect", path, string(p.Role))
+	}
+	for _, named := range []struct{ key, value string }{
+		{"postgres.direct_env", direct},
+		{"postgres.pool_env", pool},
+	} {
+		if !envNameShape.MatchString(named.value) {
+			return fmt.Errorf("%s: %s %q is not an environment variable name\n"+
+				"write it as the service reads it, such as %s: uppercase letters, digits "+
+				"and underscores, opening on a letter", path, named.key, named.value, DirectURLName)
+		}
+	}
+	if direct == pool {
+		return fmt.Errorf("%s: postgres.direct_env and postgres.pool_env are both %q\n"+
+			"they name two endpoints, the direct one the migrator receives and the pool "+
+			"the serving path reads first, so one name for both checks one endpoint twice", path, direct)
 	}
 	return nil
 }

@@ -62,6 +62,18 @@ func TestPostgresAcceptsEveryRoleAndPrefixesTheNames(t *testing.T) {
 	}
 }
 
+// A repository that writes its two names out is read at those names, and
+// neither the bare pair nor a derivation is consulted.
+func TestPostgresTakesTheNamesWrittenOut(t *testing.T) {
+	c, err := Load(write(t, "postgres:\n  role: pooled\n  direct_env: LUX_DB_URL\n  pool_env: LUX_DB_POOL_URL\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Postgres.DirectURL() != "LUX_DB_URL" || c.Postgres.PoolURL() != "LUX_DB_POOL_URL" {
+		t.Errorf("the written-out names = %s, %s", c.Postgres.DirectURL(), c.Postgres.PoolURL())
+	}
+}
+
 // Each rejection names the key and what to write instead: a block the gate
 // cannot act on is one that reports green over a repository nobody checks.
 func TestPostgresValidationRejects(t *testing.T) {
@@ -78,6 +90,22 @@ func TestPostgresValidationRejects(t *testing.T) {
 		{"lowercase prefix", "postgres:\n  role: pooled\n  prefix: eval\n", "is not the part of a variable name before DATABASE_URL"},
 		{"trailing underscore", "postgres:\n  role: pooled\n  prefix: EVAL_\n", "without the trailing underscore"},
 		{"unknown key", "postgres:\n  role: pooled\n  pool: yes\n", "unknown field"},
+		{"direct_env alone", "postgres:\n  role: pooled\n  direct_env: LUX_DB_URL\n",
+			"postgres.direct_env is set and postgres.pool_env is not"},
+		{"pool_env alone", "postgres:\n  role: pooled\n  pool_env: LUX_DB_POOL_URL\n",
+			"postgres.pool_env is set and postgres.direct_env is not"},
+		{"names beside a prefix", "postgres:\n  role: pooled\n  prefix: LUX\n  direct_env: LUX_DB_URL\n  pool_env: LUX_DB_POOL_URL\n",
+			"postgres.prefix is set beside postgres.direct_env and postgres.pool_env"},
+		{"names under direct", "postgres:\n  role: direct\n  direct_env: LUX_DB_URL\n  pool_env: LUX_DB_POOL_URL\n",
+			"postgres.pool_env are set and postgres.role is \"direct\""},
+		{"names under none", "postgres:\n  role: none\n  direct_env: LUX_DB_URL\n  pool_env: LUX_DB_POOL_URL\n",
+			"postgres.pool_env are set and postgres.role is \"none\""},
+		{"lowercase name", "postgres:\n  role: pooled\n  direct_env: lux_db_url\n  pool_env: LUX_DB_POOL_URL\n",
+			"postgres.direct_env \"lux_db_url\" is not an environment variable name"},
+		{"name with a space", "postgres:\n  role: pooled\n  direct_env: LUX_DB_URL\n  pool_env: LUX DB POOL URL\n",
+			"postgres.pool_env \"LUX DB POOL URL\" is not an environment variable name"},
+		{"one name for both endpoints", "postgres:\n  role: pooled\n  direct_env: LUX_DB_URL\n  pool_env: LUX_DB_URL\n",
+			"postgres.direct_env and postgres.pool_env are both \"LUX_DB_URL\""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

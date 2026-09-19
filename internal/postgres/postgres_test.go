@@ -311,6 +311,38 @@ func TestPrefixNamesTheVariables(t *testing.T) {
 	}
 }
 
+// A repository that writes its two names out is checked at those names,
+// and the checks that read a derivation read nothing of it.
+func TestWrittenOutNamesAreTheOnesChecked(t *testing.T) {
+	written := map[string]string{"internal/store/pg.go": pgFile("LUX_DB_POOL_URL", "LUX_DB_URL")}
+	cfg := declared(config.PostgresPooled)
+	cfg.DirectEnv, cfg.PoolEnv = "LUX_DB_URL", "LUX_DB_POOL_URL"
+	out, err := run(t, cfg, repo(t, written))
+	if err != nil {
+		t.Fatalf("the written-out names are the ones checked: %v\n%s", err, out)
+	}
+	for _, want := range []string{"LUX_DB_POOL_URL read in internal/store/pg.go", "LUX_DB_URL read in internal/store/pg.go"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the note names what was read and where, %q:\n%s", want, out)
+		}
+	}
+	out, err = run(t, cfg, repo(t, pooledComplete))
+	if err == nil || !strings.Contains(out, "nothing here reads LUX_DB_POOL_URL") {
+		t.Errorf("the bare names do not satisfy written-out ones: %v\n%s", err, out)
+	}
+	out, err = run(t, declared(config.PostgresPooled), repo(t, written))
+	if err == nil || !strings.Contains(out, "nothing here reads DATABASE_POOL_URL") {
+		t.Errorf("the written-out names do not satisfy the bare check: %v\n%s", err, out)
+	}
+	// A tree that reads the pool and not the direct endpoint fails at the
+	// written-out direct name, and the sentence names the other endpoint.
+	half := map[string]string{"internal/store/pg.go": pgFile("LUX_DB_POOL_URL")}
+	out, err = run(t, cfg, repo(t, half))
+	if err == nil || !strings.Contains(out, "nothing here reads LUX_DB_URL") || !strings.Contains(out, "LUX_DB_POOL_URL is the pool") {
+		t.Errorf("the missing direct read names both written-out names: %v\n%s", err, out)
+	}
+}
+
 // A pooled tree with no Go file has shown nothing, so every check skips and
 // the gate fails rather than passing over an empty tree.
 func TestNothingPassesVacuously(t *testing.T) {
