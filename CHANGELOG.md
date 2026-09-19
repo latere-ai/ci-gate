@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.44.0 - 2026-09-19
+
 ### Added
 
 - `postgres.direct_env` and `postgres.pool_env`: a `pooled` repository
