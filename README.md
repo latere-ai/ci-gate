@@ -52,6 +52,7 @@ lateregate: 1 of 13 gates failed: cover
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
 | `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
 | `identity` | the repository declares its identity role and holds that role's rules | always |
+| `postgres` | the repository's Postgres role holds: no client under `none`, the pooled and direct DSN names read under `pooled`, an undeclared client caught by its imports | always |
 | `enum-go` | declared Go domains use named types, named members and exhaustive switches | `enums.go.types` names a domain |
 | `enum-typescript` | declared TypeScript domains use native enums, named members and exhaustive switches | `enums.typescript` names a project |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
@@ -929,6 +930,55 @@ audience nothing accepts. It prints the layer table the blocks derive, and
 `-expect` fails when the committed copy of that table differs, which is what
 makes the document derived from the tree rather than maintained beside it.
 
+### `postgres` holds the repository to its role against the shared database
+
+One managed Postgres serves the family, with about 22 usable connection
+slots, and every service that connects directly claims its share of them per
+replica and once more for its migrations at boot. The family's fix is a
+transaction-mode pool per service: the serving path reads `DATABASE_POOL_URL`
+and falls back to `DATABASE_URL`, and the migrator, which holds a
+session-scoped lock, keeps `DATABASE_URL`. Two lines in each of eleven
+repositories over weeks is the shape that drifts, so this gate runs the rule
+on every push. Every repository says what it does with the database:
+
+```yaml
+postgres:
+  role: pooled        # none | direct | pooled
+  prefix: EVAL        # pooled only: the names are then EVAL_DATABASE_POOL_URL and EVAL_DATABASE_URL
+```
+
+| Role | What is checked | What fails |
+| --- | --- | --- |
+| `none` | no non-test Go file imports a Postgres client | any client import; the finding names the file and the line and says to declare `direct` or `pooled` |
+| `direct` | nothing, in this release; the row says it passed by declaration | nothing. A later release makes `direct` require a dated reason, once the family's cutovers land |
+| `pooled` | a client is imported; some file reads `DATABASE_POOL_URL`; some file reads `DATABASE_URL` | the missing one of the three, named |
+| absent | no client is imported | any client import; the finding names the file and the three roles. A tree with no client passes and the report says the decision came from the imports |
+
+A Postgres client is the pgx tree at any version, `lib/pq`, golang-migrate's
+`postgres` and `pgx` drivers, and the family's shared migration runner.
+`database/sql` alone is generic and is not one; the driver it is opened with
+is, and that import is the finding.
+
+A read of a name is one of the two shapes the family reads a DSN in: a call
+to something named for the environment (`os.Getenv`, `os.LookupEnv`, a local
+`getenv`, an `envOr` helper) with the name as a string literal or as a
+constant the package binds to it, or a struct tag under the `env` key. A name
+in a comment, a log line or an error message is a mention and not a read.
+Nothing is type-checked and nothing runs a service. What the gate cannot see
+is which client each name reaches: that the pooled DSN opens the pool and the
+direct DSN opens the migrator is dataflow, and it stays a review item, as the
+family's document says.
+
+A tree with a `pooled` role and no Go file to read fails rather than passing:
+every check reports `SKIP` and the gate says the role showed nothing. `none`
+over such a tree passes, because the role claims nothing a file would have to
+show.
+
+`contract` prints the declared role in its in-shape line and does not report
+an absent block as drift, because the gate decides an absent block from the
+imports and one question has one authority. `init` writes no block: the role
+is a decision.
+
 ### Enum domains keep protocol values out of implementation
 
 `enum-go` and `enum-typescript` enforce three properties for the domains a
@@ -1139,6 +1189,10 @@ identity:                  # mandatory: a repository with no block fails the gat
   registry: deploy/base/clients.yaml   # the client registry; issuer, and the default
   audiences: []            # the product audiences this client presents; client
   waive: {}                # rule -> {until, reason}: hold every other rule while this one is behind
+
+postgres:                  # optional: an absent block is decided from the imports, and a client import under it fails
+  role: ""                 # none | direct | pooled
+  prefix: ""               # pooled only: EVAL makes the names EVAL_DATABASE_POOL_URL and EVAL_DATABASE_URL
 
 enums:
   go:

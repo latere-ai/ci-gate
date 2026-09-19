@@ -10,6 +10,42 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- A `postgres` gate. One managed Postgres serves the family with about 22
+  usable connection slots, and every service that connects directly claims
+  its share of them; the family's fix is a transaction-mode pool per
+  service, with the serving path reading `DATABASE_POOL_URL` and falling
+  back to `DATABASE_URL`, and the migrator keeping `DATABASE_URL`. Each
+  repository now declares its relationship to that database under
+  `postgres.role` in `.lateregate.yaml`: `none`, `direct` or `pooled`.
+
+  `none` fails on any non-test Go file importing a Postgres client (the pgx
+  tree, `lib/pq`, golang-migrate's `postgres` and `pgx` drivers, the shared
+  migration runner), naming the file and the roles to declare instead.
+  `direct` passes by declaration in this release, and its row says so; a
+  later release makes it require a dated reason once the family's cutovers
+  land. `pooled` requires a client import, a read of `DATABASE_POOL_URL` and
+  a read of `DATABASE_URL`, where a read is a call to something named for the
+  environment (`os.Getenv`, `os.LookupEnv`, a local `getenv`, an `envOr`)
+  with the name as a literal or a package constant, or a struct tag under the
+  `env` key; a mention in a comment, a log line or an error string is not
+  one. `postgres.prefix: EVAL` moves the names to `EVAL_DATABASE_POOL_URL`
+  and `EVAL_DATABASE_URL` for a repository whose Secret carries a prefix.
+
+  A repository with no block passes when nothing imports a client and fails
+  when something does, naming the three roles: that is the undeclared
+  consumer the gate exists to catch. Nothing passes vacuously: a `pooled`
+  tree with no Go file fails with `SKIP` on every check. The gate does not
+  check which client each name reaches; that the pooled DSN opens the pool
+  and the direct one opens the migrator stays a review item.
+
+  The gate runs in the default bar and appears in `lateregate list -json`,
+  so the shared workflow's matrix picks it up without a change. `contract`
+  prints the declared role in its in-shape line and does not treat an absent
+  block as drift. To adopt: every repository that connects to the shared
+  database declares `direct` in this release; nothing turns red.
+
 ## v0.42.0 - 2026-09-17
 
 ### Fixed
