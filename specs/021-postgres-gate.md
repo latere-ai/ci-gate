@@ -185,7 +185,7 @@ beside `config.Role`.
 | A tree with no block and no client passes, and the report says the gate decided from the imports | `TestAbsentRoleDecidesFromTheImports` |
 | A tree with no block and a client import fails, naming the file and the three roles | `TestAbsentRoleDecidesFromTheImports` |
 | `none` passes a clean tree and fails a tree with a client import, naming the file and the roles to declare | `TestRoleNone` |
-| `direct` passes and says it passed by declaration | `TestRoleDirectPassesByDeclaration` |
+| `direct` passes and says it passed by declaration | `TestRoleDirectPassesByDeclaration`, retired in v0.45.0 when [[023-direct-needs-a-dated-waiver]] made the role need a live waiver |
 | `pooled` passes a tree that imports a client and reads both names, in every shape the family uses: `os.Getenv`, a local helper, a struct tag, a same-package constant | `TestRolePooledReadsInEveryShape` |
 | `pooled` fails a tree missing the pooled read, one missing the direct read, and one missing the client, and each failure names the missing thing | `TestRolePooledFails` |
 | `pooled` with `prefix` checks the prefixed names and not the bare ones | `TestPrefixNamesTheVariables` |

@@ -10,6 +10,42 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- `postgres.role: direct` needs a dated waiver of the `postgres` gate. It
+  passed by declaration in v0.43.0, which was right while every Postgres
+  repository was on the direct endpoint and the pooled path was being built.
+  The family's services have since cut over, so a repository still serving
+  from the direct endpoint is an exception, and an exception costs a reason
+  and a date:
+
+  ```yaml
+  postgres:
+    role: direct
+
+  waive:
+    postgres:
+      reason: a library, and the consumer that calls it owns the connection
+      until: 2026-12-19
+  ```
+
+  It is the waiver every other gate takes, keyed on this gate's name, so the
+  plan lists the repository as `WAIV postgres` and the same date retires it.
+  Without one the role fails, naming both ways out: cut the serving path over
+  to the pooled name with a fallback to the direct one and declare `pooled`,
+  or record why the repository stays. Past the date the gate runs and the
+  role fails naming the date and what the waiver claimed, so an exception is
+  renewed by somebody deciding again.
+
+  The gate reads the waiver itself rather than leaving it to the plan,
+  because `lateregate postgres` runs one gate by name and builds no plan, and
+  because a refusal a day past the date should be the Postgres rule's own
+  sentence rather than a line about a calendar.
+
+  To adopt: a repository declaring `direct` writes the waiver in the same
+  change as the bump. `none`, `pooled` and an absent block are unaffected,
+  and a waiver of this gate changes no verdict under them.
+
 ## v0.44.0 - 2026-09-19
 
 ### Added

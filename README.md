@@ -52,7 +52,7 @@ lateregate: 1 of 13 gates failed: cover
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
 | `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
 | `identity` | the repository declares its identity role and holds that role's rules | always |
-| `postgres` | the repository's Postgres role holds: no client under `none`, the pooled and direct DSN names read under `pooled`, an undeclared client caught by its imports | always |
+| `postgres` | the repository's Postgres role holds: no client under `none`, a dated waiver under `direct`, the pooled and direct DSN names read under `pooled`, an undeclared client caught by its imports | always |
 | `enum-go` | declared Go domains use named types, named members and exhaustive switches | `enums.go.types` names a domain |
 | `enum-typescript` | declared TypeScript domains use native enums, named members and exhaustive switches | `enums.typescript` names a project |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
@@ -961,7 +961,7 @@ Deployment maps the one to the other.
 | Role | What is checked | What fails |
 | --- | --- | --- |
 | `none` | no non-test Go file imports a Postgres client | any client import; the finding names the file and the line and says to declare `direct` or `pooled` |
-| `direct` | nothing, in this release; the row says it passed by declaration | nothing. A later release makes `direct` require a dated reason, once the family's cutovers land |
+| `direct` | a live waiver of this gate covers the repository; the row prints its date and its reason | no waiver, or one past its date. The finding names both ways out: cut over to `pooled`, or write a reason and a later date |
 | `pooled` | a client is imported; some file reads the pooled name; some file reads the direct name | the missing one of the three, named |
 | absent | no client is imported | any client import; the finding names the file and the three roles. A tree with no client passes and the report says the decision came from the imports |
 
@@ -979,6 +979,28 @@ Nothing is type-checked and nothing runs a service. What the gate cannot see
 is which client each name reaches: that the pooled DSN opens the pool and the
 direct DSN opens the migrator is dataflow, and it stays a review item, as the
 family's document says.
+
+`direct` is an exception and costs a dated reason. A repository whose serving
+path reaches the database on the endpoint the migrator needs holds a slot the
+pool would hand back, so the role passes only while the repository waives this
+gate:
+
+```yaml
+postgres:
+  role: direct
+
+waive:
+  postgres:
+    reason: a library, and the consumer that calls it owns the connection
+    until: 2026-12-19
+```
+
+It is the same waiver every other gate takes, keyed on this gate's name, so
+the plan lists the repository as `WAIV postgres` and the date retires the
+exception the way it retires every other one. Past that date the gate runs
+and the role fails, naming the date and what the waiver claimed. The gate
+reads the waiver itself rather than leaving it to the plan, because
+`lateregate postgres` runs one gate by name and builds no plan.
 
 A tree with a `pooled` role and no Go file to read fails rather than passing:
 every check reports `SKIP` and the gate says the role showed nothing. `none`
@@ -1202,7 +1224,7 @@ identity:                  # mandatory: a repository with no block fails the gat
   waive: {}                # rule -> {until, reason}: hold every other rule while this one is behind
 
 postgres:                  # optional: an absent block is decided from the imports, and a client import under it fails
-  role: ""                 # none | direct | pooled
+  role: ""                 # none | direct | pooled; direct needs a dated `waive: postgres` entry
   prefix: ""               # pooled only: EVAL makes the names EVAL_DATABASE_POOL_URL and EVAL_DATABASE_URL
   direct_env: ""           # pooled only, with pool_env and without prefix: the direct name, written out
   pool_env: ""             # pooled only, with direct_env and without prefix: the pooled name, written out
