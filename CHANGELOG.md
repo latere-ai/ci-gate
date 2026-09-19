@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.45.0 - 2026-09-19
+
 ### Changed
 
 - `postgres.role: direct` needs a dated waiver of the `postgres` gate. It
