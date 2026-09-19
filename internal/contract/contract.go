@@ -114,9 +114,20 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	if len(findings) > 0 {
 		return fmt.Errorf("%d drift(s) from the shared shape:\n- %s", len(findings), strings.Join(findings, "\n- "))
 	}
-	_, _ = fmt.Fprintf(out, "in shape: workflow calls %s, %s and %s delegate, %s untracked, %s ignored, %s tracked with an Unreleased heading, identity declares the role %s, no restated default, no hand-rolled gate target, go.mod pins the tool\n",
-		Workflow, hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "), changelog.Name, string(cfg.Identity.Role))
+	_, _ = fmt.Fprintf(out, "in shape: workflow calls %s, %s and %s delegate, %s untracked, %s ignored, %s tracked with an Unreleased heading, identity declares the role %s, %s, no restated default, no hand-rolled gate target, go.mod pins the tool\n",
+		Workflow, hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "), changelog.Name, string(cfg.Identity.Role), postgresNote(cfg))
 	return nil
+}
+
+// postgresNote says what the file declares about the shared database. An
+// absent block is not drift: the postgres gate decides it from the imports,
+// and a wiring report that called it drift would be a second authority over
+// the same question.
+func postgresNote(cfg *config.Config) string {
+	if cfg.Postgres.Present {
+		return "postgres declares the role " + string(cfg.Postgres.Role)
+	}
+	return "postgres declares no role and the gate decides from the imports"
 }
 
 // checkWorkflow finds the caller. Exactly one file calls the shared

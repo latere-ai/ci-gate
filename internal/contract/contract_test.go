@@ -120,6 +120,28 @@ func TestInShapePasses(t *testing.T) {
 	}
 }
 
+// The in-shape line says what the file declares about the shared database.
+// An absent block is not drift: the postgres gate decides it from the
+// imports, and the line says so rather than reporting it.
+func TestContractPrintsThePostgresRole(t *testing.T) {
+	dir := repo(t)
+	out, err := check(t, dir, untracked(""))
+	if err != nil {
+		t.Fatalf("a tree with no postgres block is in shape: %v", err)
+	}
+	if !strings.Contains(out, "postgres declares no role and the gate decides from the imports") {
+		t.Errorf("the line says the block is absent and who decides:\n%s", out)
+	}
+	write(t, dir, config.Name, "identity:\n  role: none\npostgres:\n  role: direct\n")
+	out, err = check(t, dir, untracked(""))
+	if err != nil {
+		t.Fatalf("a declared role is in shape: %v", err)
+	}
+	if !strings.Contains(out, "postgres declares the role direct") {
+		t.Errorf("the line names the declared role:\n%s", out)
+	}
+}
+
 // Every drift in one run, not one per push.
 func TestEveryDriftIsReportedAtOnce(t *testing.T) {
 	dir := t.TempDir()
@@ -517,6 +539,9 @@ func TestRequiredListsTheGates(t *testing.T) {
 	// further wiring, which is what makes the set the contract.
 	if !slices.Contains(Required(), "identity") {
 		t.Errorf("the gate set carries identity: %v", Required())
+	}
+	if !slices.Contains(Required(), "postgres") {
+		t.Errorf("the gate set carries postgres: %v", Required())
 	}
 }
 
