@@ -29,6 +29,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 018 | [Enum gates run from the shared plan locally and in CI](018-enum-gate-wiring.md) | complete | Strict policy configuration, gate dispatch, frontend preparation and CI wiring |
 | 019 | [Gate the identity shape every repository integrates](019-identity-gate.md) | partial | An `identity` gate: a role per repository in `.lateregate.yaml`, static rules per role for the family's identity shape, and a family check across repositories |
 | 020 | [Green before you cut, and the refusal says who acts](020-green-before-cut.md) | complete | `release` reads CI through the GitHub API before the bar runs: a red run on the default branch, or a previous tag that deployed and published no Release, refuses with the run URL, the failing job, and a line naming BUDGET, INFRA or CODE |
+| 021 | [Gate the Postgres role every repository declares](021-postgres-gate.md) | complete | A `postgres` gate: a role per repository in `.lateregate.yaml`, `none`, `direct` or `pooled`; a client import scan for the first, static reads of the pooled and direct DSN names for the last, and an undeclared consumer caught by its imports |
 
 ## Conventions
 
