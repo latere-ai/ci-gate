@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.43.0 - 2026-09-19
+
 ### Added
 
 - A `postgres` gate. One managed Postgres serves the family with about 22
