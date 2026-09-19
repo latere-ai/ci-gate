@@ -4,15 +4,22 @@
 # which is the only way the schema stays honest.
 enums:
   go:
-    types: [internal/bar.Status, internal/config.Role]
+    types: [internal/bar.Status, internal/config.Role, internal/config.PostgresRole]
     fields:
       internal/bar.Entry.Status: internal/bar.Status
       internal/config.Identity.Role: internal/config.Role
+      internal/config.Postgres.Role: internal/config.PostgresRole
 
 identity:
   # A tool, not a service: it verifies no token and presents none. The role is
   # declared rather than absent, because the family check lists it and a
   # repository outside the shape by omission is the gap the gate exists for.
+  role: none
+
+postgres:
+  # A tool, not a service: nothing here opens a database. An absent block
+  # would pass on the same fact, read from the imports; declaring it records
+  # the fact as a decision, the way the identity role above does.
   role: none
 
 cover:

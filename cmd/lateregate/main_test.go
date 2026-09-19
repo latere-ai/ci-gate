@@ -410,6 +410,26 @@ func TestLicenseRunsAgainstThisRepository(t *testing.T) {
 	}
 }
 
+// `postgres` is a gate like any other: one name, the tree under -C, and the
+// role read from the file there.
+func TestPostgresSubcommand(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, config.Name), []byte("postgres:\n  role: none\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := out(t, "postgres", "-C", dir)
+	if err != nil || !strings.Contains(s, "role none") {
+		t.Fatalf("the gate runs for this repository: %v\n%s", err, s)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pg.go"), []byte("package app\n\nimport _ \"github.com/jackc/pgx/v5\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err = out(t, "postgres", "-C", dir)
+	if err == nil || !strings.Contains(s, "FAIL client-free") {
+		t.Fatalf("a client under none fails: %v\n%s", err, s)
+	}
+}
+
 // `identity` alone is the gate for this repository; `identity family` reads
 // a directory of checkouts and carries its own flags.
 func TestIdentityAndItsFamilySubcommand(t *testing.T) {

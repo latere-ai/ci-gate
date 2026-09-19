@@ -27,6 +27,7 @@ import (
 	"latere.ai/x/ci-gate/internal/golangci"
 	"latere.ai/x/ci-gate/internal/identity"
 	"latere.ai/x/ci-gate/internal/license"
+	"latere.ai/x/ci-gate/internal/postgres"
 	"latere.ai/x/ci-gate/internal/registers"
 	"latere.ai/x/ci-gate/internal/speclint"
 	"latere.ai/x/ci-gate/internal/tsenum"
@@ -96,6 +97,10 @@ var Gates = []Gate{
 		// No Applies: a repository with no block is precisely the gap, so
 		// the absence fails inside the gate rather than skipping it.
 		Run: func(c Ctx) error { return identity.Run(c.Cfg.Identity, c.Root, c.Out, c.Exec, c.Now) }},
+	{Name: "postgres", Doc: "the repository's Postgres role holds: no client under none, the pooled and direct DSN names read under pooled",
+		// No Applies: an absent role is decided from the imports inside the
+		// gate, so an undeclared consumer is a finding and not a skip.
+		Run: func(c Ctx) error { return postgres.Run(c.Cfg.Postgres, c.Root, c.Out) }},
 	{Name: "enum-go", Doc: "declared Go enums use named types, named members and exhaustive switches",
 		Applies: func(c Ctx) (bool, string, error) {
 			return len(c.Cfg.Enums.Go.Types) > 0, "enums.go.types names no domain", nil
