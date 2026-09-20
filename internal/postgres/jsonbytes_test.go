@@ -425,3 +425,322 @@ func TestParameterCasts(t *testing.T) {
 		}
 	}
 }
+
+// carrierFile is the head a carrier fixture shares. It declares one of each
+// shape the measurement at the head of jsonbytes.go bound, so a body below is
+// one statement and nothing else.
+const carrierFile = `package store
+
+import (
+	"context"
+	"database/sql/driver"
+	"encoding/json"
+	"time"
+
+	"example.com/app/internal/db"
+)
+
+// jsonUse and clockUse hold the encoder and the clock in the import set, so a
+// body that never calls them still compiles.
+var jsonUse = json.Marshal
+var clockUse = time.Now
+
+// Name is a string under another name.
+type Name string
+
+// Blob is a byte slice that holds no json document.
+type Blob []byte
+
+// Stamp hands the driver a text of its own.
+type Stamp struct{ At time.Time }
+
+// String is that text.
+func (s Stamp) String() string { return s.At.UTC().String() }
+
+// Money hands the driver a database value.
+type Money struct{ Cents int64 }
+
+// Value is that database value.
+func (m Money) Value() (driver.Value, error) { return m.Cents, nil }
+
+// Row is a plain Go struct, which is the shape platform bound to a jsonb
+// column three times.
+type Row struct {
+	KeyID string
+	State string
+}
+
+`
+
+// carriers runs the gate over a body that shares carrierFile's declarations.
+func carriers(t *testing.T, body string) (string, error) {
+	t.Helper()
+	return run(t, declared(config.PostgresNone), repo(t, store(carrierFile+body)))
+}
+
+// What a json parameter takes, measured against Postgres 17 with parameters
+// sent in the text format, which is what exec mode does. Each row here is a
+// row of that measurement: the ones the server accepted have to pass, and the
+// ones it refused have to be reported.
+func TestWhatAJSONParameterTakes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		decl string
+		arg  string
+		// want is what the finding says the value is, or empty where the
+		// parameter took the value and the check has to stay quiet.
+		want string
+	}{
+		{"a byte slice", "v []byte", "v", "a byte slice"},
+		{"a byte slice under another name", "v Blob", "v", "a byte slice"},
+		{"the encoder's raw message", "v json.RawMessage", "v", ""},
+		{"a pointer to one", "v *json.RawMessage", "v", ""},
+		{"a string", "v string", "v", ""},
+		{"a pointer to string", "v *string", "v", ""},
+		{"a nil pointer to string", "v int", "(*string)(nil)", ""},
+		{"the empty string", "v int", `""`, ""},
+		{"a string under another name", "v Name", "v", ""},
+		{"a value with a text of its own", "v Stamp", "v", ""},
+		{"a value with a database value", "v Money", "v", ""},
+		{"a number", "v int", "v", ""},
+		{"an untyped nil", "v int", "nil", ""},
+		{"a boolean", "v bool", "v", "a boolean"},
+		{"a list of strings", "v []string", "v", "a Go slice"},
+		{"a clock reading", "v time.Time", "v", "a value the driver sends as its own column type"},
+		{"a Go struct", "v Row", "v", "a Go struct"},
+		{"a Go map", "v map[string]any", "v", "a Go map"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := carriers(t, `
+// Save writes a document.
+func Save(ctx context.Context, p *db.Pool, id string, `+tc.decl+`) error {
+	_, err := p.Exec(ctx, "UPDATE t SET doc = $2::jsonb WHERE id = $1", id, `+tc.arg+`)
+	return err
+}
+`)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("a json parameter took this and the check reported it: %v\n%s", err, out)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("a json parameter refused this and the check passed it:\n%s", out)
+			}
+			if !strings.Contains(out, "this binds "+tc.want+" into parameter $2") {
+				t.Errorf("the finding says what the value is:\n%s", out)
+			}
+		})
+	}
+}
+
+// The empty string and a nil into a NOT NULL column are both refused by the
+// server, and neither is visible here: one is a value and the other needs the
+// schema. The two rows above record that the check stays quiet on them, and
+// this one records why that is the right answer rather than a miss.
+func TestWhatTheSchemaDecidesIsNotThisCheck(t *testing.T) {
+	out, err := carriers(t, `
+// Save writes what may be nothing.
+func Save(ctx context.Context, p *db.Pool, id string, doc *string) error {
+	_, err := p.Exec(ctx, "UPDATE t SET doc = $2::jsonb WHERE id = $1", id, doc)
+	return err
+}
+`)
+	if err != nil {
+		t.Fatalf("a pointer to string is the repair and the check reported it: %v\n%s", err, out)
+	}
+}
+
+// A Go struct bound to a parameter is the worse bug, and it is not about the
+// column: the driver's plan lookup reads the Go type and an undescribed
+// parameter, so the call fails before the statement is sent. This is
+// platform's event writer, which said nothing about json anywhere.
+func TestAGoStructIsNotEncodable(t *testing.T) {
+	out, err := carriers(t, `
+// Apply writes the observed row.
+func Apply(ctx context.Context, p *db.Pool, ev string, row Row) error {
+	payload := row
+	_, err := p.Exec(ctx, "INSERT INTO observed (id, payload) VALUES ($1, $2)", ev, payload)
+	return err
+}
+`)
+	if err == nil {
+		t.Fatalf("a Go struct bound to a parameter passed:\n%s", out)
+	}
+	if !strings.Contains(out, "this binds a Go struct into parameter $2") {
+		t.Errorf("the finding names the file, the line and the parameter:\n%s", out)
+	}
+	for _, want := range []string{"cannot find encode plan", "bind the encoding as a string"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the finding says %q:\n%s", want, out)
+		}
+	}
+}
+
+// A Go map is the same failure, and cella and lux bind one to a labels column
+// five times between them.
+func TestAGoMapIsNotEncodable(t *testing.T) {
+	out, err := carriers(t, `
+// Put writes the labels.
+func Put(ctx context.Context, p *db.Pool, id string, labels map[string]string) error {
+	_, err := p.Exec(ctx, "INSERT INTO objects (id, labels) VALUES ($1, $2)", id, labels)
+	return err
+}
+`)
+	if err == nil {
+		t.Fatalf("a Go map bound to a parameter passed:\n%s", out)
+	}
+	if !strings.Contains(out, "this binds a Go map into parameter $2") {
+		t.Errorf("the finding names what the value is:\n%s", out)
+	}
+}
+
+// A list of a type the driver does not hold is the same failure again: the
+// driver registers a list beside each type of its own and nothing beside a
+// repository's, so the list has no encoding although each element would have
+// had one.
+func TestAListOfANamedTypeIsNotEncodable(t *testing.T) {
+	out, err := carriers(t, `
+// Pick narrows a set of names.
+func Pick(ctx context.Context, p *db.Pool, names []Name) error {
+	_, err := p.Query(ctx, "SELECT n FROM unnest($1::text[]) AS n", names)
+	return err
+}
+`)
+	if err == nil {
+		t.Fatalf("a list of a named type passed:\n%s", out)
+	}
+	if !strings.Contains(out, "this binds a Go slice into parameter $1") {
+		t.Errorf("the finding names what the value is:\n%s", out)
+	}
+}
+
+// What the driver does hold an encoding for stays quiet, whatever Go shape it
+// is: a clock reading, a string under another name, a value with a text or a
+// database value of its own, a list of strings, and the byte slice a bytea
+// column wants.
+func TestWhatTheDriverEncodesPasses(t *testing.T) {
+	out, err := carriers(t, `
+// Save writes a row of column types the driver holds.
+func Save(ctx context.Context, p *db.Pool, id string, at time.Time, n Name, s Stamp, m Money, tags []string, blob []byte) error {
+	_, err := p.Exec(ctx,
+		"INSERT INTO t (id, at, n, s, m, tags, blob) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		id, at, n, s, m, tags, blob)
+	return err
+}
+`)
+	if err != nil {
+		t.Fatalf("a column type the driver holds was reported: %v\n%s", err, out)
+	}
+}
+
+// A helper that hands the value back as an empty interface is the blind spot
+// llm-gateway had six of. The declared type says nothing, so what the helper
+// can return is what has to be read.
+func TestAHelperThatHandsBackAnEmptyInterfaceIsFollowed(t *testing.T) {
+	out, err := carriers(t, `
+// nullableJSON hands a document over, or a nil so a COALESCE skips the column.
+func nullableJSON(m json.RawMessage) any {
+	if len(m) == 0 {
+		return nil
+	}
+	return []byte(m)
+}
+
+// Save writes a document.
+func Save(ctx context.Context, p *db.Pool, id string, m json.RawMessage) error {
+	_, err := p.Exec(ctx, "UPDATE t SET doc = $2::jsonb WHERE id = $1", id, nullableJSON(m))
+	return err
+}
+`)
+	if err == nil {
+		t.Fatalf("a byte slice behind an empty interface passed:\n%s", out)
+	}
+	if !strings.Contains(out, "this binds a byte slice into parameter $2") {
+		t.Errorf("the finding names what the value is:\n%s", out)
+	}
+}
+
+// The same helper written so every path a json parameter takes is quiet. This
+// is what llm-gateway's is today, and a check that reported it would be a
+// check reporting the repair.
+func TestAHelperWhoseEveryPathIsAcceptedPasses(t *testing.T) {
+	out, err := carriers(t, `
+// nullableJSON hands a document over, or a nil so a COALESCE skips the column.
+func nullableJSON(m json.RawMessage) any {
+	if len(m) == 0 {
+		return nil
+	}
+	return m
+}
+
+// Save writes a document.
+func Save(ctx context.Context, p *db.Pool, id string, m json.RawMessage) error {
+	_, err := p.Exec(ctx, "UPDATE t SET doc = $2::jsonb WHERE id = $1", id, nullableJSON(m))
+	return err
+}
+`)
+	if err != nil {
+		t.Fatalf("a helper whose every path is accepted was reported: %v\n%s", err, out)
+	}
+}
+
+// The helper llm-gateway laundered through is in its own package, one import
+// away from every statement that binds its result, so the summaries cross
+// packages.
+func TestAHelperInAnotherPackageIsFollowed(t *testing.T) {
+	files := map[string]string{
+		"internal/db/db.go": dbPackage,
+		"internal/pgxutil/pgxutil.go": `package pgxutil
+
+import "encoding/json"
+
+// NullableJSON hands a document over, or a nil so a COALESCE skips the column.
+func NullableJSON(m json.RawMessage) any {
+	if len(m) == 0 {
+		return nil
+	}
+	return []byte(m)
+}
+`,
+		"internal/store/store.go": `package store
+
+import (
+	"context"
+	"encoding/json"
+
+	"example.com/app/internal/db"
+	"example.com/app/internal/pgxutil"
+)
+
+// Save writes a document.
+func Save(ctx context.Context, p *db.Pool, id string, m json.RawMessage) error {
+	_, err := p.Exec(ctx, "UPDATE t SET doc = $2::jsonb WHERE id = $1", id, pgxutil.NullableJSON(m))
+	return err
+}
+`,
+	}
+	out, err := run(t, declared(config.PostgresNone), repo(t, files))
+	if err == nil {
+		t.Fatalf("a byte slice behind a helper one package over passed:\n%s", out)
+	}
+	if !strings.Contains(out, "this binds a byte slice into parameter $2") {
+		t.Errorf("the finding names what the value is:\n%s", out)
+	}
+}
+
+// A value whose type this pass cannot name is not reported. Reporting every
+// empty interface would report most of the family, and a check that is mostly
+// noise is waived and then guards nothing.
+func TestAValueOutOfReachIsNotReported(t *testing.T) {
+	out, err := carriers(t, `
+// Save writes whatever it is handed.
+func Save(ctx context.Context, p *db.Pool, id string, v any) error {
+	_, err := p.Exec(ctx, "UPDATE t SET doc = $2::jsonb WHERE id = $1", id, v)
+	return err
+}
+`)
+	if err != nil {
+		t.Fatalf("a value out of reach was reported: %v\n%s", err, out)
+	}
+}
