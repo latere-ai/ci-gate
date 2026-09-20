@@ -57,8 +57,8 @@ committed: the commit log already holds that.
 
   To adopt: a repository with findings binds a `string`, or a `*string`
   where SQL NULL and the empty document have to stay apart. A sweep of the
-  organisation's Go repositories at this release reports binds in thirteen
-  of them.
+  organisation's Go repositories at this release reports 53 binds across
+  twelve of them.
 
 ### Changed
 

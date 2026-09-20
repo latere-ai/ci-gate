@@ -199,8 +199,14 @@ The legitimate `bytea` binds stayed quiet in both: `auth`'s gob-encoded
 `agents`' service-account ciphertext.
 
 A sweep of the twenty-six Go repositories in the workspace type-checked
-every one and reported 63 binds across 13 of them. The six that survive in
-`auth` are live: `redirect_uris` and `allowed_origins` on the admin create
-path, `redirect_uris` on both dynamic-registration paths, `form_data` on
-the token store, and `grants` on the personal-key insert, every one of them
-a JSONB column on a repository already serving through the pool.
+every one, with no load failure anywhere. Read at each repository's
+`origin/main`, it reports 53 binds across twelve of them: `arca` 1, `auth`
+6, `drive` 6, `eval` 1, `insula` 1, `llm-gateway` 9, `lux` 4, `pay` 2,
+`platform` 9, `replichai` 10, `sandbox` 3, `wallfacer` 1.
+
+The six in `auth` are live: `redirect_uris` and `allowed_origins` on the
+admin create path, `redirect_uris` on both dynamic-registration paths,
+`form_data` on the token store, and `grants` on the personal-key insert,
+every one of them a JSONB column on a repository already serving through
+the pool. Sampled columns elsewhere are JSONB too: `arca`'s `events.detail`
+and `lux`'s `objects.status`.
