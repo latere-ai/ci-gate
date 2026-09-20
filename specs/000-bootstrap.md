@@ -94,6 +94,6 @@ Two things the build changed:
   as silently. `latere-ai/ci` is public now.
 
 Not done: the adoption ramp past `llmops`. Fifteen repositories need a
-caller and three one-line Makefile edits; `tgo` keeps its own tools,
+caller and three one-line Makefile edits; `forma` keeps its own tools,
 because its spec linter also enforces layers, decision records and an
 outcome rule, which are conventions rather than hygiene.

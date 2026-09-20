@@ -37,12 +37,12 @@ lands in 21 repositories' `go.mod`.
 
 A `depcheck` subcommand, and this repository as its first consumer.
 
-`tgo/internal/depcheck` is the working implementation to start from. Its
+`forma/internal/depcheck` is the working implementation to start from. Its
 central decision is worth preserving and is not obvious: it gates
 `go list -deps` on named packages rather than reading `go.mod`, because a
 module graph says what *could* be reached while the import graph says what
 is actually built. That distinction is why pinning `lateregate` as a tool
-dependency does not trip `tgo`'s own gate — a tool is never imported by
+dependency does not trip `forma`'s own gate — a tool is never imported by
 the packages it checks.
 
 Config would follow D2 and live in the consumer:
@@ -60,10 +60,10 @@ The value is the reason, per D3.
 
 ## Open questions
 
-- **Whose graph is gated?** `tgo` gates a named package because
+- **Whose graph is gated?** `forma` gates a named package because
   `llmdialect` is a stdlib-only subtree inside a larger module. Here the
   whole module should be small, so the unit may be the module rather than a
-  package list. Do not copy `tgo`'s shape without deciding this.
+  package list. Do not copy `forma`'s shape without deciding this.
 - **Does a second consumer want it?** D-nothing here says a gate must be
   shared before it is built, but `latere-ai/ci`'s own spec says to
   standardize a mechanism when a second repository actually wants it. This
@@ -85,7 +85,7 @@ The value is the reason, per D3.
 
 ## Outcome
 
-Shipped in `v0.4.0` as `lateregate depcheck`, ported from tgo's
+Shipped in `v0.4.0` as `lateregate depcheck`, ported from Forma's
 `internal/depcheck`, which is now deleted.
 
 All four criteria hold. The allowlist and the GOOS/GOARCH set are config, the
@@ -96,7 +96,7 @@ not build is reported as a build error rather than a violation.
 Two things the port settled:
 
 - **The open question about whose graph is gated resolved to the package.**
-  tgo gates two packages for two different reasons, and a module-level gate
+  Forma gates two packages for two different reasons, and a module-level gate
   could not have expressed that `tokenizer` may reach `x/text` while saying
   nothing about the rest of the module. The config is a map of package to
   allowlist, and each carries the decision that owns it.
@@ -104,7 +104,7 @@ Two things the port settled:
   reaches two modules. So the argument that this gate earns its place with one
   consumer did not have to be made.
 
-Verified against tgo's real build across ten platforms: the same two gated
+Verified against Forma's real build across ten platforms: the same two gated
 packages and the same result as the program it replaced, and removing one
 allowance fails.
 
@@ -115,7 +115,7 @@ That is the remaining work.
 
 ## Out of scope
 
-- Converting `tgo` to it. Its gate encodes decisions recorded in
-  `tgo/specs/010-conformance.md`.
+- Converting `forma` to it. Its gate encodes decisions recorded in
+  `forma/specs/010-conformance.md`.
 - Gating consumers' graphs. This is about protecting the claim in
   [[000-bootstrap]], not about policing what other repositories import.

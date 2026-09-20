@@ -167,7 +167,7 @@ func TestADanglingDependencyIsReported(t *testing.T) {
 // that repository, so a path is left alone rather than reported as dangling.
 func TestACrossRepoDependencyIsLeftAlone(t *testing.T) {
 	root := tree(t, map[string]string{
-		"001-a.md":  spec("draft", "depends_on:\n  - ../../tgo/specs/010-conformance.md"),
+		"001-a.md":  spec("draft", "depends_on:\n  - ../../forma/specs/010-conformance.md"),
 		"README.md": index("| 001 | [A](001-a.md) | draft | x |"),
 	})
 	if out, err := run(t, cfg(), root); err != nil {

@@ -169,7 +169,7 @@ the changelog package sits at 96.9% coverage.
 - The `release` target rule caught llmops, whose `make release` built and
   pushed runtime images. It is `make push-images` now: a release is a git
   tag with a section, and the name is that command's everywhere.
-- Five repositories (managed-agents, pay, platform, service-template, tgo)
+- Five repositories (managed-agents, pay, platform, service-template, Forma)
   had no committed pre-push at all, so the tag rule would have run only in
   CI there; the shared hook was committed in each. managed-agents still
   drifts on its caller, its restated defaults and its hand-rolled targets,

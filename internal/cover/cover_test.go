@@ -104,7 +104,7 @@ func TestAProfileCoveringNothingFails(t *testing.T) {
 	}
 }
 
-// The shape tgo was in at M0 and the one a new adopter hits first: every
+// The shape forma was in at M0 and the one a new adopter hits first: every
 // package exempt, nothing measured, and a gate reporting green forever.
 func TestAProfileWhereEverythingIsExemptFails(t *testing.T) {
 	c := cfg()

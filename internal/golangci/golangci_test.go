@@ -28,8 +28,8 @@ func mustRender(t *testing.T, module string, disable []string, sl *config.Slogli
 }
 
 func TestRenderCarriesTheModulePath(t *testing.T) {
-	got := mustRender(t, "github.com/latere-ai/tgo", nil, nil)
-	if !strings.Contains(got, "- github.com/latere-ai/tgo") {
+	got := mustRender(t, "latere.ai/x/forma", nil, nil)
+	if !strings.Contains(got, "- latere.ai/x/forma") {
 		t.Errorf("the module path is the one thing that differs per repo:\n%s", got)
 	}
 	if !strings.Contains(got, "Do not edit") {

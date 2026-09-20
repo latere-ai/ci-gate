@@ -333,7 +333,7 @@ var linkRe = regexp.MustCompile(`\[[^\]]*\]\(([^)]+\.md)\)`)
 // The rule that separates them is column order. An index row names the spec
 // and then gives its status, so the link comes before the Status column. A
 // legend row is about the status itself and mentions a spec afterwards. That
-// also allows a tree to split its index across several tables, which tgo does.
+// also allows a tree to split its index across several tables, which forma does.
 //
 // Archive rows are checked for membership and resolution, not for their status
 // cell. An index writes that cell as a location -- `archived (superseded)`
