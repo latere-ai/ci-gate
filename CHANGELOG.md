@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.46.0 - 2026-09-20
+
 ### Added
 
 - `json-bytes`, a check in the `postgres` gate: nothing binds a byte slice
