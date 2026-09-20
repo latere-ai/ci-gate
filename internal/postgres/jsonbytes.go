@@ -179,7 +179,7 @@ func (a *analyzer) run() []jsonBind {
 	// read once. The depth of this in the family is one; the bound is three
 	// because a fixed point that needs more than that is a shape nobody
 	// writes, and an unbounded loop over a cycle is not a thing to ship.
-	for pass := 0; pass < 3; pass++ {
+	for range 3 {
 		changed := false
 		for _, fn := range funcs {
 			if a.summarize(fn) {
@@ -280,7 +280,7 @@ func (a *analyzer) taint(fn *ast.FuncDecl) map[types.Object]bool {
 			*changed = true
 		}
 	}
-	for pass := 0; pass < 3; pass++ {
+	for range 3 {
 		changed := false
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
 			var lhs, rhs []ast.Expr
