@@ -351,11 +351,31 @@ Proved at the two commits where the answer was already known:
 | `platform` at `3873ff9^` | 9 | 12, the nine kept and the three struct binds in `internal/lux/event_postgres.go` added |
 
 Swept across every Go repository in the workspace at `origin/main`, with no
-load failure anywhere: 9 before, 19 after. One finding left, `insula`'s raw
-message. Eleven arrived, every one of them a value the driver holds no
-encoding for: a `map[string]string` bound to a labels column in `cella` three
-times and in `lux` three times, a list of a named identifier type in `arca`
-and in `insula`, and the rest of `lux`'s object labels. Nothing else moved.
+load failure anywhere: **10 before, 19 after, one removed and ten added**.
+
+| Tree | Before | After | Added | Removed |
+|---|---|---|---|---|
+| `arca` | 1 | 2 | 1 | 0 |
+| `cella` | 1 | 4 | 3 | 0 |
+| `eval` | 1 | 1 | 0 | 0 |
+| `insula` | 1 | 1 | 1 | 1 |
+| `lux` | 4 | 9 | 5 | 0 |
+| `pay` | 2 | 2 | 0 | 0 |
+
+The one removed is `insula`'s `json.RawMessage`. Every one of the ten added
+is a value the driver holds no encoding for: a `map[string]string` bound to a
+labels column, in `cella` three times and in `lux` four times, and a list of
+a named identifier type in `arca` and in `insula`. Nothing else moved.
+
+That count is not comparable with the one in the Outcome above it. The family
+repaired most of its own binds in the day between the two sweeps, so the
+earlier fifty-three and this ten are measurements of different trees;
+`auth`, `agents`, `llm-gateway`, `platform`, `replichai`, `sandbox` and
+`wallfacer` all report nothing now, and `drive` is no longer in the workspace
+at all.
+
+The `json-bytes` name no longer says what the check reports, since half of
+what it finds is not about json.
 
 The legitimate `bytea` binds stayed quiet, and so did the clock readings, the
 identifier types with a text method of their own, and the `[]string` bound to

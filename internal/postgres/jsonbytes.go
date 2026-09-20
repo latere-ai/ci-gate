@@ -729,13 +729,26 @@ func speaksText(t types.Type) bool {
 		}
 		basic, ok := sig.Results().At(0).Type().Underlying().(*types.Basic)
 		return ok && basic.Info()&types.IsString != 0
-	}) || hasMethod(t, "Value", twoWithError) || hasMethod(t, "TextValue", twoWithError)
+	}) || hasMethod(t, "Value", databaseValue) || hasMethod(t, "TextValue", twoWithError)
 }
 
 // twoWithError is the shape of a method that returns a value and an error.
 func twoWithError(sig *types.Signature) bool {
 	return sig.Params().Len() == 0 && sig.Results().Len() == 2 &&
 		types.Identical(sig.Results().At(1).Type(), types.Universe.Lookup("error").Type())
+}
+
+// databaseValue is the shape of the standard library's database value method,
+// whose first result is the empty interface and nothing narrower. A method of
+// the same name returning a concrete type is not that method, and the driver
+// does not read it, so a value carrying one is a shape nobody measured and is
+// reported rather than let through.
+func databaseValue(sig *types.Signature) bool {
+	if !twoWithError(sig) {
+		return false
+	}
+	iface, ok := sig.Results().At(0).Type().Underlying().(*types.Interface)
+	return ok && iface.NumMethods() == 0
 }
 
 // hasMethod reports whether a type or a pointer to it carries a method of

@@ -24,7 +24,9 @@ committed: the commit log already holds that.
   The rule now names what a json parameter **takes** instead of listing what
   it refuses, so a Go type nobody measured is reported rather than let
   through. A byte slice under any other name, a bool, a list and a clock
-  reading are refused, all four measured.
+  reading are refused, all four measured. A method named `Value` returning
+  something narrower than the standard library's database value is not that
+  method and is no longer read as one.
 
 ### Added
 
@@ -73,10 +75,11 @@ committed: the commit log already holds that.
 
   This one is not about the column: the driver's plan lookup never reads the
   column, so nothing in the statement and nothing in the value says json, and
-  the previous rule passed every instance of it. `platform` had three.
-  Across the family it finds eleven more that nobody had seen, a
-  `map[string]string` bound to a labels column in `cella` and `lux` among
-  them.
+  the previous rule passed every instance of it. `platform` had three. Across
+  the family at `origin/main` it finds ten more that nobody had seen, which
+  takes the fleet from 10 findings to 19: a `map[string]string` bound to a
+  labels column in `cella` three times and in `lux` four, and a list of a
+  named identifier type in `arca` and in `insula`.
 
 - `json-bytes` reads a helper whose declared result is `any`, by the concrete
   types it can return, and across the whole module rather than one package at

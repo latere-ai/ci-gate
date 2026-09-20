@@ -463,6 +463,13 @@ type Money struct{ Cents int64 }
 // Value is that database value.
 func (m Money) Value() (driver.Value, error) { return m.Cents, nil }
 
+// Counter has a method of the same name and a narrower result, which is not
+// the one the driver reads.
+type Counter struct{ N int64 }
+
+// Value is not the standard library's database value.
+func (c Counter) Value() (int64, error) { return c.N, nil }
+
 // Row is a plain Go struct, which is the shape platform bound to a jsonb
 // column three times.
 type Row struct {
@@ -502,6 +509,7 @@ func TestWhatAJSONParameterTakes(t *testing.T) {
 		{"a string under another name", "v Name", "v", ""},
 		{"a value with a text of its own", "v Stamp", "v", ""},
 		{"a value with a database value", "v Money", "v", ""},
+		{"a value whose database value is narrower", "v Counter", "v", "a Go struct"},
 		{"a number", "v int", "v", ""},
 		{"an untyped nil", "v int", "nil", ""},
 		{"a boolean", "v bool", "v", "a boolean"},
