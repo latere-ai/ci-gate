@@ -10,6 +10,88 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- `json-bytes`, a check in the `postgres` gate: nothing binds a byte slice
+  into a statement parameter the database reads as json.
+
+  ```
+  FAIL json-bytes   2 finding(s)
+    internal/store/registry.go:811: this binds a byte slice into parameter $6
+    and the statement casts that parameter to jsonb; ... bind a string, or a
+    pointer to string where a nil has to stay SQL NULL, and keep the byte
+    slice for a bytea column
+  ```
+
+  The pooled DSN carries `default_query_exec_mode=exec`, because a
+  transaction pooler hands the next transaction a different backend and pgx
+  cannot keep a prepared statement on the server. Exec mode also sends every
+  parameter in the text format, where a Go `[]byte` goes as `bytea` and
+  arrives as a hex literal. A hex literal is not json, so the statement
+  fails with SQLSTATE 22P02 against the pool and succeeds against the direct
+  endpoint, which is why no test on a direct connection can see it. `auth`
+  v0.37.0 deployed and crash-looped at start-up on two such parameters; a
+  hand audit of `agents` found nine more.
+
+  A `[]byte` bound to a `bytea` column is correct and is not reported. The
+  check asks what the value is and what the statement does with it, not what
+  its Go type is: a parameter is json when the statement casts it,
+  `$6::jsonb` or `CAST($6 AS json)`, or when the value is a json encoding,
+  which it is when it comes from `json.Marshal`, from any `MarshalJSON`, or
+  from a `json.RawMessage`. A conversion, a local variable of any declared
+  type, and a function of the same package all carry it, because all three
+  were how the real instances reached the statement.
+
+  A call is a statement when its name starts with `Exec` or `Query`, or is
+  `Queue`, and its signature takes the SQL as a string followed by the
+  variadic empty interface. No import path is matched, so a repository's own
+  `Querier` interface is read as one. Argument positions are mapped to `$n`,
+  so a finding names the parameter.
+
+  The check is in every role's row, `direct` and an absent block included: a
+  repository the failure is latent in is one that has not been pooled yet.
+  It reads types, so it runs a type-check, and only where the syntactic scan
+  found a statement-shaped call; a tree with none passes with that as its
+  reason, and a tree that has them and does not type-check is an error
+  naming what failed.
+
+  To adopt: a repository with findings binds a `string`, or a `*string`
+  where SQL NULL and the empty document have to stay apart. A sweep of the
+  organisation's Go repositories at this release reports binds in thirteen
+  of them.
+
+### Changed
+
+- A previous tag whose Release run went red no longer refuses the next cut.
+  It is printed instead, in the same shape a refusal uses, ending with the
+  `BUDGET`, `INFRA` or `CODE` line that names who acts:
+
+  ```
+  v0.37.0 rolled out red, and this cut is not refused on it
+    release #1201 failure, job "release / deploy"
+    https://github.com/latere-ai/auth/actions/runs/35458476040
+    CODE: fix and push, then cut again
+  ```
+
+  A Release run is a rollout, not a test of the repository: it builds an
+  image, deploys it, smokes the deployment and publishes the notes. A
+  failure in it is a fact about the tag before this one, and the tag being
+  cut is frequently the repair. Vetoing on it blocked `auth` v0.37.1, which
+  carried the fix for the crash-loop that reddened v0.37.0, and it has kept
+  `eval` unreleasable for two versions because its deployment is held at
+  zero replicas and its smoke fails at every tag.
+
+  What decides a cut is unchanged otherwise. Every workflow with a completed
+  run on the default branch over `prev..HEAD` must be green, a window in
+  which nothing has completed still refuses, and a previous tag whose
+  Release run concluded `success` while leaving no GitHub Release still
+  refuses. That last one is the case nobody can see, so it keeps its veto; a
+  red run that published nothing is that run's own visible consequence.
+
+  `-force-red` is unaffected and is now needed for fewer things, which is
+  the point: an escape hatch the ordinary path runs through stops meaning
+  anything.
+
 ## v0.45.0 - 2026-09-19
 
 ### Changed
