@@ -166,7 +166,7 @@ the changelog package sits at 96.9% coverage.
   worktree of `origin/main`; latere-ui and the two SDKs took a hand-written
   seed and a workflow edit; pkg lost its two scripts and its hook's own
   lines (acceptance 6).
-- The `release` target rule caught llmops, whose `make release` built and
+- The `release` target rule caught Fornax, whose `make release` built and
   pushed runtime images. It is `make push-images` now: a release is a git
   tag with a section, and the name is that command's everywhere.
 - Five repositories (managed-agents, pay, platform, service-template, Forma)

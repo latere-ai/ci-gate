@@ -42,7 +42,7 @@ from workflows into Makefiles rather than removing it.
 
 ## What the gates are for
 
-Three CI failures in one day in `llmops` shared one root cause: tests that
+Three CI failures in one day in `fornax` shared one root cause: tests that
 depended on what happened to be installed on the machine running them.
 `systemctl` was absent on macOS and present-but-unprivileged on a runner; a
 harness binary was on a developer's `PATH` and not on a runner's. Each
@@ -75,7 +75,7 @@ The reasoning behind each decision is [[001-gate-principles]].
 
 ## Outcome
 
-`v0.1.0` on 2026-08-29, `v0.2.0` the same day. `llmops` migrated as the
+`v0.1.0` on 2026-08-29, `v0.2.0` the same day. `fornax` migrated as the
 first consumer: its workflow went from 112 lines to 27, its two internal
 tools were deleted, and all ten pipeline jobs pass including macOS,
 cross-compile and validate. Its coverage now clears 90% in all eight
@@ -93,7 +93,7 @@ Two things the build changed:
   work — another public repository had been failing the same way and just
   as silently. `latere-ai/ci` is public now.
 
-Not done: the adoption ramp past `llmops`. Fifteen repositories need a
+Not done: the adoption ramp past `fornax`. Fifteen repositories need a
 caller and three one-line Makefile edits; `forma` keeps its own tools,
 because its spec linter also enforces layers, decision records and an
 outcome rule, which are conventions rather than hygiene.

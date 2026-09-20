@@ -140,7 +140,7 @@ hold it behind an exemption someone intends to retire.
 | `test-race` | 7 (auth, lectio, platform, latere-ai, replichai, sandbox, lux) |
 | `cover` | 8 (agents, drive, eval, lectio, platform, service-template, latere-cli, and the same seven overlap) |
 
-Four repositories -- topos, pay, llmops, Forma -- already hold the whole set.
+Four repositories -- topos, pay, Fornax, Forma -- already hold the whole set.
 Twenty-two adoptions across the other fourteen, not the fifty-odd a gate
 set drawn up without measuring would have asked for.
 

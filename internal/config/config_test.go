@@ -40,7 +40,7 @@ func TestLoadReadsEverySection(t *testing.T) {
 	dir := write(t, `
 cover:
   threshold: 85.5
-  trim_prefix: github.com/latere-ai/llmops/
+  trim_prefix: latere.ai/x/fornax/
   exempt:
     internal/harness: shells out to a real binary
 spec:
@@ -62,7 +62,7 @@ modernize:
 	if c.Cover.Threshold != 85.5 {
 		t.Errorf("threshold = %v", c.Cover.Threshold)
 	}
-	if why, ok := c.Cover.ExemptFor("github.com/latere-ai/llmops/internal/harness"); !ok || why == "" {
+	if why, ok := c.Cover.ExemptFor("latere.ai/x/fornax/internal/harness"); !ok || why == "" {
 		t.Errorf("ExemptFor = %q, %v; want the reason", why, ok)
 	}
 	if !c.Spec.Wikilinks || c.Spec.Index != "specs/README.md" {

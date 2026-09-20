@@ -100,7 +100,7 @@ Two things the port settled:
   could not have expressed that `tokenizer` may reach `x/text` while saying
   nothing about the rest of the module. The config is a map of package to
   allowlist, and each carries the decision that owns it.
-- **The second consumer arrived immediately.** llmops gates its CLI, which
+- **The second consumer arrived immediately.** Fornax gates its CLI, which
   reaches two modules. So the argument that this gate earns its place with one
   consumer did not have to be made.
 
