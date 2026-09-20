@@ -66,7 +66,7 @@ func ruleAudience(t *tree) (result, error) {
 			switch {
 			case strings.TrimSpace(value) == "":
 				found = append(found, at(m.rel, m.lineOf("name", name), noAudienceValueSentence, name))
-			case strings.HasPrefix(value, "http"), strings.Contains(value, ",http"), strings.Contains(value, ", http"):
+			case address(value):
 				found = append(found, at(m.rel, m.lineOf("name", name), addressAsAudienceSentence))
 			default:
 				set[c.name] = true
@@ -106,6 +106,14 @@ const noAudienceValueSentence = "the %s of this container is empty, so it would 
 
 const addressAsAudienceSentence = "this container names an address as its audience; the audience is " +
 	"the name this repository answers to, not the address of the issuer"
+
+// address reports whether a value names an address where a name belongs. It
+// is one test rather than two, so the rule that reports it and the rule that
+// leaves it alone read one definition.
+func address(value string) bool {
+	return strings.HasPrefix(value, "http") ||
+		strings.Contains(value, ",http") || strings.Contains(value, ", http")
+}
 
 // ruleBearers holds every cross-service credential to one endpoint, and
 // keeps an internal route inside the cluster.
@@ -242,16 +250,64 @@ func secretRef(e map[string]any) string {
 	return name + "/" + key
 }
 
-// containers lists every container of every document in a manifest, the init
-// containers first: a container that verifies a token before the workload
-// starts is a container of the deployment like any other.
-func (m manifest) containers() []container {
-	var out []container
+// workload is one container of one deployment document, carrying the name
+// the document is written under. A reaper beside a server runs the same
+// container name under another workload and is configured on its own, so a
+// rule that holds each deployment reads the pair and not the container name
+// alone.
+type workload struct {
+	container
+	doc string
+}
+
+// workloadKey identifies one container of one document across the files
+// that patch it.
+type workloadKey struct{ doc, container string }
+
+func (w workload) key() workloadKey { return workloadKey{doc: w.doc, container: w.name} }
+
+// workloads lists every container of every document in a manifest with the
+// document it is declared in, the init containers first: a container that
+// verifies a token before the workload starts is a container of the
+// deployment like any other.
+func (m manifest) workloads() []workload {
+	var out []workload
 	for _, doc := range m.docs {
+		name := documentName(doc)
 		walkYAML(doc, func(node map[string]any) {
-			out = append(out, listed(node, "initContainers", true)...)
-			out = append(out, listed(node, "containers", false)...)
+			for _, c := range listed(node, "initContainers", true) {
+				out = append(out, workload{container: c, doc: name})
+			}
+			for _, c := range listed(node, "containers", false) {
+				out = append(out, workload{container: c, doc: name})
+			}
 		})
+	}
+	return out
+}
+
+// documentName is the name a deployment document is written under, which is
+// what an overlay's patch merges on.
+func documentName(doc any) string {
+	node, ok := doc.(map[string]any)
+	if !ok {
+		return ""
+	}
+	meta, ok := node["metadata"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	name, _ := meta["name"].(string)
+	return name
+}
+
+// containers lists every container of every document in a manifest, for the
+// rules that hold a container wherever it is declared.
+func (m manifest) containers() []container {
+	ws := m.workloads()
+	out := make([]container, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, w.container)
 	}
 	return out
 }
@@ -279,15 +335,25 @@ func listed(node map[string]any, key string, init bool) []container {
 // included: the ones whose image is a command it builds, and, among those,
 // the init containers configured as the workload is.
 func (m manifest) own(binaries []string, named map[string]bool, prefix string) []container {
-	var out []container
-	for _, c := range m.containers() {
-		if !runs(c, binaries, named) {
+	ws := m.ownWorkloads(binaries, named, prefix)
+	out := make([]container, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, w.container)
+	}
+	return out
+}
+
+// ownWorkloads is own with the document each container is declared in.
+func (m manifest) ownWorkloads(binaries []string, named map[string]bool, prefix string) []workload {
+	var out []workload
+	for _, w := range m.workloads() {
+		if !runs(w.container, binaries, named) {
 			continue
 		}
-		if c.init && !c.declares(prefix) {
+		if w.init && !w.declares(prefix) {
 			continue
 		}
-		out = append(out, c)
+		out = append(out, w)
 	}
 	return out
 }

@@ -340,6 +340,55 @@ func ruleCases(core, service, client, settledService config.Identity) []ruleCase
 		bad:  builds(map[string]string{"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_AUDIENCE\n          value: https://auth.example.com\n")}),
 		good: builds(map[string]string{"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_AUDIENCE\n          value: cella\n")}),
 	}, {
+		// The family accepts two audiences at an open core, its own name and
+		// the origin: a script holding a platform key calls the origin
+		// directly and the core it reaches asks the authorizer.
+		name: "the hosted overlay names this core's name and the origin",
+		rule: "core-audiences", cfg: withOverlay(core),
+		bad: builds(map[string]string{
+			"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+			"deploy/prod/app.yaml": patchFile(publicURLEnv),
+		}),
+		good: builds(map[string]string{
+			"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+			"deploy/prod/app.yaml": patchFile(audienceEnv("cella,api.latere.ai")),
+		}),
+	}, {
+		name: "two audiences and no third",
+		rule: "core-audiences", cfg: withOverlay(core),
+		bad: builds(map[string]string{
+			"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+			"deploy/prod/app.yaml": patchFile(audienceEnv("cella,api.latere.ai,drive")),
+		}),
+		good: builds(map[string]string{
+			"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+			"deploy/prod/app.yaml": patchFile(audienceEnv("cella,api.latere.ai")),
+		}),
+	}, {
+		name: "the two audiences are two names, not one written twice",
+		rule: "core-audiences", cfg: withOverlay(core),
+		bad: builds(map[string]string{
+			"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+			"deploy/prod/app.yaml": patchFile(audienceEnv("cella,cella")),
+		}),
+		good: builds(map[string]string{
+			"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+			"deploy/prod/app.yaml": patchFile(audienceEnv("cella,api.latere.ai")),
+		}),
+	}, {
+		// A hosted plane's own name is one the origin retires by a cutover.
+		// Neither it nor any other third name is one of the two.
+		name: "a hosted plane's name is neither of the two",
+		rule: "core-audiences", cfg: withOverlay(core),
+		bad: builds(map[string]string{
+			"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+			"deploy/prod/app.yaml": patchFile(audienceEnv("lux.latere.ai,api.latere.ai")),
+		}),
+		good: builds(map[string]string{
+			"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+			"deploy/prod/app.yaml": patchFile(audienceEnv("cella,api.latere.ai")),
+		}),
+	}, {
 		name: "a credential per endpoint",
 		rule: "bearers", cfg: core,
 		bad: map[string]string{"deploy/base/app.yaml": deployment(
@@ -471,6 +520,58 @@ func withRolesOnly(cfg config.Identity) config.Identity {
 func withImage(cfg config.Identity, image string) config.Identity {
 	cfg.Image = image
 	return cfg
+}
+
+// withOverlay declares the directory the hosted installation deploys from,
+// which is what the core-audiences rule reads.
+func withOverlay(cfg config.Identity) config.Identity {
+	cfg.Overlays = []string{"deploy/prod"}
+	return cfg
+}
+
+// audienceEnv is the audience entry of a core under the fixture's prefix.
+func audienceEnv(value string) string {
+	return "        - name: CELLA_OIDC_AUDIENCE\n          value: " + value + "\n"
+}
+
+// publicURLEnv is an overlay patching something other than the audience,
+// which is the shape of an overlay that leaves the audience to the base.
+const publicURLEnv = "        - name: CELLA_PUBLIC_URL\n          value: https://cella.example.com\n"
+
+// authorizerEnv is a second entry an overlay patches, for the fixture where
+// two files of one overlay patch one deployment.
+const authorizerEnv = "        - name: CELLA_AUTHORIZER_URL\n" +
+	"          value: http://authz-internal.example.svc/internal/cella/authorize\n"
+
+// patchFile renders an overlay's patch of the deployment fixture's workload:
+// the same workload and container name, carrying no image, which is what
+// kustomize merges into the base.
+func patchFile(env string) string { return workloadDoc("app", "", env) }
+
+// workloadDoc renders one deployment document under a name of its own. An
+// empty image is a patch of a container declared elsewhere.
+func workloadDoc(name, image, env string) string {
+	body := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: " + name +
+		"\nspec:\n  template:\n    spec:\n      containers:\n      - name: app\n"
+	if image != "" {
+		body += "        image: " + image + "\n"
+	}
+	if env != "" {
+		body += "        env:\n" + env
+	}
+	return body
+}
+
+// twoWorkloads is a server and a reaper built from one image: one container
+// name under two workload names, each configured on its own.
+func twoWorkloads(env string) string {
+	return workloadDoc("app", "registry.example.com/app:1", env) + "---\n" +
+		workloadDoc("app-reaper", "registry.example.com/app:1", env)
+}
+
+// twoPatches patches both of them, the way one file of an overlay does.
+func twoPatches(env string) string {
+	return workloadDoc("app", "", env) + "---\n" + workloadDoc("app-reaper", "", env)
 }
 
 func fmtClaims(field string) string { return strings.Replace(claimsFile, "%s", field, 1) }
@@ -933,6 +1034,174 @@ func TestADeclaredOverlayMustBeInTheTree(t *testing.T) {
 	}
 }
 
+// A core that declares no hosted deployment overlay is held to nothing here
+// and says so: lux and cella hold overlays for a cluster and for a fork, and
+// neither is a hosted installation.
+func TestACoreWithNoOverlayReportsWhy(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA",
+		APIGroup: "cella.latere.ai"}
+	out, _ := run(t, core, repo(t, builds(map[string]string{
+		"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+	})), noHistory())
+	line := ruleLine(out, "core-audiences")
+	if !strings.HasPrefix(line, "SKIP") || !strings.Contains(line, "overlay") {
+		t.Fatalf("a core with no declared overlay says why the rule did not run:\n%s", out)
+	}
+}
+
+// arca and origo name one directory under skip and under overlays. The walk
+// prunes it, and the rule about the hosted deployment still reads it:
+// overlays is the positive declaration, this directory is the hosted
+// deployment, and skip the negative one, assert nothing here.
+func TestTheDeclaredOverlayIsReadThoughItIsSkipped(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA",
+		APIGroup: "cella.latere.ai", Overlays: []string{"deploy/prod"}, Skip: []string{"deploy/prod"}}
+
+	out, _ := run(t, core, repo(t, builds(map[string]string{
+		"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+		"deploy/prod/app.yaml": patchFile(audienceEnv("cella,api.latere.ai")),
+	})), noHistory())
+	if !strings.Contains(out, "PASS core-audiences") {
+		t.Fatalf("the declared overlay is read although skip names the same path:\n%s", out)
+	}
+
+	out, err := run(t, core, repo(t, builds(map[string]string{
+		"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+		"deploy/prod/app.yaml": patchFile(publicURLEnv),
+	})), noHistory())
+	if err == nil || !strings.Contains(out, "FAIL core-audiences") {
+		t.Fatalf("an overlay that patches no audience runs the base's one name (%v):\n%s", err, out)
+	}
+	if !strings.Contains(out, "deploy/prod/app.yaml:") {
+		t.Errorf("the finding is at the patch, the file the second name goes in:\n%s", out)
+	}
+}
+
+// Every file of one overlay patches one deployment, so a container two files
+// patch is one verdict and not two. This is arca's shape: a server and a
+// reaper, each patched by the authorizer file and by the public-url file,
+// and neither patch naming an audience.
+func TestOneFindingPerWorkloadTheOverlayPatches(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA",
+		APIGroup: "cella.latere.ai", Overlays: []string{"deploy/prod"}, Skip: []string{"deploy/prod"}}
+	out, err := run(t, core, repo(t, builds(map[string]string{
+		"deploy/base/app.yaml":        twoWorkloads(audienceEnv("cella")),
+		"deploy/prod/authorizer.yaml": twoPatches(authorizerEnv),
+		"deploy/prod/public-url.yaml": twoPatches(publicURLEnv),
+	})), noHistory())
+	if err == nil {
+		t.Fatalf("two workloads left at the core's own name are two findings:\n%s", out)
+	}
+	if line := ruleLine(out, "core-audiences"); !strings.Contains(line, "2 finding(s)") {
+		t.Fatalf("one finding per workload the overlay patches, whatever number of files patch it:\n%s", out)
+	}
+	if n := strings.Count(out, "leaves the audience of container"); n != 2 {
+		t.Errorf("want 2 findings, one per workload, got %d:\n%s", n, out)
+	}
+	if !strings.Contains(out, `container "app" of "app-reaper"`) {
+		t.Errorf("a reaper beside a server runs the same container name and is held too:\n%s", out)
+	}
+}
+
+// What the rule reports when the overlay names one audience, and when there
+// is nothing in it for the rule to read. None of the four is a pass: a rule
+// that passes over an overlay it could not read reports green as the tree
+// fills up.
+func TestTheHostedOverlayIsReadOrTheReasonIsPrinted(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA",
+		APIGroup: "cella.latere.ai", Overlays: []string{"deploy/prod"}, Skip: []string{"deploy/prod"}}
+	for _, c := range []struct{ name, base, patch, want, says string }{{
+		name:  "the origin alone is one name where two belong",
+		patch: patchFile(audienceEnv("api.latere.ai")),
+		want:  "FAIL", says: "lists 1 name",
+	}, {
+		name:  "an overlay that patches no container this repository builds",
+		patch: overlayIngress,
+		want:  "SKIP", says: "patches no container",
+	}, {
+		name:  "an overlay file nothing can parse",
+		patch: "kind: Deployment\n\tname: broken\n",
+		want:  "FAIL", says: "does not parse",
+	}, {
+		name: "neither file names an audience, which the audience rule reports",
+		base: deployment(""), patch: patchFile(publicURLEnv),
+		want: "SKIP", says: "names an audience",
+	}} {
+		t.Run(c.name, func(t *testing.T) {
+			base := c.base
+			if base == "" {
+				base = deployment(audienceEnv("cella"))
+			}
+			out, _ := run(t, core, repo(t, builds(map[string]string{
+				"deploy/base/app.yaml": base,
+				"deploy/prod/app.yaml": c.patch,
+			})), noHistory())
+			line := ruleLine(out, "core-audiences")
+			if !strings.HasPrefix(line, c.want) || !strings.Contains(out, c.says) {
+				t.Fatalf("want %s saying %q:\n%s", c.want, c.says, out)
+			}
+		})
+	}
+}
+
+// An address where a name belongs is the audience rule's finding, and this
+// rule does not report it a second time.
+func TestAnAddressInTheOverlayIsTheAudienceRulesFinding(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA",
+		APIGroup: "cella.latere.ai", Overlays: []string{"deploy/prod"}}
+	out, err := run(t, core, repo(t, builds(map[string]string{
+		"deploy/base/app.yaml": twoWorkloads(audienceEnv("cella")),
+		"deploy/prod/app.yaml": workloadDoc("app", "", audienceEnv("https://api.latere.ai")) + "---\n" +
+			workloadDoc("app-reaper", "", audienceEnv("cella,api.latere.ai")),
+	})), noHistory())
+	if err == nil || !strings.Contains(out, "FAIL audience") {
+		t.Fatalf("an address where a name belongs is the audience rule's finding (%v):\n%s", err, out)
+	}
+	if !strings.Contains(out, "PASS core-audiences") {
+		t.Fatalf("the rule reads the second workload and reports the address nowhere:\n%s", out)
+	}
+}
+
+// The rule runs for a core and for nothing else: a service verifies its own
+// name alone, and the hosted planes are role service.
+func TestOnlyACoreNamesTwoAudiences(t *testing.T) {
+	service := config.Identity{Role: config.RoleService, Audience: "drive",
+		Overlays: nil}
+	out, _ := run(t, service, repo(t, builds(map[string]string{
+		"deploy/base/app.yaml": deployment("        - name: AUTH_AUDIENCE\n          value: drive\n"),
+	})), noHistory())
+	if strings.Contains(out, "core-audiences") {
+		t.Fatalf("the rule is a core's and runs nowhere else:\n%s", out)
+	}
+}
+
+// The rule is waived per rule and per date like the others, which is what
+// carries a core from the day the rule lands to the day its overlay names
+// both audiences.
+func TestCoreAudiencesIsWaivedLikeTheOtherRules(t *testing.T) {
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA",
+		APIGroup: "cella.latere.ai", Overlays: []string{"deploy/prod"},
+		Waive: map[string]config.Waiver{"core-audiences": {
+			Until: "2026-12-31", Reason: "the overlay names both with the core's own spec"}}}
+	root := repo(t, builds(map[string]string{
+		"deploy/base/app.yaml": deployment(audienceEnv("cella")),
+		"deploy/prod/app.yaml": patchFile(publicURLEnv),
+	}))
+	out, _ := run(t, core, root, noHistory())
+	if !strings.Contains(out, "WAIV core-audiences") || !strings.Contains(out, "1 finding(s)") {
+		t.Fatalf("the waived rule reports under WAIV with its count:\n%s", out)
+	}
+	if strings.Contains(out, "FAIL core-audiences") {
+		t.Fatalf("a waived rule must not fail:\n%s", out)
+	}
+	expired := core
+	expired.Waive = map[string]config.Waiver{"core-audiences": {Until: "2026-09-12", Reason: "yesterday"}}
+	out, err := run(t, expired, root, noHistory())
+	if err == nil || !strings.Contains(out, "FAIL core-audiences") {
+		t.Fatalf("past its date the waiver stops working (%v):\n%s", err, out)
+	}
+}
+
 // A document inside an archive records what was once true, so it is not a
 // description of the system that exists.
 func TestArchivedDocumentsAreNotDescriptions(t *testing.T) {
@@ -1269,6 +1538,14 @@ func TestWaiverMustNameARuleTheRoleRuns(t *testing.T) {
 		Waive: map[string]config.Waiver{"claims": {Until: "2026-12-31", Reason: "a core rule on a service"}}}
 	if _, err := run(t, idle, root, noHistory()); err == nil || !strings.Contains(err.Error(), "does not run") {
 		t.Fatalf("a waiver for a rule the role does not run must be refused: %v", err)
+	}
+	// The two audiences are a core's, so a service waiving them waives
+	// nothing, and the gate refuses the entry rather than reading it as a
+	// name it does not know.
+	planes := config.Identity{Role: config.RoleService, Audience: "lux.latere.ai",
+		Waive: map[string]config.Waiver{"core-audiences": {Until: "2026-12-31", Reason: "a core rule on a plane"}}}
+	if _, err := run(t, planes, root, noHistory()); err == nil || !strings.Contains(err.Error(), "does not run") {
+		t.Fatalf("a hosted plane cannot waive a core's rule: %v", err)
 	}
 }
 

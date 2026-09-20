@@ -1,6 +1,6 @@
 ---
 title: A core names two audiences, its own name and the origin
-status: draft
+status: partial
 depends_on:
   - 019-identity-gate.md
 affects:
@@ -198,3 +198,40 @@ container heuristic this rule reuses; [[001-gate-principles]] is why a core
 with no overlay reports `SKIP` with a reason rather than passing. Nothing here
 blocks it, and the family's arca 027, origo 029 and lux 024 close the waivers
 it opens.
+
+## State on 2026-09-20
+
+Status `partial`: every criterion of this spec holds in the product, and the one open item is inherited, 019 (the identity gate this rule belongs to) is itself `partial`, so this row cannot read `complete` before it does.
+
+Shipped as recommended: option B for the manifest, `identity.audience` for
+the name, and a row of its own rather than the `audience` rule extended.
+
+`ruleCoreAudiences` and its sentences are `internal/identity/audiences.go`;
+`scan` fills `overlayManifests` in the pass that already reads the declared
+overlays, so the rule reads them although `skip` names the same path;
+`deploy.go` gained `workloads` and `ownWorkloads`, which carry the document's
+name beside the container's, and `containers` and `own` are now those two
+mapped down, so the deployment rules read one walk and not two. The address
+test `audience` applies is one function both rules call.
+
+Every file of one overlay patches one deployment, so the effective value is
+collected per workload across the overlay's files and judged once: arca's two
+patch files naming one container are one finding per workload and not one per
+file. `TestOneFindingPerWorkloadTheOverlayPatches` holds that shape.
+
+The verdicts, read by running the gate against the two trees at
+2026-09-20T16:13Z, while arca 027 and origo 029 were being implemented in
+those working trees:
+
+| Repo | Verdict | What it read |
+|---|---|---|
+| arca | FAIL, two findings | `deploy/prod` still patches no audience, so both workloads run the base's `arca` alone. The findings name `container "arcad"` and `container "arcad" of "arcad-reaper"`, at `deploy/prod/authorizer.yaml` |
+| origo | PASS, two containers | origo 029 had already written `deploy/prod/audience.yaml`, naming `origo,api.latere.ai` on `origod` and on the `check` init container, so the rule reads both and holds. The file was untracked at the time of the run, so the same gate over `origin/main` still reads `FAIL` until 029 commits |
+
+The table above this section predicted `FAIL` for origo, which was true of the
+tree the spec was written against. Origo flipped while this rule was being
+built, which is the rollout working rather than a disagreement: step 3 closed
+there before step 1 released.
+
+Steps 2 to 4 of the rollout are the other repositories'. Nothing here is
+waived: this repository is role `none` and runs no rule of the shape.

@@ -795,6 +795,7 @@ why a file stopped reading a flag is not a use of it.
 | `delegation` | all but none | `grantor_id`, `tokens/exchange`, `RFC 8693`, `actor: true` anywhere; `act`, `agent_id`, `actor_id` as a JSON key or a struct tag where they are a token claim |
 | `roles` | all but none | `is_superadmin`, `IsSuperadmin` or `isSuperadmin`, in a Go file, a document, a manifest or a frontend source, once the block sets `roles_only: true` |
 | `audience` | core, service, platform | a container that runs this repository and, across its base and overlays, sets no `<PREFIX>_OIDC_AUDIENCE`, or `AUTH_AUDIENCE` or `AUTH_AUDIENCES` for a service, to a name that is not an address |
+| `core-audiences` | core | a container the declared `overlays` patch whose audience, the overlay's where it patches one and the base's otherwise, is not exactly `audience` and `api.latere.ai`: the core's own name alone, a third name, a wrong count, or one name twice. A core that declares no overlay reports `SKIP`, and an address stays the `audience` rule's finding |
 | `bearers` | issuer, platform, core | two variables of one container reading one secret key; a host serving `/internal/` behind a public path |
 | `no-latere-value` | core | `latere.ai` or `latere.svc` in code, a manifest or a user document, outside `api_group`, the `latere.ai/x/` module namespace, a contact address and what `overlays` declares; `specs/` is the contributor's record and is not read |
 | `client-audiences` | client | a product audience in `audiences` that no file presents, or that two files present |

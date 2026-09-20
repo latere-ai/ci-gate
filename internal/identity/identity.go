@@ -92,6 +92,7 @@ var rules = []rule{
 	{name: "delegation", roles: integrating, run: ruleDelegation},
 	{name: "roles", roles: integrating, run: ruleRoles},
 	{name: "audience", roles: []config.Role{config.RoleCore, config.RoleService, config.RolePlatform}, run: ruleAudience},
+	{name: "core-audiences", roles: []config.Role{config.RoleCore}, run: ruleCoreAudiences},
 	{name: "bearers", roles: []config.Role{config.RoleIssuer, config.RolePlatform, config.RoleCore}, run: ruleBearers},
 	{name: "no-latere-value", roles: []config.Role{config.RoleCore}, run: ruleNoCompanyValue},
 	{name: "client-audiences", roles: []config.Role{config.RoleClient}, run: ruleClientAudiences},

@@ -85,6 +85,11 @@ type tree struct {
 	// the overlays themselves so the exemption is a declaration rather than
 	// a list of names beside the tree.
 	overlayHosts map[string]bool
+	// overlayManifests are the declared overlays read as deployment
+	// documents. A repository that declares one usually skips it as well, so
+	// the walk never reads those files; the rule about the hosted deployment
+	// reads what the repository declared as one.
+	overlayManifests []manifest
 	// module is the module path of the tree, which is how a repository says
 	// it is the shared package rather than one of its callers.
 	module string
@@ -156,11 +161,17 @@ func (t *tree) checkEnvelopeExempt() error {
 	return nil
 }
 
-// readOverlays collects the addresses each declared overlay carries.
+// readOverlays collects the addresses each declared overlay carries, and
+// the deployment documents it holds.
 //
 // The overlays are read here and not by the walk, because a repository that
 // declares one usually skips it as well, and a value the rules exempt must
 // come from the file that sets it rather than from a name written beside it.
+// The documents are read for the same reason: overlays is the positive
+// declaration, this directory is the hosted deployment, and skip the
+// negative one, assert nothing here, so the rule about the hosted deployment
+// reads the files the repository declared as one.
+//
 // A declared path the tree does not hold stops the run: an exemption that
 // matches nothing hides a typo, and a typo that lowers the bar is the
 // failure this binary is against.
@@ -180,11 +191,18 @@ func (t *tree) readOverlays() error {
 			if d.IsDir() {
 				return nil
 			}
-			body, readErr := os.ReadFile(fp)
+			fileRel, relErr := filepath.Rel(t.root, fp)
+			if relErr != nil {
+				return relErr
+			}
+			s, readErr := read(fp, filepath.ToSlash(fileRel))
 			if readErr != nil {
 				return readErr
 			}
-			for line := range strings.SplitSeq(string(body), "\n") {
+			if yamlFile(d.Name()) {
+				t.overlayManifests = append(t.overlayManifests, parseManifest(s))
+			}
+			for line := range strings.SplitSeq(s.text, "\n") {
 				for _, h := range hosts(setting(line)) {
 					t.overlayHosts[h] = true
 				}
@@ -250,9 +268,12 @@ func archived(rel string) bool {
 
 // isManifest reports whether a file is a deployment document.
 func isManifest(rel, name string) bool {
-	if !strings.HasPrefix(rel, deployDir+"/") {
-		return false
-	}
+	return strings.HasPrefix(rel, deployDir+"/") && yamlFile(name)
+}
+
+// yamlFile reports whether a file is written in YAML, under either spelling
+// of the extension.
+func yamlFile(name string) bool {
 	return strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml")
 }
 
@@ -463,6 +484,14 @@ func (t *tree) readManifest(p, rel string) error {
 	if err != nil {
 		return err
 	}
+	t.manifests = append(t.manifests, parseManifest(s))
+	return nil
+}
+
+// parseManifest decodes the documents of one deployment file. A file the
+// decoder stopped on carries the error rather than losing it: a manifest
+// nothing could read is a manifest nothing checked.
+func parseManifest(s sourceFile) manifest {
 	m := manifest{sourceFile: s}
 	dec := yaml.NewDecoder(strings.NewReader(s.text))
 	for {
@@ -477,8 +506,7 @@ func (t *tree) readManifest(p, rel string) error {
 		}
 		m.docs = append(m.docs, doc)
 	}
-	t.manifests = append(t.manifests, m)
-	return nil
+	return m
 }
 
 // commands lists the binaries a repository builds. A container whose image

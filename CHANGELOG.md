@@ -28,6 +28,33 @@ committed: the commit log already holds that.
 
 ### Added
 
+- `identity` gains `core-audiences`, a rule for role `core`. The deployment a
+  repository declares under `identity.overlays` names exactly two audiences,
+  the core's own `identity.audience` and `api.latere.ai`. A script holding a
+  platform key calls the origin directly and the core it reaches asks the
+  authorizer, so a core that accepts its own name alone stops a token
+  addressed to the origin.
+
+  The value read is the one kustomize merges: the overlay's where the overlay
+  patches it, the base's otherwise, keyed by the workload beside the
+  container, so a reconciler standing next to a server is held on its own and
+  two files patching one container are one verdict. The declared overlay is
+  read even where `skip` names the same path, because `overlays` is the
+  positive declaration, this directory is the hosted deployment. A core that
+  declares no overlay reports `SKIP` with its reason, and an address where a
+  name belongs stays the `audience` rule's finding rather than being reported
+  twice.
+
+  ```
+  FAIL core-audiences    2 finding(s)
+    deploy/prod/authorizer.yaml:19: the hosted overlay leaves the audience of
+    container "arcad" at this repository's own name, so a token addressed to
+    api.latere.ai stops here; name both, separated by a comma
+  ```
+
+  A repository behind on it waives `core-audiences` with a date and a reason,
+  like any other rule of the gate.
+
 - `json-bytes` reports a value the driver holds no encoding for at all, at any
   parameter. A Go struct, a Go map, or a list of a repository's own named type
   fails harder than a byte slice does: the driver picks the wire encoding from
