@@ -410,7 +410,7 @@ func (a *analyzer) statements(fn *ast.FuncDecl, tainted map[types.Object]bool) [
 			if hasCast && !isJSONCast(cast) {
 				continue
 			}
-			why := ""
+			var why string
 			switch {
 			case a.jsonBytes(arg, tainted):
 				why = "the value is a json encoding"
@@ -442,7 +442,7 @@ func (a *analyzer) statements(fn *ast.FuncDecl, tainted map[types.Object]bool) [
 // Nothing here matches an import path, so a repository's own Querier
 // interface and its test double are read as what they are.
 func (a *analyzer) queryArgs(call *ast.CallExpr) (int, bool) {
-	name := ""
+	var name string
 	switch fun := ast.Unparen(call.Fun).(type) {
 	case *ast.Ident:
 		name = fun.Name
@@ -598,7 +598,7 @@ func hasQueryCall(file *ast.File) bool {
 		if !ok {
 			return true
 		}
-		name := ""
+		var name string
 		switch fun := ast.Unparen(call.Fun).(type) {
 		case *ast.Ident:
 			name = fun.Name
