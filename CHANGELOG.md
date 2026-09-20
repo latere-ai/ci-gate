@@ -10,6 +10,53 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- `json-bytes` no longer reports `json.RawMessage`. pgx registers that type to
+  the json column type and sends it correctly, so the finding was noise:
+  seven of the nine it reported in `llm-gateway` and one of `insula`'s were
+  this, and a check that is mostly noise gets waived and then guards nothing.
+  A pointer to one, a string under any name, a value with a text or a
+  database value of its own, a number and an untyped nil are accepted for the
+  same reason, each of them measured against a server with parameters sent in
+  the text format rather than reasoned about.
+
+  The rule now names what a json parameter **takes** instead of listing what
+  it refuses, so a Go type nobody measured is reported rather than let
+  through. A byte slice under any other name, a bool, a list and a clock
+  reading are refused, all four measured.
+
+### Added
+
+- `json-bytes` reports a value the driver holds no encoding for at all, at any
+  parameter. A Go struct, a Go map, or a list of a repository's own named type
+  fails harder than a byte slice does: the driver picks the wire encoding from
+  the Go type alone when the server has described nothing, holds no encoding
+  for those, and fails with `cannot find encode plan` before the statement is
+  sent.
+
+  ```
+  FAIL json-bytes   1 finding(s)
+    internal/lux/event_postgres.go:46: this binds a Go struct into parameter
+    $5; the pooled endpoint runs in exec mode, where the server describes no
+    parameter and the driver picks the wire encoding from the Go type alone,
+    and it holds no encoding for that type, ... encode the value and bind the
+    encoding as a string
+  ```
+
+  This one is not about the column: the driver's plan lookup never reads the
+  column, so nothing in the statement and nothing in the value says json, and
+  the previous rule passed every instance of it. `platform` had three.
+  Across the family it finds eleven more that nobody had seen, a
+  `map[string]string` bound to a labels column in `cella` and `lux` among
+  them.
+
+- `json-bytes` reads a helper whose declared result is `any`, by the concrete
+  types it can return, and across the whole module rather than one package at
+  a time. `llm-gateway` laundered six binds through one such helper an import
+  away from every statement that bound it. A value whose concrete type is out
+  of reach is still reported as nothing.
+
 ## v0.46.0 - 2026-09-20
 
 ### Added

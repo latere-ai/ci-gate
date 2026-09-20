@@ -1012,6 +1012,55 @@ an absent block as drift, because the gate decides an absent block from the
 imports and one question has one authority. `init` writes no block: the role
 is a decision.
 
+One check of this gate runs under every role, the absent one included.
+`json-bytes` reads types rather than import strings, and reports a value a
+statement cannot carry into its parameter:
+
+```
+FAIL json-bytes   2 finding(s)
+  internal/store/registry.go:811: this binds a byte slice into parameter $6
+  and the statement casts that parameter to jsonb; ... bind a string, or a
+  pointer to string where a nil has to stay SQL NULL, and keep the byte
+  slice for a bytea column
+  internal/lux/event_postgres.go:46: this binds a Go struct into parameter
+  $5; ... the driver picks the wire encoding from the Go type alone, and it
+  holds no encoding for that type ... encode the value and bind the encoding
+  as a string
+```
+
+The pooled DSN carries `default_query_exec_mode=exec`, because a transaction
+pooler hands the next transaction a different backend and pgx cannot keep a
+prepared statement on the server. In that mode the server describes no
+parameter, so the driver picks the wire encoding from the Go type alone and
+sends every parameter in the text format. Two things go wrong there, and an
+endpoint that describes the statement first hides both, which is why no test
+on a direct connection sees either.
+
+A `[]byte` goes as `bytea` and arrives as a hex literal, which a json column
+refuses with SQLSTATE 22P02. On a parameter something says is json, the check
+names what is accepted rather than what is refused: a string under any name,
+a pointer to one, `json.RawMessage`, a value with a text or a database value
+of its own, a number, and an untyped nil. Everything else is reported, so a
+Go type nobody measured is a finding rather than a silence. A parameter is
+json when the statement casts it, `$6::jsonb` or `CAST($6 AS json)`, or when
+the value is a json encoding: a marshaller's result, any `MarshalJSON`, or a
+raw message, followed through conversions, locals, and the module's own
+helpers including those whose declared result is `any`.
+
+A Go struct, a Go map, or a list of a repository's own named type has no
+encoding at all, and the call fails in the driver with `cannot find encode
+plan` before the statement is sent. That one is reported at any parameter,
+because the driver's plan lookup reads the Go type and never the column.
+
+A `[]byte` bound to a `bytea` column is correct and is never reported, and
+neither is a clock reading, an identifier type with a text method, or a
+`[]string` bound to a `text[]` column. A parameter the statement casts to
+something that is not json, `$3::bytea`, is never reported as a carrier.
+
+The check type-checks the module, so a repository whose statements do not
+build is an error naming what failed rather than a pass. A tree that calls
+nothing statement-shaped is not type-checked at all and the report says so.
+
 ### Enum domains keep protocol values out of implementation
 
 `enum-go` and `enum-typescript` enforce three properties for the domains a
