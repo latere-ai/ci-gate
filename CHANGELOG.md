@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.47.0 - 2026-09-20
+
 ### Fixed
 
 - `json-bytes` no longer reports `json.RawMessage`. pgx registers that type to
