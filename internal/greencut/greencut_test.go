@@ -244,22 +244,108 @@ func TestAnInfraFailureAsksForARerun(t *testing.T) {
 	}
 }
 
-// The night of 2026-09-16: the release run went red after its deploy job, so
-// the tag was live and the notes were not.
-func TestThePreviousTagsReleaseRunIsRead(t *testing.T) {
+// auth v0.37.0, 2026-09-19: the image built, the rollout crash-looped on a
+// parameter the pooled endpoint refuses, and the deploy job went red. The
+// repair is v0.37.1, whose own branch runs are green, so the cut proceeds and
+// the rollout that failed is printed rather than vetoed.
+func TestAFailedRolloutIsReportedAndNotRefusedOn(t *testing.T) {
 	a := green()
 	a.tagRuns = []run{releaseRunAt("failure")}
-	a.jobs[1201] = []job{{ID: 88, Name: "publish", Conclusion: "failure"}}
-	a.logs[88] = "gh release create: HTTP 403\n"
+	a.jobs[1201] = []job{{ID: 88, Name: "release / deploy", Conclusion: "failure"}}
+	a.logs[88] = "error: deployment \"auth\" exceeded its progress deadline\n"
+
+	var out strings.Builder
+	if err := guard(t, a, false, &out).Check(); err != nil {
+		t.Fatalf("Check() = %v, want the cut to proceed over the previous rollout", err)
+	}
+	want := prevTag + " rolled out red, and this cut is not refused on it\n" +
+		"  release #1201 failure, job \"release / deploy\"\n" +
+		"  https://github.com/o/r/actions/runs/1201\n" +
+		"  CODE: fix and push, then cut again\n"
+	if out.String() != want {
+		t.Errorf("printed\n%s\nwant\n%s", out.String(), want)
+	}
+}
+
+// eval, unreleasable since v0.4.0: its deployment is held at zero replicas by
+// design, so the smoke job fails at every tag and the Release workflow is red
+// forever. A veto on it wedges the repository; a warning does not.
+func TestASmokeThatFailsAtEveryTagDoesNotWedgeTheRepository(t *testing.T) {
+	a := green()
+	a.tagRuns = []run{releaseRunAt("failure")}
+	a.jobs[1201] = []job{{ID: 88, Name: "release / smoke", Conclusion: "failure"}}
+	a.logs[88] = "curl: (7) Failed to connect to eval.latere.ai port 443\n"
+
+	var out strings.Builder
+	if err := guard(t, a, false, &out).Check(); err != nil {
+		t.Fatalf("Check() = %v, want the cut to proceed", err)
+	}
+	if !strings.Contains(out.String(), "release / smoke") {
+		t.Errorf("the warning must name the job that failed, got %q", out.String())
+	}
+}
+
+// A rollout that went red published nothing, and everybody can see that it
+// did. Asking whether a Release exists would add a second refusal for one
+// fact, so the question is not asked.
+func TestARedRolloutIsNotAskedWhetherItPublished(t *testing.T) {
+	a := green()
+	a.tagRuns = []run{releaseRunAt("failure")}
+	a.released = map[string]bool{}
+
+	var out strings.Builder
+	if err := guard(t, a, false, &out).Check(); err != nil {
+		t.Fatalf("Check() = %v, want the cut to proceed", err)
+	}
+	if strings.Contains(strings.Join(a.seen, " "), "/releases/tags/") {
+		t.Error("a red rollout is not asked what it published")
+	}
+}
+
+// A failed rollout is not a pass for the tree being tagged: the branch runs
+// over the window still decide, and the warning is printed beside the
+// refusal.
+func TestAFailedRolloutDoesNotExcuseARedWindow(t *testing.T) {
+	a := green()
+	a.tagRuns = []run{releaseRunAt("failure")}
+	a.jobs[1201] = []job{{ID: 88, Name: "release / deploy", Conclusion: "failure"}}
+	a.runs = []run{redRun(1284, "ci", "failure")}
+	a.jobs[1284] = []job{{ID: 77, Name: "gate (cover)", Conclusion: "failure"}}
+	a.logs[77] = "--- FAIL: TestSectionMissing (0.00s)\n"
 
 	var out strings.Builder
 	err := guard(t, a, false, &out).Check()
 	want := "ci is red\n" +
-		"  release #1201 failure, job \"publish\"\n" +
-		"  https://github.com/o/r/actions/runs/1201\n" +
+		"  ci #1284 failure, job \"gate (cover)\"\n" +
+		"  https://github.com/o/r/actions/runs/1284\n" +
 		"CODE: fix and push, then cut again"
 	if err == nil || err.Error() != want {
 		t.Fatalf("Check() = %v, want\n%s", err, want)
+	}
+	if !strings.HasPrefix(out.String(), prevTag+" rolled out red") {
+		t.Errorf("the rollout warning is printed beside the refusal, got %q", out.String())
+	}
+}
+
+// --force-red over a red window prints the warning once and then what it
+// overrides; the rollout is not counted twice.
+func TestForceRedPrintsTheRolloutWarningOnce(t *testing.T) {
+	a := green()
+	a.tagRuns = []run{releaseRunAt("failure")}
+	a.jobs[1201] = []job{{ID: 88, Name: "release / deploy", Conclusion: "failure"}}
+	a.runs = []run{redRun(1284, "ci", "failure")}
+	a.jobs[1284] = []job{{ID: 77, Name: "gate (cover)", Conclusion: "failure"}}
+	a.logs[77] = "--- FAIL: TestX\n"
+
+	var out strings.Builder
+	if err := guard(t, a, true, &out).Check(); err != nil {
+		t.Fatalf("--force-red refused: %v", err)
+	}
+	if n := strings.Count(out.String(), "release #1201"); n != 1 {
+		t.Errorf("the rollout is named %d times, want once:\n%s", n, out.String())
+	}
+	if !strings.Contains(out.String(), "--force-red: overriding ci is red") {
+		t.Errorf("the override still prints what it overrode:\n%s", out.String())
 	}
 }
 
