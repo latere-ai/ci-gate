@@ -154,7 +154,7 @@ func TestRoleNone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("none over a clean tree passes: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "PASS client-free") || !strings.Contains(out, "role none holds 1 check(s)") {
+	if !strings.Contains(out, "PASS client-free") || !strings.Contains(out, "role none holds 2 check(s)") {
 		t.Errorf("the report:\n%s", out)
 	}
 
@@ -311,7 +311,7 @@ func TestRolePooledReadsInEveryShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the complete fixture passes: %v\n%s", err, out)
 	}
-	for _, want := range []string{"PASS client", "PASS pool-url", "PASS direct-url", "role pooled holds 3 check(s)"} {
+	for _, want := range []string{"PASS client", "PASS pool-url", "PASS direct-url", "role pooled holds 4 check(s)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report carries %q:\n%s", want, out)
 		}
@@ -440,7 +440,7 @@ func TestNothingPassesVacuously(t *testing.T) {
 	if !strings.Contains(err.Error(), "read anything") || !strings.Contains(err.Error(), "client, pool-url, direct-url") {
 		t.Errorf("the failure names every skipped check: %v", err)
 	}
-	if strings.Count(out, "SKIP") != 3 {
+	if strings.Count(out, "SKIP") != 4 {
 		t.Errorf("every check reports SKIP:\n%s", out)
 	}
 	// none over an empty tree is a pass with its reason: the role claims
@@ -495,6 +495,7 @@ func TestPostgresFindingsAreUserRegister(t *testing.T) {
 		{declared(config.PostgresPooled), nil, pooledMissingPool},
 		{declared(config.PostgresPooled), nil, pooledMissingPgx},
 		{declared(config.PostgresPooled), nil, map[string]string{"internal/store/pg.go": pgFile("DATABASE_POOL_URL")}},
+		{declared(config.PostgresNone), nil, store(storeFile + marshalBody)},
 	}
 	sentences := 0
 	for _, r := range runs {

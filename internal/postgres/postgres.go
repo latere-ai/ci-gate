@@ -19,6 +19,14 @@
 // from the imports, so an undeclared consumer is the finding and a tool with
 // no client passes without writing a block.
 //
+// One check is outside that scheme and runs under every role, the absent one
+// included: json-bytes, which reads types rather than import strings and
+// reports a byte slice bound into a parameter the statement reads as json.
+// That failure is invisible on the direct endpoint and fatal on the pool, so
+// the role a repository declares says nothing about whether it carries it,
+// and the repository that has not been pooled yet is the one carrying it
+// unnoticed. jsonbytes.go states the mechanism.
+//
 // direct is the role a waiver holds open. The serving path of a repository
 // that declares it reaches the database on the endpoint the migrator needs,
 // which is the claim the pool exists to take off the cluster, so the role
@@ -105,15 +113,22 @@ type check struct {
 // a repository on the direct endpoint owes is a reason and a date, not a
 // shape in its Go files.
 var checks = map[config.PostgresRole][]check{
-	config.PostgresUnset:  {{name: "declared", run: ruleDeclared}},
-	config.PostgresNone:   {{name: "client-free", run: ruleClientFree}},
-	config.PostgresDirect: {{name: "direct", run: ruleDirect}},
+	config.PostgresUnset:  {{name: "declared", run: ruleDeclared}, jsonBytesCheck},
+	config.PostgresNone:   {{name: "client-free", run: ruleClientFree}, jsonBytesCheck},
+	config.PostgresDirect: {{name: "direct", run: ruleDirect}, jsonBytesCheck},
 	config.PostgresPooled: {
 		{name: "client", run: ruleClient},
 		{name: "pool-url", run: rulePoolURL},
 		{name: "direct-url", run: ruleDirectURL},
+		jsonBytesCheck,
 	},
 }
+
+// jsonBytesCheck is in every role's row, the absent one included. What it
+// finds is a failure the direct endpoint hides and the pool reports, so a
+// repository that has not been pooled yet is exactly the one carrying it
+// unnoticed, and a role is the wrong thing to condition it on.
+var jsonBytesCheck = check{name: "json-bytes", run: ruleJSONBytes}
 
 // Run applies the checks of the declared role to the tree.
 //
@@ -334,6 +349,13 @@ type clientImport struct {
 type tree struct {
 	cfg   config.Postgres
 	files []goFile
+	// queries reports whether any file calls something shaped like a
+	// statement, and analysis is what the type-aware pass read when one
+	// does. The two are separate because the pass is the one expensive thing
+	// this gate does, and a tree that runs no statement gives it nothing to
+	// decide.
+	queries  bool
+	analysis analysis
 	// waiver is this gate's waiver, or nil where the repository carries
 	// none, and now is the day it is read against. The direct role decides
 	// from them; no other check reads them.
@@ -433,7 +455,17 @@ func scan(cfg config.Postgres, root string) (*tree, error) {
 		for _, name := range envReads(file, constants[dir]) {
 			g.reads[name]++
 		}
+		if hasQueryCall(file) {
+			t.queries = true
+		}
 		t.files = append(t.files, g)
+	}
+	if t.queries {
+		a, err := analyze(root)
+		if err != nil {
+			return nil, err
+		}
+		t.analysis = a
 	}
 	return t, nil
 }
