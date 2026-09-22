@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.48.0 - 2026-09-23
+
 ### Changed
 
 - `contract` wants the workflow that calls the shared pipeline to cancel a
