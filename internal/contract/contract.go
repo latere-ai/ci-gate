@@ -50,6 +50,12 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to the same ref supersedes this run: its commit carries every
+# change this one would verify, and the runner is better spent on it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -190,6 +196,28 @@ func checkTriggers(rel string, body []byte) string {
 		if b, ok := pm["branches"].([]any); ok && !containsAny(b, "main") {
 			return rel + ": push trigger does not include main"
 		}
+	}
+	return checkConcurrency(rel, doc)
+}
+
+// checkConcurrency wants the caller to cancel a run once a newer push to the
+// same ref supersedes it. Without that, a burst of pushes queues one full gate
+// set per commit, and every set but the last verifies a tree nobody will ship.
+// The group has to name the ref, or a push to one branch cancels the run of
+// another. It covers this caller only: other workflows in the repository are
+// not part of the wiring.
+func checkConcurrency(rel string, doc map[string]any) string {
+	const fix = "\n\tadd the top-level block `lateregate init` writes:\n" +
+		"\tconcurrency: {group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}, cancel-in-progress: true}"
+	c, ok := doc["concurrency"].(map[string]any)
+	if !ok {
+		return rel + ": has no top-level concurrency, so a run a newer push supersedes still runs to the end" + fix
+	}
+	if group, _ := c["group"].(string); !strings.Contains(group, "github.ref") {
+		return rel + ": its concurrency group does not name github.ref, so a push to one branch cancels the run of another" + fix
+	}
+	if cancel, _ := c["cancel-in-progress"].(bool); !cancel {
+		return rel + ": its concurrency does not set cancel-in-progress: true, so a superseded run that has started runs to the end" + fix
 	}
 	return ""
 }

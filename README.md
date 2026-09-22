@@ -124,7 +124,9 @@ a place to drift. `lateregate contract` reads all of them and names every
 difference in one run:
 
 - exactly one workflow calls `latere-ai/ci/.github/workflows/lateregate.yml@v1`,
-  on push to `main` and on pull requests
+  on push to `main` and on pull requests, with a top-level `concurrency`
+  whose group names `github.ref` and which sets `cancel-in-progress: true`,
+  so a push cancels the run of the commit it supersedes
 - `.githooks/pre-commit` is executable and runs `lateregate hook`
 - `.githooks/pre-push` is executable and runs `lateregate prepush`
 - `.golangci.yml` is not tracked, unless `golangci.own` declares it with a reason
@@ -1181,6 +1183,10 @@ The reusable workflow in `latere-ai/ci` asks the binary for its plan and
 runs one job per gate:
 
 ```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 jobs:
   gate:
     uses: latere-ai/ci/.github/workflows/lateregate.yml@v1

@@ -196,9 +196,37 @@ func TestTheCallerMustRunOnPushToMainAndPullRequest(t *testing.T) {
 	}
 	// `on` may parse as the boolean true; the flow style is accepted too.
 	dir := repo(t)
-	write(t, dir, ".github/workflows/ci.yml", "on: {push: {branches: [main]}, pull_request: {}}\njobs:\n  g:\n    uses: "+Workflow+"\n")
+	write(t, dir, ".github/workflows/ci.yml", "on: {push: {branches: [main]}, pull_request: {}}\n"+cancelsSuperseded+"jobs:\n  g:\n    uses: "+Workflow+"\n")
 	if _, err := check(t, dir, untracked("")); err != nil {
 		t.Fatalf("flow-style triggers are triggers: %v", err)
+	}
+}
+
+// cancelsSuperseded is the concurrency block a caller carries, in flow style.
+const cancelsSuperseded = "concurrency: {group: '${{ github.workflow }}-${{ github.ref }}', cancel-in-progress: true}\n"
+
+// A caller that lets superseded runs finish queues a whole gate set per push.
+func TestTheCallerMustCancelSupersededRuns(t *testing.T) {
+	on := "on: {push: {branches: [main]}, pull_request: {}}\n"
+	jobs := "jobs:\n  g:\n    uses: " + Workflow + "\n"
+	for _, tc := range []struct{ name, concurrency, want string }{
+		{"none", "", "has no top-level concurrency"},
+		{"a bare group", "concurrency: ci\n", "has no top-level concurrency"},
+		{"a group without the ref", "concurrency: {group: '${{ github.workflow }}', cancel-in-progress: true}\n", "does not name github.ref"},
+		{"no cancel", "concurrency: {group: '${{ github.workflow }}-${{ github.ref }}'}\n", "does not set cancel-in-progress: true"},
+		{"cancel off", "concurrency: {group: '${{ github.workflow }}-${{ github.ref }}', cancel-in-progress: false}\n", "does not set cancel-in-progress: true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := repo(t)
+			write(t, dir, ".github/workflows/ci.yml", on+tc.concurrency+jobs)
+			_, err := check(t, dir, untracked(""))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want %q, got %v", tc.want, err)
+			}
+			if !strings.Contains(err.Error(), "lateregate init") {
+				t.Errorf("the finding must say where the block comes from: %v", err)
+			}
+		})
 	}
 }
 

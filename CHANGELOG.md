@@ -10,6 +10,16 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- `contract` wants the workflow that calls the shared pipeline to cancel a
+  run once a newer push to the same ref supersedes it: a top-level
+  `concurrency` whose group names `github.ref`, with `cancel-in-progress:
+  true`. Without it a burst of pushes queues one whole gate set per commit,
+  and every set but the last checks a tree nobody ships. `lateregate init`
+  writes the block into a new caller; a repository that bumps to this release
+  adds it to its existing caller in the same commit, as the finding says.
+
 ### Fixed
 
 - `release` reads past a run cancelled because a newer run of the same
