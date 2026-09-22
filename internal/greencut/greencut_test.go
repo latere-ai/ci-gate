@@ -410,6 +410,46 @@ func TestACancelledRunIsRed(t *testing.T) {
 	}
 }
 
+// supersededWindow is one workflow with a run still in progress, the run it
+// cancelled, and an older green run below both.
+func supersededWindow() []run {
+	running := greenRun(1290, "ci")
+	running.Status, running.Conclusion = "in_progress", ""
+	cancelled := redRun(1286, "ci", "cancelled")
+	older := greenRun(1280, "ci")
+	older.HeadSHA = oldSHA
+	for _, r := range []*run{&running, &cancelled, &older} {
+		r.WorkflowID = 42
+	}
+	return []run{running, cancelled, older}
+}
+
+// A concurrency group cancels a run the moment a newer push supersedes it.
+// That run is not an answer: the guard reads past it exactly as it reads past
+// the newer run still in progress, so turning cancellation on does not change
+// what a cut decides.
+func TestASupersededCancelledRunDefersToTheRunBeforeIt(t *testing.T) {
+	a := green()
+	a.runs = supersededWindow()
+
+	var out strings.Builder
+	if err := guard(t, a, false, &out).Check(); err != nil {
+		t.Fatalf("Check() = %v, want the green run before the superseded one to decide", err)
+	}
+}
+
+// Passing over a superseded run never turns an unknown window green.
+func TestASupersededRunAloneIsStillUnknown(t *testing.T) {
+	a := green()
+	a.runs = supersededWindow()[:2]
+
+	var out strings.Builder
+	err := guard(t, a, false, &out).Check()
+	if err == nil || !strings.Contains(err.Error(), "no completed run on main") {
+		t.Fatalf("Check() = %v, want the window refused as having no answer", err)
+	}
+}
+
 // The log endpoint answers 302 to a host that rejects the token. Following it
 // by hand, without the header, is the only way the classification reads a body.
 func TestTheJobLogIsReadThroughARedirect(t *testing.T) {

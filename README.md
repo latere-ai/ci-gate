@@ -227,7 +227,10 @@ three things:
   tag, the latest such run must have ended on an answer. `failure`,
   `cancelled`, `timed_out`, `startup_failure` and `action_required` are not
   answers: a run that never started, one that died on the clock and one
-  waiting for approval are all runs nobody has a result from.
+  waiting for approval are all runs nobody has a result from. A run
+  cancelled because a newer run of the same workflow replaced it is read
+  past, the way the newer run is while it is still in progress, so a
+  concurrency group that cancels superseded runs changes nothing here.
 - **A red release run on the previous tag.** The run the last tag started.
 - **A previous tag with no release to show for it.** If that run went green,
   a GitHub Release must exist for the tag. A workflow can finish and publish

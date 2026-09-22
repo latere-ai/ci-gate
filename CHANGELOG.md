@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- `release` reads past a run cancelled because a newer run of the same
+  workflow replaced it, the way it reads past that newer run while it is in
+  progress. Once a concurrency group cancelled superseded runs, the cancelled
+  run was the newest completed one and the cut was refused as red while the
+  run that replaced it was still going.
+
 ## v0.47.0 - 2026-09-20
 
 ### Fixed

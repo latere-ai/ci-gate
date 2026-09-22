@@ -213,8 +213,17 @@ func (g *Guard) window(prev string) (map[string]bool, error) {
 // The set of workflows comes from the runs the API returns, not from the files
 // under .github/workflows: a workflow that triggers only on tags has no run on
 // the default branch, and demanding one would refuse every cut forever.
+//
+// A run cancelled while a newer run of the same workflow exists was replaced,
+// by a concurrency group that cancels superseded runs or by hand. Its answer
+// is the newer run's, so it is passed over the way the newer run is while it
+// is still in progress, and turning cancellation on for a workflow does not
+// change what the guard decides about it.
 func (g *Guard) latestPerWorkflow(owner, repo, branch string, window map[string]bool) ([]run, error) {
 	seen := map[int64]bool{}
+	// The API lists the newest run first, so a workflow already in here has a
+	// run newer than the one being read.
+	listed := map[int64]bool{}
 	var out []run
 	for page := 1; page <= runPages; page++ {
 		q := url.Values{
@@ -231,7 +240,12 @@ func (g *Guard) latestPerWorkflow(owner, repo, branch string, window map[string]
 			return nil, fmt.Errorf("reading the runs on %s: the api answered %d", branch, code)
 		}
 		for _, r := range body.Runs {
+			superseded := listed[r.WorkflowID]
+			listed[r.WorkflowID] = true
 			if r.Status != "completed" || !window[r.HeadSHA] || seen[r.WorkflowID] {
+				continue
+			}
+			if superseded && r.Conclusion == "cancelled" {
 				continue
 			}
 			seen[r.WorkflowID] = true
