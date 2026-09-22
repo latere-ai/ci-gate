@@ -139,7 +139,7 @@ var Gates = []Gate{
 	{Name: "hermetic", Doc: "the suite with only the toolchain on PATH",
 		Run: func(c Ctx) error { return gates.Hermetic(c.Cfg.Hermetic, c.GoBin, c.Out, c.Exec) }},
 	{Name: "tempdir", Doc: "the suite leaves nothing under TMPDIR",
-		Run: func(c Ctx) error { return gates.TempDir(c.Cfg.TempDir, c.Args, c.Out, c.Exec) }},
+		Run: func(c Ctx) error { return gates.TempDir(c.Cfg.TempDir, c.Root, c.Args, c.Out, c.Exec) }},
 	{Name: "cover", Doc: "every package clears the floor",
 		Run: runCover},
 }

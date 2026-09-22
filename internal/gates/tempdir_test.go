@@ -5,10 +5,12 @@ package gates
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -66,7 +68,7 @@ func touch(t *testing.T, dir string) {
 func TestTempDirPassesWhenTheSuiteCleansUp(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
-	err := TempDir(config.TempDir{}, nil, &sb, suite(t, &calls, func(d string) { touch(t, d) }, nil))
+	err := TempDir(config.TempDir{}, isolated(t), nil, &sb, suite(t, &calls, func(d string) { touch(t, d) }, nil))
 	if err != nil {
 		t.Fatalf("a suite that removed its own directory must pass: %v", err)
 	}
@@ -87,7 +89,7 @@ func TestTempDirPassesWhenTheSuiteCleansUp(t *testing.T) {
 func TestTempDirFailsOnWhatSurvives(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
-	err := TempDir(config.TempDir{}, nil, &sb, suite(t, &calls, func(d string) {
+	err := TempDir(config.TempDir{}, isolated(t), nil, &sb, suite(t, &calls, func(d string) {
 		leak(t, d, "nanogo-corpus1234", 2048)
 		leak(t, d, "nanogo-audit99", 1024)
 	}, nil))
@@ -112,7 +114,7 @@ func TestTempDirAdmitsAnAllowedPrefix(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
 	cfg := config.TempDir{Allow: map[string]string{"go-build": "the toolchain's own cache, which outlives any one run by design"}}
-	err := TempDir(cfg, nil, &sb, suite(t, &calls, func(d string) { leak(t, d, "go-build3321", 16) }, nil))
+	err := TempDir(cfg, isolated(t), nil, &sb, suite(t, &calls, func(d string) { leak(t, d, "go-build3321", 16) }, nil))
 	if err != nil {
 		t.Fatalf("an allowed prefix must pass: %v", err)
 	}
@@ -127,7 +129,7 @@ func TestTempDirAdmitsAnAllowedPrefix(t *testing.T) {
 func TestTempDirRefusesToPassOnAnUnusedSandbox(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
-	err := TempDir(config.TempDir{}, nil, &sb, suite(t, &calls, nil, nil))
+	err := TempDir(config.TempDir{}, isolated(t), nil, &sb, suite(t, &calls, nil, nil))
 	if err == nil {
 		t.Fatal("an empty sandbox nothing ever wrote to must not pass")
 	}
@@ -140,7 +142,7 @@ func TestTempDirReportsASuiteThatFailed(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
 	boom := errors.New("exit status 1")
-	err := TempDir(config.TempDir{}, nil, &sb, suite(t, &calls, func(d string) { touch(t, d) }, boom))
+	err := TempDir(config.TempDir{}, isolated(t), nil, &sb, suite(t, &calls, func(d string) { touch(t, d) }, boom))
 	if !errors.Is(err, boom) {
 		t.Fatalf("a failing suite must be reported: %v", err)
 	}
@@ -151,7 +153,7 @@ func TestTempDirReportsASuiteThatFailed(t *testing.T) {
 func TestTempDirReportsTheLeakBeforeTheSuiteFailure(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
-	err := TempDir(config.TempDir{}, nil, &sb, suite(t, &calls, func(d string) {
+	err := TempDir(config.TempDir{}, isolated(t), nil, &sb, suite(t, &calls, func(d string) {
 		leak(t, d, "left-behind", 4)
 	}, errors.New("exit status 1")))
 	if err == nil || !strings.Contains(err.Error(), "survived") {
@@ -164,7 +166,7 @@ func TestTempDirOverridesTheConfiguredCommand(t *testing.T) {
 	var sb strings.Builder
 	cfg := config.TempDir{Command: []string{"make", "test"}}
 	argv := []string{"pytest", "-q"}
-	if err := TempDir(cfg, argv, &sb, suite(t, &calls, func(d string) { touch(t, d) }, nil)); err != nil {
+	if err := TempDir(cfg, isolated(t), argv, &sb, suite(t, &calls, func(d string) { touch(t, d) }, nil)); err != nil {
 		t.Fatal(err)
 	}
 	if calls[0].name != "pytest" || strings.Join(calls[0].args, " ") != "-q" {
@@ -176,7 +178,7 @@ func TestTempDirRunsTheConfiguredCommand(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
 	cfg := config.TempDir{Command: []string{"cargo", "test", "--all"}}
-	if err := TempDir(cfg, nil, &sb, suite(t, &calls, func(d string) { touch(t, d) }, nil)); err != nil {
+	if err := TempDir(cfg, isolated(t), nil, &sb, suite(t, &calls, func(d string) { touch(t, d) }, nil)); err != nil {
 		t.Fatal(err)
 	}
 	if calls[0].name != "cargo" || strings.Join(calls[0].args, " ") != "test --all" {
@@ -189,7 +191,7 @@ func TestTempDirRunsTheConfiguredCommand(t *testing.T) {
 func TestTempDirRemovesItsOwnSandbox(t *testing.T) {
 	var calls []call
 	var sb strings.Builder
-	if err := TempDir(config.TempDir{}, nil, &sb, suite(t, &calls, func(d string) {
+	if err := TempDir(config.TempDir{}, isolated(t), nil, &sb, suite(t, &calls, func(d string) {
 		leak(t, d, "whatever", 8)
 	}, nil)); err == nil {
 		t.Fatal("expected the leak to fail the gate")
@@ -210,7 +212,7 @@ func TestTempDirPointsEveryTemporaryVariableAtTheSandbox(t *testing.T) {
 	t.Setenv("TEMP", "/somewhere/else")
 	var calls []call
 	var sb strings.Builder
-	if err := TempDir(config.TempDir{}, nil, &sb, suite(t, &calls, func(d string) { touch(t, d) }, nil)); err != nil {
+	if err := TempDir(config.TempDir{}, isolated(t), nil, &sb, suite(t, &calls, func(d string) { touch(t, d) }, nil)); err != nil {
 		t.Fatal(err)
 	}
 	sandbox := tempDirOf(t, calls[0].env)
@@ -253,5 +255,96 @@ func TestHumanSizeReadsLikeDf(t *testing.T) {
 func TestTempDirArgvDefaultsToTheGoSuite(t *testing.T) {
 	if got := strings.Join(config.TempDir{}.Argv(), " "); got != "go test ./..." {
 		t.Errorf("default Argv is %q", got)
+	}
+}
+
+// isolated points TMPDIR at a directory of the test's own, where the gate
+// makes its sandbox and its lock, and returns a repository root to name them
+// after.
+func isolated(t *testing.T) string {
+	t.Helper()
+	t.Setenv("TMPDIR", t.TempDir())
+	return filepath.Join(t.TempDir(), "repo")
+}
+
+// The go command keys a cached test result on the TMPDIR the test read. Only a
+// sandbox at one path for a repository, run after run and checkout after
+// checkout, lets an unchanged package replay its result.
+func TestTempDirUsesOnePathForARepository(t *testing.T) {
+	if !lockable {
+		t.Skip("without a file lock every run makes a directory of its own")
+	}
+	t.Setenv("TMPDIR", t.TempDir())
+	sandboxOf := func(root string) string {
+		var calls []call
+		if err := TempDir(config.TempDir{}, root, nil, io.Discard, suite(t, &calls, func(d string) { touch(t, d) }, nil)); err != nil {
+			t.Fatal(err)
+		}
+		return tempDirOf(t, calls[0].env)
+	}
+	first := sandboxOf(filepath.Join(t.TempDir(), "slot-1", "repo"))
+	if again := sandboxOf(filepath.Join(t.TempDir(), "slot-2", "repo")); again != first {
+		t.Errorf("two checkouts of one repository ran against %s and %s, want one path", first, again)
+	}
+	if other := sandboxOf(filepath.Join(t.TempDir(), "other")); other == first {
+		t.Errorf("a different repository shares %s", first)
+	}
+}
+
+// A run killed mid-suite skips its cleanup. What it left is not the next
+// run's leak.
+func TestTempDirEmptiesWhatAKilledRunLeft(t *testing.T) {
+	if !lockable {
+		t.Skip("without a file lock every run makes a directory of its own")
+	}
+	root := isolated(t)
+	name, err := sandboxName(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leak(t, filepath.Join(os.TempDir(), name), "from-a-killed-run", 8)
+	var calls []call
+	var sb strings.Builder
+	if err := TempDir(config.TempDir{}, root, nil, &sb, suite(t, &calls, func(d string) { touch(t, d) }, nil)); err != nil {
+		t.Fatalf("a clean run after a killed one must pass: %v\n%s", err, sb.String())
+	}
+}
+
+// Two runs of one repository reading one directory would each report the
+// other's files, so the second waits for the first.
+func TestTempDirRunsOfOneRepositoryTakeTurns(t *testing.T) {
+	if !lockable {
+		t.Skip("without a file lock every run makes a directory of its own")
+	}
+	root := isolated(t)
+	name, err := sandboxName(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockFile(filepath.Join(os.TempDir(), name)+".lock", io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := make(chan struct{})
+	done := make(chan error, 1)
+	var sb strings.Builder
+	go func() {
+		var calls []call
+		done <- TempDir(config.TempDir{}, root, nil, &sb, suite(t, &calls, func(d string) {
+			close(ran)
+			touch(t, d)
+		}, nil))
+	}()
+	select {
+	case <-ran:
+		t.Fatal("the suite ran while another run held the sandbox")
+	case <-time.After(200 * time.Millisecond):
+	}
+	unlock()
+	if err := <-done; err != nil {
+		t.Fatalf("the waiting run must pass once the holder is done: %v", err)
+	}
+	if !strings.Contains(sb.String(), "waiting for another run") {
+		t.Errorf("the wait must be said, or a slow gate looks hung:\n%s", sb.String())
 	}
 }

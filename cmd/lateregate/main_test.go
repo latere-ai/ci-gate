@@ -296,6 +296,10 @@ func TestForceRedOverridesAndSaysSo(t *testing.T) {
 	defer api.Close()
 	t.Setenv("GITHUB_API_URL", api.URL)
 	t.Setenv("GH_TOKEN", "t")
+	// The bar runs tempdir, which keeps its lock beside the sandbox under
+	// TMPDIR; a directory of the test's own keeps it out of the TMPDIR this
+	// suite itself runs in.
+	t.Setenv("TMPDIR", t.TempDir())
 
 	s, err := out(t, "release", "-C", dir, "-force-red", "v1.0.0")
 	if !strings.Contains(s, "--force-red: overriding no completed run on main") {
@@ -388,6 +392,9 @@ func TestHermeticReportsAMissingToolchain(t *testing.T) {
 // reaches the gate. `true` touches nothing, which is the vacuous-pass refusal
 // and proves the argv reached the gate.
 func TestTempDirTakesItsCommandAfterTheSeparator(t *testing.T) {
+	// The gate keeps its lock beside the sandbox under TMPDIR; a directory of
+	// the test's own keeps it out of the TMPDIR this suite itself runs in.
+	t.Setenv("TMPDIR", t.TempDir())
 	_, err := out(t, "tempdir", "-C", t.TempDir(), "--", "true")
 	if err == nil || !strings.Contains(err.Error(), "did not use it") {
 		t.Fatalf("want the unused-sandbox refusal, got %v", err)

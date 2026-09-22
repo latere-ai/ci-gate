@@ -421,6 +421,16 @@ And when the suite fails *and* leaks, the leak is the verdict, because a red
 suite gets re-run while a leak that only surfaces on a green one is never
 seen.
 
+The sandbox is one directory per repository and user on a machine, at the
+same path on every run, and runs of one repository take turns through a file
+lock beside it. The go command keys a cached test result on the `TMPDIR` the
+test read, so a fresh directory per run would rerun every package that makes
+a temporary directory on every push; the fixed one lets an unchanged package
+replay its result. A run whose packages all replay still counts as having
+used the sandbox, because the go command makes its build directory there on
+every invocation. On a platform without `flock` each run makes a directory of
+its own instead.
+
 ### `license` puts the terms on the file, not only at the root
 
 A `LICENSE` at the root binds whoever clones the repository and reads it. Code

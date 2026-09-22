@@ -19,6 +19,12 @@ committed: the commit log already holds that.
   and every set but the last checks a tree nobody ships. `lateregate init`
   writes the block into a new caller; a repository that bumps to this release
   adds it to its existing caller in the same commit, as the finding says.
+- `tempdir` runs the suite against one directory per repository and user, at
+  the same path on every run, and runs of one repository take turns through a
+  file lock beside it. The go command keys a cached test result on the
+  `TMPDIR` a test read, so the fresh directory the gate made each time reran
+  every package that creates a temporary directory on every push. A
+  directory a killed run left behind is emptied before the next run reads it.
 
 ### Fixed
 

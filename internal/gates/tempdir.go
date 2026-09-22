@@ -36,17 +36,25 @@ var tempVars = []string{"TMPDIR", "TMP", "TEMP"}
 // compiler, a container runtime or a package manager leaks through those too,
 // and no amount of reading the caller's code sees it. That also makes the
 // check language-agnostic: cfg.Command names whatever runs the suite.
-func TempDir(cfg config.TempDir, argv []string, out io.Writer, run Exec) error {
+//
+// The sandbox is one path per repository and user on a machine, the same on
+// every run. The go command keys a package's cached test result on the
+// TMPDIR the test read, so a fresh path on each run made every package that
+// creates a temporary directory run again on every push; a stable one lets an
+// unchanged package replay its result. A run whose packages all replay still
+// passes the check below, because the go command makes and removes its build
+// directory under TMPDIR on every invocation.
+func TempDir(cfg config.TempDir, root string, argv []string, out io.Writer, run Exec) error {
 	if len(argv) == 0 {
 		argv = cfg.Argv()
 	}
-	sandbox, err := os.MkdirTemp("", "lateregate-tempdir")
+	sandbox, release, err := claimSandbox(root, out)
 	if err != nil {
-		return fmt.Errorf("making the sandbox: %w", err)
+		return err
 	}
 	// A gate that leaks while checking for leaks is worse than no gate. This
 	// runs whatever the suite did, including when it failed.
-	defer func() { _ = os.RemoveAll(sandbox) }()
+	defer release()
 
 	before, err := touchedAt(sandbox)
 	if err != nil {
@@ -99,6 +107,68 @@ func TempDir(cfg config.TempDir, argv []string, out io.Writer, run Exec) error {
 	}
 	_, _ = fmt.Fprintf(out, "nothing survived the test run\n")
 	return nil
+}
+
+// claimSandbox returns the repository's sandbox, empty, and the function that
+// gives it back: the directory removed, then the lock released.
+//
+// Two runs of one repository can overlap on a machine, a push and a pull
+// request on two runner slots or two terminals, and two runs emptying and
+// reading one directory would each report the other's files. They take turns
+// through a lock beside the directory, which the kernel drops when its holder
+// exits, so a run killed mid-suite blocks nothing. What such a run left in the
+// directory is emptied first: it is not this run's to report.
+func claimSandbox(root string, out io.Writer) (string, func(), error) {
+	if !lockable {
+		dir, err := os.MkdirTemp("", "lateregate-tempdir")
+		if err != nil {
+			return "", nil, fmt.Errorf("making the sandbox: %w", err)
+		}
+		return dir, func() { _ = os.RemoveAll(dir) }, nil
+	}
+	name, err := sandboxName(root)
+	if err != nil {
+		return "", nil, err
+	}
+	dir := filepath.Join(os.TempDir(), name)
+	unlock, err := lockFile(dir+".lock", out)
+	if err != nil {
+		return "", nil, fmt.Errorf("locking the sandbox: %w", err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		unlock()
+		return "", nil, fmt.Errorf("emptying the sandbox: %w", err)
+	}
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		unlock()
+		return "", nil, fmt.Errorf("making the sandbox: %w", err)
+	}
+	return dir, func() {
+		_ = os.RemoveAll(dir)
+		unlock()
+	}, nil
+}
+
+// sandboxName is the sandbox's name for the repository at root: the user and
+// the name of the repository's directory, reduced to characters every
+// filesystem takes. Checkouts of one repository in directories of one name get
+// one sandbox wherever each sits, which is what gives them one TMPDIR; the
+// user keeps a shared /tmp from handing one user's lock to another.
+func sandboxName(root string) (string, error) {
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolving %s: %w", root, err)
+	}
+	portable := func(c byte) bool {
+		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.'
+	}
+	base := []byte(filepath.Base(abs))
+	for i, c := range base {
+		if !portable(c) {
+			base[i] = '_'
+		}
+	}
+	return fmt.Sprintf("lateregate-tempdir-%d-%s", os.Getuid(), base), nil
 }
 
 // survivor is one entry left under the sandbox.
