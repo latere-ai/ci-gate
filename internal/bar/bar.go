@@ -132,6 +132,8 @@ var Gates = []Gate{
 		Run: func(c Ctx) error { return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec) }},
 	{Name: "vuln", Doc: "govulncheck " + gates.VulnVersion + " finds no reachable vulnerability",
 		Run: func(c Ctx) error { return gates.Vuln(c.GoBin, c.Out, c.Exec) }},
+	{Name: "suite", Doc: "go vet, then one run of the suite that is race-clean, over the coverage floor, leaves nothing under TMPDIR and needs only the toolchain on PATH",
+		Run: runSuite},
 	{Name: "test", Doc: "go vet and the suite",
 		Run: func(c Ctx) error { return gates.Test(c.GoBin, c.Out, c.Exec) }},
 	{Name: "race", Doc: "the suite under the race detector",
@@ -142,6 +144,76 @@ var Gates = []Gate{
 		Run: func(c Ctx) error { return gates.TempDir(c.Cfg.TempDir, c.Root, c.Args, c.Out, c.Exec) }},
 	{Name: "cover", Doc: "every package clears the floor",
 		Run: runCover},
+}
+
+// Suite is the gate the suite gates fold into.
+const Suite = "suite"
+
+// folded names the gates whose property the suite run checks, so the plan
+// runs the suite once instead of each of them. tempdir folds only while it
+// watches go test: a repository whose tempdir.command names another runner
+// has a suite the go test run is not, and keeps the gate to itself.
+func folded(cfg *config.Config) map[string]bool {
+	f := map[string]bool{"test": true, "race": true, "cover": true, "hermetic": true}
+	if len(cfg.TempDir.Command) == 0 {
+		f["tempdir"] = true
+	}
+	return f
+}
+
+// suiteRun is the suite run the configuration and the waivers ask for, and a
+// note per gate whose waiver narrowed it or has run out.
+//
+// A live waiver on a folded gate turns its property off rather than skipping
+// a job: a waived race drops -race, a waived hermetic keeps the full PATH, a
+// waived tempdir runs outside the sandbox, and a waived cover keeps no floor.
+// An expired one leaves the property on and says so, which is what an expired
+// waiver does for a gate of its own.
+func suiteRun(c Ctx) (gates.SuiteRun, []string) {
+	f := folded(c.Cfg)
+	run := gates.SuiteRun{
+		Race:     true,
+		Timeout:  c.Cfg.Race.Timeout,
+		Hermetic: true,
+		Allow:    c.Cfg.Hermetic.Allow,
+		Sandbox:  f["tempdir"],
+		TempDir:  c.Cfg.TempDir,
+		Profile:  cover.Profile,
+	}
+	run.Floor = func(profile string) error {
+		return cover.Run(c.Cfg.Cover, append([]string{profile}, c.Profiles...), c.Out, cover.GoLister(c.GoBin, c.Root))
+	}
+	var notes []string
+	for _, n := range []struct {
+		gate, narrowed string
+		off            func()
+	}{
+		{"race", "without -race", func() { run.Race = false }},
+		{"hermetic", "with the full PATH", func() { run.Hermetic = false }},
+		{"tempdir", "outside the TMPDIR sandbox", func() { run.Sandbox = false }},
+		{"cover", "without the coverage floor", func() { run.Profile, run.Floor = "", nil }},
+	} {
+		w, ok := c.Cfg.Waive[n.gate]
+		if !ok || !f[n.gate] {
+			continue
+		}
+		if w.Live(c.Now) {
+			n.off()
+			notes = append(notes, fmt.Sprintf("%s (%s waived until %s: %s)", n.narrowed, n.gate, w.Until, w.Reason))
+			continue
+		}
+		notes = append(notes, fmt.Sprintf("%s waiver expired %s: %s", n.gate, w.Until, w.Reason))
+	}
+	return run, notes
+}
+
+// runSuite is the suite gate.
+func runSuite(c Ctx) error {
+	run, notes := suiteRun(c)
+	for _, n := range notes {
+		_, _ = fmt.Fprintln(c.Out, "suite runs "+n)
+	}
+	return gates.Suite(run, c.Root, c.GoBin, c.Out, c.Exec)
 }
 
 // runCover collects a profile unless the caller supplied one.
@@ -222,6 +294,9 @@ const (
 	Skip Status = "skip"
 	// Waived means a dated waiver covers it, for now.
 	Waived Status = "waived"
+	// Folded means another gate's run checks this gate's property; Into names
+	// that gate.
+	Folded Status = "folded"
 )
 
 // Entry is one gate's place in the plan.
@@ -232,6 +307,8 @@ type Entry struct {
 	// has expired and it therefore runs.
 	Reason string `json:"reason,omitempty"`
 	Until  string `json:"until,omitempty"`
+	// Into is the gate a folded gate's property runs in.
+	Into string `json:"into,omitempty"`
 }
 
 // Plan decides, for every gate, whether it runs.
@@ -244,8 +321,32 @@ func Plan(c Ctx) ([]Entry, error) {
 		return nil, err
 	}
 	var plan []Entry
+	fold := folded(c.Cfg)
+	_, notes := suiteRun(c)
 	for _, g := range Gates {
+		if fold[g.Name] {
+			e := Entry{Name: g.Name, Status: Folded, Into: Suite}
+			if w, ok := c.Cfg.Waive[g.Name]; ok {
+				e.Until, e.Reason = w.Until, "waived until "+w.Until+": "+w.Reason
+				if !w.Live(c.Now) {
+					e.Reason = "waiver expired " + w.Until + ": " + w.Reason
+				}
+			}
+			plan = append(plan, e)
+			continue
+		}
 		e := Entry{Name: g.Name, Status: Run}
+		if g.Name == Suite {
+			// A waived test is a waived suite: the suite is the test run.
+			if w, ok := c.Cfg.Waive["test"]; ok && w.Live(c.Now) {
+				if _, own := c.Cfg.Waive[Suite]; !own {
+					e.Status, e.Reason, e.Until = Waived, "test is waived: "+w.Reason, w.Until
+					plan = append(plan, e)
+					continue
+				}
+			}
+			e.Reason = strings.Join(notes, "; ")
+		}
 		if g.Applies != nil {
 			ok, why, err := g.Applies(c)
 			if err != nil {
@@ -264,7 +365,11 @@ func Plan(c Ctx) ([]Entry, error) {
 			if w.Live(c.Now) {
 				e.Status, e.Reason = Waived, w.Reason
 			} else {
-				e.Reason = "waiver expired " + w.Until + ": " + w.Reason
+				expired := "waiver expired " + w.Until + ": " + w.Reason
+				if e.Reason != "" {
+					expired += "; " + e.Reason
+				}
+				e.Reason = expired
 			}
 		}
 		plan = append(plan, e)
@@ -328,7 +433,7 @@ func Check(c Ctx) error {
 			} else {
 				_, _ = fmt.Fprintln(c.Out, line(e, "PASS", ""))
 			}
-		case Skip, Waived:
+		case Skip, Waived, Folded:
 			_, _ = fmt.Fprintln(c.Out, line(e, "", ""))
 		default:
 			_, _ = fmt.Fprintln(c.Out, line(e, "", ""))
@@ -350,9 +455,18 @@ func line(e Entry, mark, note string) string {
 	}
 	if note == "" {
 		note = e.Reason
-		if e.Status == Waived {
+		switch e.Status {
+		case Run, Skip:
+			// The status word and the reason as they are.
+		case Waived:
 			word = "WAIV"
 			note = "until " + e.Until + ": " + e.Reason
+		case Folded:
+			word = "FOLD"
+			note = "into " + e.Into
+			if e.Reason != "" {
+				note += ", " + e.Reason
+			}
 		}
 	}
 	if note == "" {

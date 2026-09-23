@@ -165,20 +165,20 @@ func TestTypeScriptGatePassesPolicyToEmbeddedAnalyzer(t *testing.T) {
 func TestALiveWaiverSkipsAndAnExpiredOneRuns(t *testing.T) {
 	c, _ := ctx(t, nil, withSpecs)
 	c.Cfg.Waive = map[string]config.Waiver{
-		"cover": {Reason: "the gap is in handler", Until: "2026-09-01"},
-		"race":  {Reason: "runner is not race-clean", Until: "2026-08-31"},
+		"lint": {Reason: "the config is being rewritten", Until: "2026-09-01"},
+		"vuln": {Reason: "the fix is not released", Until: "2026-08-31"},
 	}
 	plan, err := Plan(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// until is inclusive: the waiver covers all of the day it names.
-	if e := entry(plan, "cover"); e.Status != Waived || e.Until != "2026-09-01" {
-		t.Errorf("cover on the day named: %+v", e)
+	if e := entry(plan, "lint"); e.Status != Waived || e.Until != "2026-09-01" {
+		t.Errorf("lint on the day named: %+v", e)
 	}
 	// The day after, the gate runs and the plan says why.
-	if e := entry(plan, "race"); e.Status != Run || !strings.Contains(e.Reason, "waiver expired 2026-08-31") {
-		t.Errorf("race the day after: %+v", e)
+	if e := entry(plan, "vuln"); e.Status != Run || !strings.Contains(e.Reason, "waiver expired 2026-08-31") {
+		t.Errorf("vuln the day after: %+v", e)
 	}
 }
 
@@ -195,12 +195,12 @@ func TestAWaiverForAnUnknownGateFails(t *testing.T) {
 
 func TestListPrintsThePlanAsTextAndJSON(t *testing.T) {
 	c, sb := ctx(t, nil, noSpecs)
-	c.Cfg.Waive = map[string]config.Waiver{"cover": {Reason: "later", Until: "2026-12-01"}}
+	c.Cfg.Waive = map[string]config.Waiver{"lint": {Reason: "later", Until: "2026-12-01"}}
 	if err := List(c, false); err != nil {
 		t.Fatal(err)
 	}
 	text := sb.String()
-	for _, want := range []string{"RUN  fmt-check", "SKIP spec-lint", "WAIV cover", "until 2026-12-01: later"} {
+	for _, want := range []string{"RUN  fmt-check", "SKIP spec-lint", "WAIV lint", "until 2026-12-01: later", "FOLD race         into suite"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text plan lacks %q:\n%s", want, text)
 		}
@@ -214,7 +214,7 @@ func TestListPrintsThePlanAsTextAndJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(sb.String()), &plan); err != nil {
 		t.Fatalf("list -json must be JSON: %v\n%s", err, sb.String())
 	}
-	if e := entry(plan, "cover"); e.Status != Waived || e.Until != "2026-12-01" {
+	if e := entry(plan, "lint"); e.Status != Waived || e.Until != "2026-12-01" {
 		t.Errorf("JSON plan: %+v", e)
 	}
 	if e := entry(plan, "spec-lint"); e.Status != Skip {
@@ -337,9 +337,163 @@ func TestLineFormatsEachStatus(t *testing.T) {
 		{Entry{Name: "a", Status: Run, Reason: "waiver expired x"}, "PASS", "PASS a            waiver expired x"},
 		{Entry{Name: "b", Status: Skip, Reason: "why"}, "", "SKIP b            why"},
 		{Entry{Name: "c", Status: Waived, Reason: "why", Until: "2026-12-01"}, "", "WAIV c            until 2026-12-01: why"},
+		{Entry{Name: "d", Status: Folded, Into: "suite"}, "", "FOLD d            into suite"},
+		{Entry{Name: "e", Status: Folded, Into: "suite", Reason: "waived until x: y"}, "", "FOLD e            into suite, waived until x: y"},
 	} {
 		if got := line(tc.e, tc.mark, ""); got != tc.want {
 			t.Errorf("line(%+v, %q) = %q, want %q", tc.e, tc.mark, got, tc.want)
+		}
+	}
+}
+
+// The five suite gates fold into one run: the plan says so per gate, and the
+// JSON is what the pipeline reads to leave them out of its job matrix.
+func TestTheSuiteGatesFoldIntoSuite(t *testing.T) {
+	c, sb := ctx(t, nil, withSpecs)
+	if err := List(c, true); err != nil {
+		t.Fatal(err)
+	}
+	var plan []Entry
+	if err := json.Unmarshal([]byte(sb.String()), &plan); err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, Suite); e.Status != Run || e.Reason != "" {
+		t.Errorf("suite: %+v", e)
+	}
+	for _, name := range []string{"test", "race", "cover", "tempdir", "hermetic"} {
+		if e := entry(plan, name); e.Status != Folded || e.Into != Suite {
+			t.Errorf("%s: %+v, want folded into suite", name, e)
+		}
+	}
+	for _, want := range []string{`{"name":"race","status":"folded","into":"suite"}`, `{"name":"suite","status":"run"}`} {
+		if !strings.Contains(sb.String(), want) {
+			t.Errorf("list -json lacks %s:\n%s", want, sb.String())
+		}
+	}
+}
+
+// A live waiver on a folded gate turns its property off in the one run; an
+// expired one leaves it on and says so. Both show on the suite's plan line.
+func TestAWaiverNarrowsTheSuite(t *testing.T) {
+	c, _ := ctx(t, nil, withSpecs)
+	c.Cfg.Waive = map[string]config.Waiver{
+		"race":     {Reason: "flaky under load", Until: "2026-09-30"},
+		"hermetic": {Reason: "needs git", Until: "2026-09-30"},
+		"tempdir":  {Reason: "fixtures leak", Until: "2026-09-30"},
+		"cover":    {Reason: "was behind", Until: "2026-08-01"},
+	}
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := entry(plan, Suite)
+	for _, want := range []string{
+		"without -race (race waived until 2026-09-30: flaky under load)",
+		"with the full PATH (hermetic waived until 2026-09-30: needs git)",
+		"outside the TMPDIR sandbox (tempdir waived until 2026-09-30: fixtures leak)",
+		"cover waiver expired 2026-08-01: was behind",
+	} {
+		if s.Status != Run || !strings.Contains(s.Reason, want) {
+			t.Errorf("suite %+v lacks %q", s, want)
+		}
+	}
+	if e := entry(plan, "race"); e.Status != Folded || e.Reason != "waived until 2026-09-30: flaky under load" {
+		t.Errorf("race: %+v", e)
+	}
+	if e := entry(plan, "cover"); e.Status != Folded || !strings.HasPrefix(e.Reason, "waiver expired") {
+		t.Errorf("cover: %+v", e)
+	}
+
+	run, _ := suiteRun(c)
+	if run.Race || run.Hermetic || run.Sandbox {
+		t.Errorf("waived properties must be off: %+v", run)
+	}
+	if run.Floor == nil || run.Profile == "" {
+		t.Error("an expired cover waiver keeps the floor")
+	}
+	c.Cfg.Waive["cover"] = config.Waiver{Reason: "behind", Until: "2026-12-01"}
+	if run, _ := suiteRun(c); run.Floor != nil || run.Profile != "" {
+		t.Error("a live cover waiver drops the floor and the profile")
+	}
+}
+
+// The suite is the test run, so waiving test waives the suite, unless the
+// suite carries a waiver of its own.
+func TestAWaivedTestWaivesTheSuite(t *testing.T) {
+	c, _ := ctx(t, nil, withSpecs)
+	c.Cfg.Waive = map[string]config.Waiver{"test": {Reason: "no Go yet", Until: "2026-12-01"}}
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, Suite); e.Status != Waived || e.Reason != "test is waived: no Go yet" || e.Until != "2026-12-01" {
+		t.Errorf("suite: %+v", e)
+	}
+	c.Cfg.Waive[Suite] = config.Waiver{Reason: "the suite's own", Until: "2026-10-01"}
+	plan, err = Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, Suite); e.Status != Waived || e.Reason != "the suite's own" {
+		t.Errorf("suite with its own waiver: %+v", e)
+	}
+	c.Cfg.Waive[Suite] = config.Waiver{Reason: "ran out", Until: "2026-08-01"}
+	plan, err = Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, Suite); e.Status != Run || !strings.HasPrefix(e.Reason, "waiver expired 2026-08-01: ran out") {
+		t.Errorf("suite with an expired waiver of its own: %+v", e)
+	}
+}
+
+// A tempdir that watches another runner watches a suite the go test run is
+// not, so it stays a gate of its own and the suite runs unsandboxed.
+func TestATempdirWithItsOwnCommandStaysAGate(t *testing.T) {
+	c, _ := ctx(t, nil, withSpecs)
+	c.Cfg.TempDir.Command = []string{"pytest", "-q"}
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, "tempdir"); e.Status != Run {
+		t.Errorf("tempdir: %+v", e)
+	}
+	if run, _ := suiteRun(c); run.Sandbox {
+		t.Error("the suite must not sandbox a run tempdir does not watch")
+	}
+}
+
+// Check runs the suite in place of the five: one go test, whatever the gate
+// count.
+func TestCheckRunsTheSuiteOnceInPlaceOfTheFive(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	tests := 0
+	exec := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if name == "git" {
+			return []byte("specs/001-a.md\n"), nil
+		}
+		if len(args) > 0 && args[0] == "test" {
+			tests++
+		}
+		return nil, nil
+	}
+	c, sb := ctx(t, nil, exec)
+	c.GoBin = "/toolchain/bin/go"
+	c.Cfg.Waive = map[string]config.Waiver{"race": {Reason: "r", Until: "2026-12-01"}}
+	_ = Check(c) // the stubbed gates fail; what matters is what ran
+	if tests != 1 {
+		t.Errorf("go test ran %d times, want once", tests)
+	}
+	out := sb.String()
+	for _, want := range []string{"== suite", "suite runs without -race (race waived until 2026-12-01: r)", "FOLD race         into suite, waived until 2026-12-01: r"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q", want)
+		}
+	}
+	for _, name := range []string{"test", "race", "cover", "tempdir", "hermetic"} {
+		if strings.Contains(out, "== "+name+"\n") {
+			t.Errorf("%s ran on its own", name)
 		}
 	}
 }
