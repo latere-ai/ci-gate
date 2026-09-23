@@ -18,9 +18,11 @@ committed: the commit log already holds that.
   `CGO_ENABLED=1`, on the `hermetic` PATH and inside the `tempdir` sandbox,
   then the coverage floor over the profile and the check for survivors. The
   first line of a failure names the property that broke. Under `-race` the
-  stripped PATH keeps the directory of the C compiler the toolchain names,
-  and the `PATH=` line says so. Every flag is one the go test cache accepts,
-  so an unchanged package replays its result.
+  stripped PATH reaches the C compiler the toolchain names, and the `as` and
+  `ld` it calls, through a shim directory that links those and nothing else,
+  so the rest of `/usr/bin` stays off the PATH; the `PATH=` line names the
+  shim and what it holds. Every flag is one the go test cache accepts, so an
+  unchanged package replays its result.
 
 ### Changed
 

@@ -127,31 +127,30 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 	return nil
 }
 
-// suitePath is the stripped PATH, and a note naming the C compiler when the
-// race detector keeps its directory there. The detector needs cgo, cgo needs
-// the compiler, and a PATH without it fails every package before a test runs.
+// suitePath is the stripped PATH, and a note naming the C toolchain shim when
+// the race detector needs one: the toolchain's directory, the shim under
+// -race, then the directories the repository allowed, each once.
 func suitePath(opt SuiteRun, goBin string, run Exec) (string, string, error) {
 	dir, err := toolchainDir(goBin)
 	if err != nil {
 		return "", "", err
 	}
-	if !opt.Race {
-		return PathFor(dir, opt.Allow), "", nil
+	var keep []string
+	note := ""
+	if opt.Race {
+		shim, names, err := ccShim(goBin, run)
+		if err != nil {
+			return "", "", err
+		}
+		keep = append(keep, shim)
+		note = shimNote(shim, names)
 	}
-	cc, err := compiler(goBin, run)
-	if err != nil {
-		return "", "", err
-	}
-	keep := []string{filepath.Dir(cc)}
 	for _, a := range opt.Allow {
-		if !slices.Contains(keep, a) && a != dir {
+		if a != dir && !slices.Contains(keep, a) {
 			keep = append(keep, a)
 		}
 	}
-	if keep[0] == dir {
-		keep = keep[1:]
-	}
-	return PathFor(dir, keep), " (kept for the race detector's C compiler " + cc + ")", nil
+	return PathFor(dir, keep), note, nil
 }
 
 // compiler is the C compiler the go command would call, resolved against the

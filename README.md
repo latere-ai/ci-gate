@@ -85,8 +85,12 @@ or a stripped PATH wraps whatever runs inside it. The first line of a
 failure names the property: `the suite is not race-clean`, `the suite
 reached for docker, which is not on the stripped PATH`, `the suite left 2
 entries under TMPDIR`, `the suite's coverage is under the floor`. The race
-detector needs cgo, so under `-race` the stripped PATH keeps the directory
-of the C compiler the toolchain names, and the `PATH=` line says so. Every
+detector needs cgo, and cgo needs the compiler the toolchain names in `CC`
+and the `as` and `ld` it calls. Under `-race` the stripped PATH reaches them
+through a shim: a directory under the machine's `TMPDIR` that links those
+three and nothing else, at the same path on every run. The compiler's own
+directory stays off the PATH, since on Linux that is `/usr/bin`, with `git`
+and `docker` in it. The `PATH=` line names the shim and what it holds. Every
 flag is one the go command's test cache accepts, so an unchanged package
 replays its result.
 

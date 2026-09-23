@@ -108,9 +108,24 @@ narrowing. `lateregate list -json` on this repository reports `suite` as
 `run` and the five as `folded`, and a second `GOFLAGS=-trimpath lateregate
 suite` on this tree replays every package from the test cache. The suite and
 bar packages carry one test per failure property, the waiver narrowing, the
-folded plan shape, and the PATH line with and without the compiler.
+folded plan shape, the C toolchain shim, and the PATH line with and
+without it.
 
 What moved from the decision above:
+
+- Under `-race` the stripped PATH gains a shim directory, not the directory
+  of the `cc` the toolchain resolves. On Linux that directory is `/usr/bin`,
+  and adding it would have put `git`, `docker` and `systemctl` back on the
+  PATH and left the hermetic property holding nothing. The shim links the
+  compiler `go env CC` names, and `as` and `ld` where the machine has them,
+  because gcc finds its assembler and linker through PATH: measured in a
+  golang:1.26 container, an absolute `CC` with only the toolchain on PATH
+  fails the race build on `cannot execute 'as'`, and the shim builds and
+  passes while `exec.LookPath("git")` fails. It sits under the machine's
+  `TMPDIR`, outside the sandbox, at a path fixed by the user and a digest of
+  what it links, so a test that reads PATH replays from the cache and two
+  runs with different compilers never rewrite each other's links. The
+  standalone `hermetic` gate is unchanged.
 
 - CI runs `suite` as a gate job on the workflow's `runs_on` label, one Linux
   run, and not in the `test_os` matrix. Repositories such as sandbox and

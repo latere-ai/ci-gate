@@ -90,6 +90,7 @@ func cleanSuite(t *testing.T) func([]string) {
 
 func TestSuitePassesWithEveryPropertyInOneRun(t *testing.T) {
 	root := isolated(t)
+	fakeTools(t, "as", "ld", "git")
 	var floor []string
 	s := &suiteRun{do: cleanSuite(t)}
 	var sb strings.Builder
@@ -115,8 +116,8 @@ func TestSuitePassesWithEveryPropertyInOneRun(t *testing.T) {
 	if v, _ := envValue(c.env, "CGO_ENABLED"); v != "1" {
 		t.Errorf("CGO_ENABLED=%q, the race detector needs cgo", v)
 	}
-	if v, _ := envValue(c.env, "PATH"); v != "/toolchain/bin"+string(os.PathListSeparator)+"/compilers/bin" {
-		t.Errorf("PATH=%q, want the toolchain and the compiler only", v)
+	if parts := pathParts(c.env); len(parts) != 2 || parts[0] != "/toolchain/bin" || !isShim(parts[1]) {
+		t.Errorf("PATH=%v, want the toolchain and the C toolchain shim only", parts)
 	}
 	if v, _ := envValue(c.env, "TMPDIR"); !strings.Contains(v, "lateregate-tempdir-") {
 		t.Errorf("TMPDIR=%q, want the repository's sandbox", v)
@@ -244,52 +245,194 @@ func TestSuiteNarrowsToWhatIsOn(t *testing.T) {
 	}
 }
 
-// The race detector needs cgo and cgo needs the compiler, so the stripped
-// PATH keeps its directory and says why; with race waived it is the strict
-// PATH the hermetic gate has always used.
-func TestSuitePathKeepsTheCompilerOnlyUnderRace(t *testing.T) {
+// The race detector needs cgo, and cgo needs the compiler and the assembler
+// and linker it calls. The stripped PATH reaches them through the shim, never
+// through the directory they sit in, which on Linux is /usr/bin with git in
+// it. With race waived there is no shim and the PATH is the hermetic gate's.
+func TestSuitePathReachesTheCompilerThroughTheShim(t *testing.T) {
 	for _, race := range []bool{true, false} {
 		root := isolated(t)
+		bin := fakeTools(t, "as", "ld", "git")
 		s := &suiteRun{do: cleanSuite(t)}
 		var sb strings.Builder
 		opt := SuiteRun{Race: race, Hermetic: true, Allow: []string{"/opt/tools"}}
 		if err := Suite(opt, root, suiteGo, &sb, s.exec); err != nil {
 			t.Fatal(err)
 		}
-		sep := string(os.PathListSeparator)
-		want := "PATH=/toolchain/bin" + sep + "/opt/tools\n"
+		parts := pathParts(s.testCall(t).env)
 		if race {
-			want = "PATH=/toolchain/bin" + sep + "/compilers/bin" + sep + "/opt/tools (kept for the race detector's C compiler /compilers/bin/cc)\n"
+			if len(parts) != 3 || parts[0] != "/toolchain/bin" || !isShim(parts[1]) || parts[2] != "/opt/tools" {
+				t.Fatalf("race: PATH=%v, want the toolchain, the shim and the allow list", parts)
+			}
+			if !strings.Contains(sb.String(), parts[1]+" holds the race detector's C toolchain: cc, as, ld") {
+				t.Errorf("the PATH line must name the shim and what it holds:\n%s", sb.String())
+			}
+		} else {
+			if len(parts) != 2 || parts[0] != "/toolchain/bin" || parts[1] != "/opt/tools" {
+				t.Errorf("race waived: PATH=%v, want the strict PATH", parts)
+			}
+			if shims, _ := filepath.Glob(filepath.Join(os.TempDir(), "lateregate-cc-*")); len(shims) != 0 {
+				t.Errorf("race waived: no shim is made, found %v", shims)
+			}
 		}
-		if !strings.Contains(sb.String(), want) {
-			t.Errorf("race=%v: want %q in\n%s", race, want, sb.String())
+		for _, p := range parts {
+			if p == "/compilers/bin" || p == bin {
+				t.Errorf("race=%v: PATH carries %s, a directory the shim exists to keep off it", race, p)
+			}
 		}
 	}
 }
 
-// A compiler that sits in an allowed directory, or in the toolchain's, is on
-// the PATH once.
+// An allowed directory that repeats one already there is on the PATH once.
 func TestSuitePathNamesEachDirectoryOnce(t *testing.T) {
-	for _, allow := range [][]string{{"/compilers/bin", "/opt/tools"}, {"/opt/tools", "/compilers/bin"}} {
-		root := isolated(t)
-		s := &suiteRun{do: cleanSuite(t)}
-		var sb strings.Builder
-		if err := Suite(SuiteRun{Race: true, Hermetic: true, Allow: allow}, root, suiteGo, &sb, s.exec); err != nil {
-			t.Fatal(err)
-		}
-		v, _ := envValue(s.testCall(t).env, "PATH")
-		if strings.Count(v, "/compilers/bin") != 1 || !strings.Contains(v, "/opt/tools") {
-			t.Errorf("allow %v: PATH=%q", allow, v)
-		}
-	}
 	root := isolated(t)
+	fakeTools(t, "as", "ld")
 	s := &suiteRun{do: cleanSuite(t)}
-	if err := Suite(SuiteRun{Race: true, Hermetic: true}, root, "/compilers/bin/go", &strings.Builder{}, s.exec); err != nil {
+	opt := SuiteRun{Race: true, Hermetic: true, Allow: []string{"/toolchain/bin", "/opt/tools", "/opt/tools"}}
+	if err := Suite(opt, root, suiteGo, &strings.Builder{}, s.exec); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := envValue(s.testCall(t).env, "PATH"); v != "/compilers/bin" {
-		t.Errorf("a compiler beside the toolchain: PATH=%q", v)
+	if parts := pathParts(s.testCall(t).env); len(parts) != 3 || parts[2] != "/opt/tools" {
+		t.Errorf("PATH=%v", parts)
 	}
+}
+
+// The shim holds the compiler, and as and ld where the machine has them, and
+// nothing else: least of all the other programs beside them.
+func TestShimHoldsTheCToolchainAndNothingElse(t *testing.T) {
+	for _, tc := range []struct {
+		have []string
+		want []string
+	}{
+		{[]string{"as", "ld", "git", "docker"}, []string{"as", "cc", "ld"}},
+		{[]string{"as", "git"}, []string{"as", "cc"}},
+	} {
+		isolated(t)
+		bin := fakeTools(t, tc.have...)
+		s := &suiteRun{}
+		dir, names, err := ccShim(suiteGo, s.exec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !isShim(dir) {
+			t.Errorf("shim at %s, want under %s", dir, os.TempDir())
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, e := range entries {
+			got = append(got, e.Name())
+			target, err := os.Readlink(filepath.Join(dir, e.Name()))
+			if err != nil {
+				t.Errorf("%s is not a link: %v", e.Name(), err)
+				continue
+			}
+			want := filepath.Join(bin, e.Name())
+			if e.Name() == "cc" {
+				want = suiteCC
+			}
+			if target != want {
+				t.Errorf("%s -> %s, want %s", e.Name(), target, want)
+			}
+		}
+		if strings.Join(got, " ") != strings.Join(tc.want, " ") {
+			t.Errorf("with %v on PATH the shim holds %v, want %v", tc.have, got, tc.want)
+		}
+		if len(names) != len(tc.want) || names[0] != "cc" {
+			t.Errorf("names = %v", names)
+		}
+	}
+}
+
+// A second run finds the links in place and leaves them; a link pointing
+// anywhere else is replaced.
+func TestShimIsReusedAndRepaired(t *testing.T) {
+	isolated(t)
+	bin := fakeTools(t, "as", "ld")
+	s := &suiteRun{}
+	dir, _, err := ccShim(suiteGo, s.exec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Lstat(filepath.Join(dir, "as"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, _, err := ccShim(suiteGo, s.exec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Lstat(filepath.Join(again, "as"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again != dir || !os.SameFile(before, after) {
+		t.Errorf("a second run must reuse %s and its links, got %s", dir, again)
+	}
+
+	ld := filepath.Join(dir, "ld")
+	if err := os.Remove(ld); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/somewhere/else/ld", ld); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ccShim(suiteGo, s.exec); err != nil {
+		t.Fatal(err)
+	}
+	if target, _ := os.Readlink(ld); target != filepath.Join(bin, "ld") {
+		t.Errorf("a stale link must be replaced: ld -> %s", target)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 3 {
+		t.Errorf("replacing a link leaves nothing behind, found %d entries", len(entries))
+	}
+}
+
+// A shim that cannot be made stops the suite before it runs.
+func TestShimFailureStopsTheSuite(t *testing.T) {
+	root := isolated(t)
+	fakeTools(t, "as")
+	if err := os.WriteFile(filepath.Join(os.TempDir(), "blocker"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", filepath.Join(os.TempDir(), "blocker"))
+	s := &suiteRun{}
+	err := Suite(SuiteRun{Race: true, Hermetic: true}, root, suiteGo, &strings.Builder{}, s.exec)
+	if err == nil || !strings.Contains(err.Error(), "C toolchain shim") {
+		t.Fatalf("want the shim failure, got %v", err)
+	}
+	for _, c := range s.calls {
+		if len(c.args) > 0 && c.args[0] == "test" {
+			t.Fatal("the suite must not run without its toolchain")
+		}
+	}
+}
+
+// fakeTools puts executables of the given names in a directory and makes it
+// the whole PATH, so the tools the shim looks up are the test's.
+func fakeTools(t *testing.T, names ...string) string {
+	t.Helper()
+	bin := t.TempDir()
+	for _, n := range names {
+		if err := os.WriteFile(filepath.Join(bin, n), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	return bin
+}
+
+func pathParts(env []string) []string {
+	v, _ := envValue(env, "PATH")
+	return strings.Split(v, string(os.PathListSeparator))
+}
+
+// isShim reports whether dir is a C toolchain shim under this test's TMPDIR.
+func isShim(dir string) bool {
+	return strings.HasPrefix(dir, filepath.Join(os.TempDir(), "lateregate-cc-"))
 }
 
 // A compiler named rather than given as a path is found on the PATH as it
