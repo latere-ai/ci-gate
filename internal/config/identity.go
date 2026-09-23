@@ -98,7 +98,7 @@ type Identity struct {
 	Overlays []string `yaml:"overlays"`
 	// Image is the name this repository's workload image was built under,
 	// for a repository whose image carries neither a command name under
-	// cmd/ nor the module's own name. The deployment rules recognise a
+	// cmd/ nor the module's own name. The deployment rules recognize a
 	// container by the last path segment of its image, without the
 	// registry, the tag and the digest, so the value here is that segment
 	// alone. It is a declaration and not a rename: a repository that

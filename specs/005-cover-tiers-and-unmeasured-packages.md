@@ -74,5 +74,5 @@ arithmetic on its own.
 
 Shipped. This repository gates itself with it and reports seven measured
 packages and no unmeasured ones. `service-template`'s `tools/coverage` is
-removed in favour of it, which was the point: the private tool existed only
+removed in favor of it, which was the point: the private tool existed only
 because the shared gate could not express what a service needs.

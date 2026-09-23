@@ -208,7 +208,7 @@ gate; every criterion above has the test it names.
 **Two corrections to the text above, made so the spec describes what
 shipped.** The fixtures are named trees in the test file rather than a
 `testdata/` directory, as the identity gate's are, because the scan skips
-`testdata/` and the licence and format gates would otherwise read the
+`testdata/` and the license and format gates would otherwise read the
 fixtures as this repository's source. `none` over a tree with no Go file
 passes with its reason, where `pooled` over the same tree fails: the first
 role claims nothing a file would have to show, the second claims two reads

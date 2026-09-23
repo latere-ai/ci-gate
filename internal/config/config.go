@@ -172,10 +172,10 @@ func (c *Config) WaiverFor(gate string) *Waiver {
 	return &w
 }
 
-// License configures the per-file licence notice gate.
+// License configures the per-file license notice gate.
 //
 // There is no default for any of it. Every other gate here defaults to
-// something sensible so a repository adopts it without config, but a licence
+// something sensible so a repository adopts it without config, but a license
 // guessed on a repository's behalf would be printed into every file it has,
 // and a wrong identifier in 300 files is worse than none. The declaration is
 // the point: the gate asserts that a person decided, and that the tree agrees

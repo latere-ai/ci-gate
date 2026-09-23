@@ -133,7 +133,7 @@ fails when the committed table differs from the derived one.
 Whether `platformd` decides from its own tables; whether a claim
 belongs in the token or in a product table; whether a repository's
 declared role is right. Those are review, and this gate is what lets
-review look only at them. It does not run a service: the behavioural
+review look only at them. It does not run a service: the behavioral
 half of the shape is the conformance packages `authkit/conformance`
 and `authz/conformance` in `latere.ai/x/pkg`, which a repository runs
 as tests under the `suite` gate.

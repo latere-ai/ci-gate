@@ -3,7 +3,7 @@
 
 // Package bar is the gate set, and the run of all of it.
 //
-// The organisation has one bar, so the binary that holds it is the one thing
+// The organization has one bar, so the binary that holds it is the one thing
 // a repository runs: `lateregate` with no arguments runs every gate that
 // applies and reports all of them. Which gates apply is decided by asking
 // the tree, not by configuring a list, and the only way a gate that applies

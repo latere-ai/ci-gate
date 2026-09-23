@@ -79,7 +79,7 @@ type tree struct {
 	// target they were written against.
 	frontendFiles []sourceFile
 	// binaries are the commands this repository builds, which is how a
-	// container is recognised as running it.
+	// container is recognized as running it.
 	binaries []string
 	// overlayHosts are the addresses the declared overlays carry, read from
 	// the overlays themselves so the exemption is a declaration rather than
@@ -234,7 +234,7 @@ func (t *tree) overlay(rel string) bool { return under(rel, t.cfg.Overlays) }
 // carries reports whether a declared overlay sets this address.
 func (t *tree) carries(host string) bool { return t.overlayHosts[host] }
 
-// clean normalises the paths of one block list, dropping the empty ones.
+// clean normalizes the paths of one block list, dropping the empty ones.
 func clean(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {

@@ -553,7 +553,7 @@ func TestTheClosingLineNamesTheHighestActor(t *testing.T) {
 	}
 }
 
-// Every remote form this organisation writes names the same repository.
+// Every remote form this organization writes names the same repository.
 func TestParseSlug(t *testing.T) {
 	for _, remote := range []string{
 		"ssh://github.com/latere-ai/ci-gate",

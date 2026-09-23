@@ -32,7 +32,7 @@ them, pkg, has a release note for every tag. The other 29 do not:
 | ci-gate, latere-ui, topos | no release workflow | nothing |
 
 `generate-notes` builds its body from pull request titles, and this
-organisation commits to main directly, so the body is empty by
+organization commits to main directly, so the body is empty by
 construction. The `|| true` behind it means an empty body has never failed
 a release. A reader who wants to know what `lux v0.2.202` changed opens the
 compare link and reads 14 commit diffs.

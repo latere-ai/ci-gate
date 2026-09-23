@@ -244,7 +244,7 @@ func ruleCases(core, service, client, settledService config.Identity) []ruleCase
 		bad:  map[string]string{"internal/api/h.go": "package api\n\nvar teams = \"/tokeninfo\"\n"},
 		good: map[string]string{"internal/api/h.go": "package api\n\nvar health = \"/healthz\"\n"},
 	}, {
-		name: "no issuer call for the members of an organisation",
+		name: "no issuer call for the members of an organization",
 		rule: "request-path", cfg: service,
 		bad:  map[string]string{"internal/api/h.go": "package api\n\nvar members = \"/orgs/%s/members\"\n"},
 		good: map[string]string{"internal/api/h.go": "package api\n\nvar members = \"/teams/%s\"\n"},

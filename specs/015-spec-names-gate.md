@@ -99,7 +99,7 @@ a two-hop release.
 
 **A module of its own, `latere.ai/x/specdeck`.** Rejected on cost against
 benefit. It buys separation this has no use for and costs a repository,
-a workflow, a changelog, a licence, a `.lateregate.yaml`, a release
+a workflow, a changelog, a license, a `.lateregate.yaml`, a release
 ritual, and a `depcheck` entry here with a reason -- for about 500 lines
 with two consumers, both of which already carry `latere.ai/x/ci-gate`.
 Worse, it reintroduces the failure being removed one level up: `lateregate
@@ -121,7 +121,7 @@ has no compatibility surface. `specdeck` breaks that boundary and puts a
 library API under a 0.x tool's release cadence. Two things bound it. The
 package is public for exactly one external consumer, `origo/tools/apidoc`,
 and the surface below is the whole of it. And the consumer is a build-time
-tool in a repository this organisation owns, so a breaking change is a
+tool in a repository this organization owns, so a breaking change is a
 compile error in a tool module, found by the same push that makes it,
 rather than a break in somebody's running service.
 
@@ -473,7 +473,7 @@ and neither can red a repository that has not adopted.
   declared kind no table produces each fail, and each says which of the
   three it is.
 - Every reconciliation marked **bug fix** in the table above has a fixture
-  that fails on the pre-fix behaviour: a definition table inside a fence,
+  that fails on the pre-fix behavior: a definition table inside a fence,
   a `GET, POST` method cell, a mention carrying `?q=1`, and a `LATERE_*`
   family token.
 - A `<placeholder>` definition resolves its instance and the longest

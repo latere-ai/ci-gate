@@ -139,7 +139,7 @@ func (g *Guard) slug() (string, string, error) {
 }
 
 // parseSlug reads owner and repository out of every remote form this
-// organisation writes: ssh://github.com/o/r, git@github.com:o/r.git and
+// organization writes: ssh://github.com/o/r, git@github.com:o/r.git and
 // https://github.com/o/r.git.
 func parseSlug(remote string) (string, string, error) {
 	s := strings.TrimSuffix(strings.TrimSpace(remote), "/")

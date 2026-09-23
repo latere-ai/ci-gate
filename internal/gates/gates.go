@@ -36,7 +36,7 @@ type Exec func(env []string, stream bool, name string, args ...string) ([]byte, 
 func OSExec(dir string, out io.Writer) Exec {
 	// One lock for every command this Exec runs: a streamed command's stdout
 	// and stderr are copied by two goroutines, and handing the same writer to
-	// both races on any writer that does not synchronise itself. os.Stdout
+	// both races on any writer that does not synchronize itself. os.Stdout
 	// hides it behind a file descriptor; a strings.Builder in a test does not,
 	// and neither would a log sink a caller passes in.
 	safe := &syncWriter{w: out}
@@ -62,7 +62,7 @@ func OSExec(dir string, out io.Writer) Exec {
 	}
 }
 
-// syncWriter serialises the writes of the two pipes a streamed command holds.
+// syncWriter serializes the writes of the two pipes a streamed command holds.
 type syncWriter struct {
 	mu sync.Mutex
 	w  io.Writer
@@ -220,7 +220,7 @@ func modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec, hint
 // the moment anyone installs dependencies. Their code is not this
 // repository's to modernize and no patch here could be applied to it, so the
 // gate would fail on every workstation with the frontend set up. The
-// directory is excluded by name, the way the licence and cgo scans already
+// directory is excluded by name, the way the license and cgo scans already
 // exclude it.
 func ownPackages(goBin string, run Exec) ([]string, error) {
 	listed, err := run(nil, false, goBin, "list", "./...")

@@ -105,7 +105,7 @@ func TestAWrongHolderFails(t *testing.T) {
 
 // The notice touching the doc comment is the failure this gate exists for as
 // much as a missing notice: it compiles, it reviews clean, and it puts the
-// licence text at the top of every page on pkg.go.dev.
+// license text at the top of every page on pkg.go.dev.
 func TestAnUnseparatedNoticeBecomesThePackageDoc(t *testing.T) {
 	out, err := run(t, cfg(), map[string]string{
 		"a.go": "// SPDX-FileCopyrightText: 2026 Latere AI\n" +
@@ -161,7 +161,7 @@ func TestAnUndeclaredRepositoryFails(t *testing.T) {
 		"a.go": notice + "package a\n",
 	})
 	if err == nil {
-		t.Fatal("a repository that declares no licence should fail, not pass")
+		t.Fatal("a repository that declares no license should fail, not pass")
 	}
 	if !strings.Contains(err.Error(), "license.spdx") {
 		t.Errorf("the failure should name the field to fill in: %v", err)
@@ -319,7 +319,7 @@ func TestTheWrongMarkerForTheFileTypeFails(t *testing.T) {
 	}
 }
 
-// The kernel only honours #! on line 1, so a notice pushed above it would
+// The kernel only honors #! on line 1, so a notice pushed above it would
 // make the script unexecutable. It moves below instead.
 func TestTheNoticeSitsBelowAShebang(t *testing.T) {
 	if _, err := run(t, shellCfg(), map[string]string{
@@ -522,7 +522,7 @@ func TestFilesChecksJustTheNamedFiles(t *testing.T) {
 		t.Errorf("findings = %v", got)
 	}
 	if _, err := Files(config.License{}, root, []string{"bad.go"}); err == nil {
-		t.Error("an undeclared licence is an error, as in Run")
+		t.Error("an undeclared license is an error, as in Run")
 	}
 	if _, err := Files(cfg(), root, []string{"missing.go"}); err == nil {
 		t.Error("a named file that cannot be read is an error, not a pass")
@@ -587,8 +587,8 @@ func TestEveryFingerprintedLicenseTextPasses(t *testing.T) {
 }
 
 // A proprietary repository declares the SPDX LicenseRef form; its root file
-// must reserve every right and grant no licence, and a root file that reads
-// as an open source licence is the mismatch the gate exists to catch.
+// must reserve every right and grant no license, and a root file that reads
+// as an open source license is the mismatch the gate exists to catch.
 func TestAProprietaryDeclarationNeedsAnAllRightsReservedRootFile(t *testing.T) {
 	good := "Copyright (c) 2026 Latere AI. All rights reserved.\n\nThis software is proprietary and confidential. No license is granted to use, copy, modify, or distribute it without written permission.\n"
 	if why := licenseText("LicenseRef-Proprietary", good); why != "" {
@@ -601,7 +601,7 @@ func TestAProprietaryDeclarationNeedsAnAllRightsReservedRootFile(t *testing.T) {
 	}
 }
 
-// The staged-file path honours the same skip list the walk does: a file under
+// The staged-file path honors the same skip list the walk does: a file under
 // a skipped directory is neither checked nor written, whichever route found it.
 func TestFilesHonoursTheSkipList(t *testing.T) {
 	root := t.TempDir()

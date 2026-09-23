@@ -142,7 +142,7 @@ A value is a json encoding when it is a result of `json.Marshal` or
 alternative encoders; or when its type is a named byte slice from a json
 package, which is `json.RawMessage`. That last one is an alias for
 `jsontext.Value` from Go 1.26 on, so both the name written and the type it
-resolves to are recognised.
+resolves to are recognized.
 
 On a json parameter the rule names what is **accepted** rather than what is
 refused, so a shape nobody measured is reported rather than let through. The
@@ -167,7 +167,7 @@ Three carriers propagate the json flag, and all three were needed:
    declared type says nothing, so the assignment is what is read. What a
    variable can hold grows and never shrinks, because a value that reaches
    the statement on any branch reaches it.
-3. A function of the module, summarised per result. `agents` wrapped the
+3. A function of the module, summarized per result. `agents` wrapped the
    encoder in `marshalJSON` and bound its result six times; `auth` assigned
    the encoder to a named result in `columns()` and returned it. Without the
    summary all of those are invisible at the call. The summaries settle by

@@ -94,7 +94,7 @@ func TestHookReportsGitFailing(t *testing.T) {
 	}
 }
 
-// The shared hook is recognised by its delegation line, not by its bytes,
+// The shared hook is recognized by its delegation line, not by its bytes,
 // so a repository may add lines of its own.
 func TestIsSharedHook(t *testing.T) {
 	for _, tc := range []struct {
@@ -187,8 +187,8 @@ func TestHookRunsGoimportsWithoutALocalPrefixOutsideAModule(t *testing.T) {
 	}
 }
 
-// The licence check is the gate's own, on the staged files, when the
-// repository declared a licence. It prints the same finding and the same
+// The license check is the gate's own, on the staged files, when the
+// repository declared a license. It prints the same finding and the same
 // shape the gate prints, so the fix is the same.
 func TestHookFailsOnAStagedFileWithoutTheNotice(t *testing.T) {
 	cfg := &config.Config{License: config.License{SPDX: "MIT", Holder: "Latere AI", Extensions: []string{".go"}}}
@@ -210,7 +210,7 @@ func TestHookFailsOnAStagedFileWithoutTheNotice(t *testing.T) {
 	}
 }
 
-// No declared licence, no licence check: the gate does not apply either.
+// No declared license, no license check: the gate does not apply either.
 func TestHookSkipsTheNoticeWhenNoLicenceIsDeclared(t *testing.T) {
 	root := stage(t, "a/a.go", "package a\n")
 	var calls []call

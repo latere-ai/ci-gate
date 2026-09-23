@@ -40,7 +40,7 @@ func gated(allow map[string]string) config.Depcheck {
 func TestAnAdmittedDependencyPasses(t *testing.T) {
 	l, _ := lister(t, map[string][]string{"*": {"golang.org/x/text/unicode/norm"}})
 	var sb strings.Builder
-	err := Run(gated(map[string]string{"golang.org/x/text": "Unicode normalisation"}), &sb, l)
+	err := Run(gated(map[string]string{"golang.org/x/text": "Unicode normalization"}), &sb, l)
 	if err != nil {
 		t.Fatalf("an admitted dependency should pass: %v\n%s", err, sb.String())
 	}

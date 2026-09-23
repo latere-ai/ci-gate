@@ -131,7 +131,7 @@ What moved from the decision above:
   run, and not in the `test_os` matrix. Repositories such as sandbox and
   wallfacer carry macOS in `test_os`, and the suite adds `-race` and coverage
   on top of the plain test run, which would multiply macOS minutes at ten
-  times the Linux rate in a month already at the organisation's Actions cap.
+  times the Linux rate in a month already at the organization's Actions cap.
   The other OS legs keep running `lateregate test` by name, which is why that
   gate stays runnable and unchanged. The acceptance line for the workflow
   reads, as shipped: `lateregate.yml` runs `suite` as a gate job on

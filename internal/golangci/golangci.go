@@ -195,7 +195,7 @@ func Render(module string, disable []string, sl *config.Sloglint, extra map[stri
 //
 // Enabling the set by name would mean a toolchain that adds an analyzer ships
 // it disabled here, and nobody would notice which one. The two exclusions are
-// judgement, not defects: fieldalignment optimizes memory layout at the cost
+// judgment, not defects: fieldalignment optimizes memory layout at the cost
 // of grouping related fields, and shadow flags the idiomatic
 // `if err := f(); err != nil` inside a function that already holds an err.
 func govetSettings() map[string]any {

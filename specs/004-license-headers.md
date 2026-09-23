@@ -1,5 +1,5 @@
 ---
-title: Gate the licence notice every source file carries
+title: Gate the license notice every source file carries
 status: complete
 depends_on:
   - 001-gate-principles.md
@@ -14,11 +14,11 @@ author: changkun
 dispatched_task_id: null
 ---
 
-# Gate the licence notice every source file carries
+# Gate the license notice every source file carries
 
 ## The problem
 
-A repository's licence lives in one file at the root. That is enough for
+A repository's license lives in one file at the root. That is enough for
 someone who clones the repository and reads it. It is not enough for anyone
 who receives the code some other way, which is most of the ways code
 actually travels: a file pasted into a bug report, a package vendored into
@@ -27,7 +27,7 @@ scanner walking a build.
 
 The org's state on 2026-08-30, measured across the four Go repositories:
 
-| Repository | Licence | Root file | Per-file notice |
+| Repository | License | Root file | Per-file notice |
 |---|---|---|---|
 | `ci-gate` | MIT | yes | all 22 Go files, prose form |
 | `pkg` | MIT | yes | none |
@@ -48,19 +48,19 @@ The prose form it used is also not machine-readable:
 No scanner can turn "Licensed under the MIT License." into an identifier
 without guessing. `SPDX-License-Identifier` exists precisely so it does not
 have to, and it is what `reuse`, `scancode`, `syft` and GitHub's own
-licence detection read.
+license detection read.
 
 ## Why this is a gate and not a convention
 
 The failure is silent in both directions. A file added without a notice
 looks exactly like a file that has one, until someone greps. A repository
-that changes its licence leaves every existing header stating the old one,
+that changes its license leaves every existing header stating the old one,
 and the stale header is the one a downstream reader trusts.
 
 `replichai` makes the second case concrete: it is going open source under
-AGPL-3.0-or-later, which is a licence whose terms only bind anyone if they
+AGPL-3.0-or-later, which is a license whose terms only bind anyone if they
 travel with the code. A copyleft notice nobody can find is a permissive
-licence with extra steps.
+license with extra steps.
 
 ## The check
 
@@ -85,7 +85,7 @@ declaring one gets an error naming the field, not a pass.
 
 This is the opposite of the other gates, which default to something
 sensible so a repo can adopt them without config ([[001-gate-principles]]
-D2). It has to be, because there is no sensible default for a licence: a
+D2). It has to be, because there is no sensible default for a license: a
 guessed identifier printed into 300 files is worse than no identifier. The
 whole value of the gate is that the answer was decided by a person.
 
@@ -99,7 +99,7 @@ a header pointing at terms that are not in the tree names nothing.
 ## D2 — the blank third line is part of the check
 
 In Go, a comment block immediately above `package` *is* the package
-documentation. Without a blank line separating them, the licence text
+documentation. Without a blank line separating them, the license text
 becomes the first paragraph of the package doc and appears at the top of
 every rendered page on `pkg.go.dev`:
 
@@ -155,7 +155,7 @@ other gate here suspicious.
 
 ## D6 — a shebang keeps line 1
 
-The kernel honours `#!` only as the first two bytes of the file, so a notice
+The kernel honors `#!` only as the first two bytes of the file, so a notice
 pushed above it makes the script unexecutable:
 
 ```sh

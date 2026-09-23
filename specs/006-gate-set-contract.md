@@ -54,7 +54,7 @@ probe made the difference invisible.
 
 ## The decision
 
-The required set is a property of the organisation, so it is compiled into
+The required set is a property of the organization, so it is compiled into
 this repository. A consumer cannot lower it. A consumer can only record
 that it does not hold a gate **yet**, with a reason and a date:
 
@@ -107,7 +107,7 @@ make -np  →  ^cover:
 Not `make -n cover`. That form succeeds when a **file** of the target's
 name exists, so on a case-insensitive filesystem a `LICENSE` file answers
 for a `license` target and a `dist/` directory answers for `dist`. Both
-were live in this organisation.
+were live in this organization.
 
 The database is read to completion before matching. Terminating that pipe
 early kills make with SIGPIPE, which exits 141 and reads as "no target".

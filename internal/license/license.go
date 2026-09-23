@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: MIT
 
-// Package license gates the licence notice on every source file.
+// Package license gates the license notice on every source file.
 //
-// A licence in one file at the root binds anyone who clones the repository
+// A license in one file at the root binds anyone who clones the repository
 // and reads it. Code rarely travels that way: it is pasted, vendored, lifted
 // and scanned, and every one of those routes drops the root file. The notice
 // has to be on the file, in the form a scanner can read.
@@ -43,8 +43,8 @@ const (
 var year = regexp.MustCompile(`^\d{4}(-\d{4})?$`)
 
 // fingerprints maps each identifier a repository may declare to phrases that
-// are in the canonical text of that licence and in no other the fleet uses.
-// The two "only"/"or-later" forms of a GNU licence share one text, so they
+// are in the canonical text of that license and in no other the fleet uses.
+// The two "only"/"or-later" forms of a GNU license share one text, so they
 // share one fingerprint. LicenseRef-Proprietary is the SPDX spelling for
 // terms not on the list, and its fingerprint is the two phrases a
 // proprietary notice cannot do without. An identifier missing here fails the gate rather
@@ -56,15 +56,15 @@ var fingerprints = map[string][]string{
 	"Apache-2.0":        {"Apache License", "Version 2.0"},
 	"AGPL-3.0-only":     {"GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"},
 	"AGPL-3.0-or-later": {"GNU AFFERO GENERAL PUBLIC LICENSE", "Version 3"},
-	// The SPDX form for terms that are not on the licence list: a
+	// The SPDX form for terms that are not on the license list: a
 	// proprietary repository declares LicenseRef-Proprietary, its headers
 	// stay machine-readable, and its root file must say what such a file
-	// says, that every right is reserved and no licence is granted.
+	// says, that every right is reserved and no license is granted.
 	"LicenseRef-Proprietary": {"All rights reserved", "No license is granted"},
 }
 
-// licenseText reports why the root LICENSE text is not the licence spdx
-// names, or "" when it is. A header stating one licence over a root file
+// licenseText reports why the root LICENSE text is not the license spdx
+// names, or "" when it is. A header stating one license over a root file
 // carrying another is exactly the mismatch the notice was meant to prevent,
 // and nothing else in the gate reads the root file.
 func licenseText(spdx, text string) string {
@@ -82,7 +82,7 @@ func licenseText(spdx, text string) string {
 	return ""
 }
 
-// reads names the licence the text does look like, when one fingerprint
+// reads names the license the text does look like, when one fingerprint
 // matches, so the failure says "reads as MIT" and not only "is not Apache".
 func reads(text string) string {
 	for id, phrases := range fingerprints {
@@ -105,7 +105,7 @@ func reads(text string) string {
 func Run(cfg config.License, root string, out io.Writer) error {
 	if strings.TrimSpace(cfg.SPDX) == "" {
 		return fmt.Errorf("license.spdx is not set in %s\n"+
-			"a licence has no sensible default: an identifier guessed here would be "+
+			"a license has no sensible default: an identifier guessed here would be "+
 			"printed into every file in the repository. Declare the one this "+
 			"repository is released under, e.g. license.spdx: MIT",
 			config.Name)
@@ -156,7 +156,7 @@ func Run(cfg config.License, root string, out io.Writer) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("scanning for licence notices: %w", err)
+		return fmt.Errorf("scanning for license notices: %w", err)
 	}
 	// A scan that read nothing proves nothing.
 	if scanned == 0 {
@@ -232,7 +232,7 @@ func Want(cfg config.License, prefix string) string {
 // check reports why a file's notice is wrong, or "" when it is right.
 //
 // prefix is the file type's line-comment marker. The notice sits at the very
-// top except below a shebang, which the kernel only honours on line 1: a
+// top except below a shebang, which the kernel only honors on line 1: a
 // script whose first line is a comment is not executable, so the notice moves
 // down rather than the file breaking.
 func check(src, prefix string, cfg config.License) string {
@@ -338,7 +338,7 @@ func Write(cfg config.License, root string, out io.Writer, now time.Time) error 
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("writing licence notices: %w", err)
+		return fmt.Errorf("writing license notices: %w", err)
 	}
 	_, _ = fmt.Fprintf(out, "%s written on %d file(s)\n", cfg.SPDX, written)
 	if len(wrong) > 0 {

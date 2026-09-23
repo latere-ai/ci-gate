@@ -30,7 +30,7 @@ const (
 // is a file scan, then the modernizers on the packages holding the files.
 //
 // In order: gofmt, goimports grouping with module as the local prefix, the
-// licence notice when the repository declared one, the outbound-HTTP
+// license notice when the repository declared one, the outbound-HTTP
 // instrumentation rule, then go fix. Each of the four scans reads only the
 // staged files with no type-check and no network, so the hook stays a few
 // seconds. golangci-lint is not here; Prepush runs it once per push.
@@ -42,7 +42,7 @@ const (
 //
 // Nothing staged is a pass: a commit that touches no Go file has nothing
 // for this hook to say. A file under testdata is held to gofmt, goimports,
-// and the licence notice, and to nothing that reads it as a package.
+// and the license notice, and to nothing that reads it as a package.
 func Hook(cfg *config.Config, root, module, goBin string, out io.Writer, run Exec) error {
 	staged, err := run(nil, false, "git", "diff", "--cached", "--name-only", "--diff-filter=ACM", "-z", "--", "*.go")
 	if err != nil {

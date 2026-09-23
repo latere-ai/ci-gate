@@ -35,7 +35,7 @@ fourteen CI runs failed. None of the failures was in a gate the hook runs:
 
 The hook runs gofmt and the modernizers over the staged files. [[009-contract-reports-drift]]
 kept golangci-lint out of it on purpose: the linter takes a global lock, and
-a hook that serialises every commit on a machine is one people bypass. That
+a hook that serializes every commit on a machine is one people bypass. That
 reasoning is right for the linter and wrong for `license` and `otel-client`,
 which are file scans that finish in well under a second, and it left the
 goimports grouping rule, which is a file-local formatting rule like gofmt,
@@ -51,7 +51,7 @@ Two hooks, each holding the gates that fit its cadence.
 
 **`lateregate hook` (pre-commit) runs every gate that is a file scan**, over
 the staged Go files, in this order: gofmt, goimports grouping with the
-module path as the local prefix, the licence notice, the outbound-HTTP
+module path as the local prefix, the license notice, the outbound-HTTP
 instrumentation rule, then the modernizers over the packages holding the
 files. Each of the first four is a read of the staged files with no
 type-check and no network, so the hook stays a few seconds. A file under
@@ -124,7 +124,7 @@ no Go file staged is a pass, as it is today.
 1. `hook` with a staged Go file whose imports put the module's own package
    in the third-party group fails and names the file; after `goimports
    -local` the same file passes.
-2. `hook` with a staged Go file missing the licence notice fails with the
+2. `hook` with a staged Go file missing the license notice fails with the
    same message `license` prints; with the notice it passes.
 3. `hook` with a staged non-test file building `http.Client{}` without a
    transport fails; the same content in a `_test.go` file passes.
@@ -141,7 +141,7 @@ no Go file staged is a pass, as it is today.
    lines and calls `lateregate prepush` passes.
 8. The pkg repository's pre-push keeps its changelog check and passes
    `contract`.
-9. Every gate keeps its behaviour: `license` and `otel-client` on a tree
+9. Every gate keeps its behavior: `license` and `otel-client` on a tree
    report what they reported before the refactor.
 10. Each package in this repository stays at or above the coverage floor.
 

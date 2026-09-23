@@ -131,7 +131,7 @@ gate nobody runs hides a typo in the name of a gate somebody does.
 Decisions, each with its reason. Every value the tool can decide for a
 repository it decides by default, so a key in this file is one somebody
 chose: a coverage exemption, a spec vocabulary, a hermetic allowance, a
-dependency allowlist, a licence, a waiver. A key that restates its default
+dependency allowlist, a license, a waiver. A key that restates its default
 is reported by `contract` with "delete it": a restated default is the line
 the next default change makes wrong.
 
@@ -184,7 +184,7 @@ it until then.
 staged Go files, then the modernizers over the packages holding them. In
 order, gofmt; goimports grouping with the module path as the local prefix,
 which is the linter's rule and the failure it most often reports; the
-licence notice, when `license.spdx` is declared; the outbound-HTTP
+license notice, when `license.spdx` is declared; the outbound-HTTP
 instrumentation rule; then `go fix`, reading `modernize.disable` from the
 same config the full gate reads. Each scan reads only the staged files, so
 the hook stays a few seconds. The script is one line that calls it.
@@ -445,7 +445,7 @@ Name the target that exercises the most code. A leak the gate never runs is a
 leak it reports as absent, and the slow suites are the ones that build caches
 worth gigabytes.
 
-Two behaviours are worth knowing about. An empty sandbox that was **never
+Two behaviors are worth knowing about. An empty sandbox that was **never
 written to** fails rather than passes: a suite launched through a wrapper that
 resets the environment would otherwise score perfectly having proved nothing.
 And when the suite fails *and* leaks, the leak is the verdict, because a red
@@ -497,7 +497,7 @@ file type comments with:
 package audit
 ```
 
-A script keeps its shebang on line 1, because the kernel only honours it
+A script keeps its shebang on line 1, because the kernel only honors it
 there, and the notice moves below:
 
 ```sh
@@ -525,7 +525,7 @@ fingerprint fails too, until one is added to the table.
 
 Two details the check earns its keep on. The **blank third line** is part of
 it: in Go a comment block touching `package` *is* the package documentation,
-so an unseparated notice puts the licence at the top of every page on
+so an unseparated notice puts the license at the top of every page on
 pkg.go.dev, and the mistake is invisible in review and permanent once it is in
 every file. And the **year is a pattern**, `2026` or `2024-2026`, not a fixed
 value, because a gate that goes red every 1 January for a reason nobody caused
@@ -649,7 +649,7 @@ settings that each closed a hole a single repository had already closed alone:
   visible at once.
 - **Every vet analyzer** runs. Enabling the set by name means a toolchain that
   adds an analyzer ships it disabled and nobody notices which. `fieldalignment`
-  and `shadow` are off by judgement: one trades readable structs for memory
+  and `shadow` are off by judgment: one trades readable structs for memory
   layout, the other flags idiomatic `if err := f(); err != nil`.
 - **Type assertions are checked.** A dropped second result panics on exactly
   the value the assertion was written to handle.
@@ -729,7 +729,7 @@ The scan parses each file rather than matching text, which matters more than
 it sounds. A `Transport` field several lines below the opening brace still
 counts, a comment explaining this rule does not trip the gate, and
 `Timeout: cfg.Transport.Timeout` does not pass for a `Transport` field the way
-a substring test would. Test files are excluded: a test dialling an httptest
+a substring test would. Test files are excluded: a test dialing an httptest
 server has no trace to continue.
 
 A build-tagged harness that deliberately uses the stdlib can be named:

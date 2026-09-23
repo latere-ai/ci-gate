@@ -40,7 +40,7 @@ sensible default is a line twenty repositories copy. The contract of 006
 asked whether a target *exists*, so a repository-average `cover` passed it,
 and a target nobody runs in CI passed it too.
 
-The organisation has one bar. The tool that holds it should be the one
+The organization has one bar. The tool that holds it should be the one
 thing a repository runs.
 
 ## The decision
@@ -94,9 +94,9 @@ directly:
 | every other gate | always |
 
 `license` applies always. It needs `license.spdx`, which has no default by
-[[004-license-headers]], so a repository that has not declared its licence
+[[004-license-headers]], so a repository that has not declared its license
 fails the gate with that message. That is the bar raised, not a gap: a
-repository that has not decided its licence has not decided it.
+repository that has not decided its license has not decided it.
 
 A waiver is the only way a gate that applies does not run:
 
@@ -129,7 +129,7 @@ A key that restates its default is drift waiting to happen, and
 [[009-contract-reports-drift]] reports it.
 
 What stays per repository is a decision with a reason: a coverage exemption,
-a spec vocabulary, a hermetic allowance, a dependency allowlist, a licence.
+a spec vocabulary, a hermetic allowance, a dependency allowlist, a license.
 That is D2 of [[001-gate-principles]] unchanged.
 
 ## The subcommands

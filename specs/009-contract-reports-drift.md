@@ -35,7 +35,7 @@ each of them is a place to drift:
 ## The decision
 
 `contract` becomes the drift report. It reads the files above and fails on
-every way they differ from the shape the organisation shares, naming all of
+every way they differ from the shape the organization shares, naming all of
 them in one run. It does not run gates; `check` does that.
 
 ```mermaid
@@ -96,7 +96,7 @@ exec go tool lateregate hook
 files and the packages holding them, reading `modernize.disable` from the
 same config the full gate reads. The 42 lines that did this by hand in 18
 repositories are deleted. golangci-lint is deliberately not in the hook: it
-takes a global lock and a hook that serialises every commit on a machine is
+takes a global lock and a hook that serializes every commit on a machine is
 one people bypass.
 
 ### `init`

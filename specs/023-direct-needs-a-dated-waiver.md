@@ -84,7 +84,7 @@ enough for two reasons.
 
 `lateregate postgres` runs one gate by name and builds no plan, so a
 repository checking this rule on its own would fail on a waiver the bar
-honours. The two paths have to agree.
+honors. The two paths have to agree.
 
 And the plan's contract for an expired waiver is that the gate runs and
 fails on its own terms, so that the reason for the work comes from the

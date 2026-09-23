@@ -15,7 +15,7 @@
 // So the rules run on every push. A repository declares which layer of the
 // shape it is in .lateregate.yaml, the role selects the rules, and each rule
 // is a scan of the tree: non-test Go files, deployment manifests, and
-// documents outside an archive. Nothing here runs a service; the behavioural
+// documents outside an archive. Nothing here runs a service; the behavioral
 // half of the shape is the conformance packages a repository runs as tests.
 //
 // A repository with no block fails rather than skipping, because a

@@ -101,7 +101,7 @@ var jsonMarshallers = map[string][]string{
 // jsontext is in the list because json.RawMessage is an alias for
 // jsontext.Value from Go 1.26 on, so the name a repository writes and the
 // type it resolves to live in different packages and both have to be
-// recognised.
+// recognized.
 var jsonPackages = []string{
 	"encoding/json",
 	"encoding/json/v2",
@@ -721,7 +721,7 @@ func hasTextValue(t types.Type) bool { return hasMethod(t, "TextValue", twoWithE
 // value of its own: the column type's text method, the standard stringer, or
 // the standard library's database value method. Each is read by shape rather
 // than by name, because none of the three packages that declare them is in
-// the analysed package's import graph.
+// the analyzed package's import graph.
 func speaksText(t types.Type) bool {
 	return hasMethod(t, "String", func(sig *types.Signature) bool {
 		if sig.Params().Len() != 0 || sig.Results().Len() != 1 {

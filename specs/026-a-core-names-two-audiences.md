@@ -86,7 +86,7 @@ does not run, so a `core-audiences` waiver is legal in a core alone.
 ## The rule
 
 `core-audiences` runs for role `core`, over the containers the deployment
-rules already recognise as this repository's (`deploy.go:281`: an image whose
+rules already recognize as this repository's (`deploy.go:281`: an image whose
 last segment is a command it builds, or an overlay patch carrying that name).
 
 The value the hosted deployment runs is the overlay's where the overlay
