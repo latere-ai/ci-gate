@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   gate:
-    uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
+    uses: latere-ai/ci/.github/workflows/lateregate.yml@6eb848f143466052e189af3d4820069003eec692
 
   enum-typescript-tests:
     name: TypeScript enum analyzer tests
