@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.49.0 - 2026-09-23
+
 ### Added
 
 - A `suite` gate runs the suite once with every property the five suite
