@@ -60,7 +60,7 @@ GATES
 Every command reads .lateregate.yaml from -C (default: the working
 directory). A missing file means defaults: a repository adopts the whole bar
 without writing config. The file holds decisions, each with a reason: a
-coverage exemption, a spec vocabulary, a licence, a dated waiver.
+coverage exemption, a spec vocabulary, a license, a dated waiver.
 
 cover takes -profile for a repository that runs its own tiers; otherwise it
 collects one. tempdir takes the command to watch after --. license -w writes

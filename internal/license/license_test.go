@@ -603,7 +603,7 @@ func TestAProprietaryDeclarationNeedsAnAllRightsReservedRootFile(t *testing.T) {
 
 // The staged-file path honors the same skip list the walk does: a file under
 // a skipped directory is neither checked nor written, whichever route found it.
-func TestFilesHonoursTheSkipList(t *testing.T) {
+func TestFilesHonorsTheSkipList(t *testing.T) {
 	root := t.TempDir()
 	for _, rel := range []string{"skeleton/cmd/main.go", "internal/x.go"} {
 		if err := os.MkdirAll(filepath.Join(root, filepath.Dir(rel)), 0o755); err != nil {

@@ -916,7 +916,7 @@ func TestAFrontendBesideTheAPIMayCallTheIssuer(t *testing.T) {
 // A path the block skips is one the rules assert nothing about, and a file
 // the block admits as a passthrough may name a claim, because forwarding one
 // is what it does.
-func TestSkipAndPassthroughAreHonoured(t *testing.T) {
+func TestSkipAndPassthroughAreHonored(t *testing.T) {
 	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai"}
 	files := map[string]string{
 		"internal/auth/claims.go": "package auth\n\nvar keys = []string{\"org_id\", \"roles\"}\n",

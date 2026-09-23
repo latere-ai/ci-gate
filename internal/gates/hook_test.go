@@ -211,7 +211,7 @@ func TestHookFailsOnAStagedFileWithoutTheNotice(t *testing.T) {
 }
 
 // No declared license, no license check: the gate does not apply either.
-func TestHookSkipsTheNoticeWhenNoLicenceIsDeclared(t *testing.T) {
+func TestHookSkipsTheNoticeWhenNoLicenseIsDeclared(t *testing.T) {
 	root := stage(t, "a/a.go", "package a\n")
 	var calls []call
 	if err := Hook(&config.Config{}, root, "example.com/m", "go", &strings.Builder{}, fake(t, &calls, "a/a.go\x00", "", "", "")); err != nil {

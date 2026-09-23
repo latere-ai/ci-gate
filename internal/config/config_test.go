@@ -165,7 +165,7 @@ depcheck:
     example.com/m/server:
       decision: 009-D14
       allow:
-        golang.org/x/text: Unicode normalisation
+        golang.org/x/text: Unicode normalization
 `))
 	if err != nil {
 		t.Fatal(err)

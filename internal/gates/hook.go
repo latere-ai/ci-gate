@@ -137,7 +137,7 @@ func Hook(cfg *config.Config, root, module, goBin string, out io.Writer, run Exe
 // so the checks it runs are the ones the binary holds and not a copy of them.
 const Staged = `#!/bin/sh
 # pre-commit: the staged Go files are gofmt-formatted, group their imports
-# the way the linter wants, carry the licence notice, build no outbound HTTP
+# the way the linter wants, carry the license notice, build no outbound HTTP
 # client without a trace, and hold no code the standard library already
 # covers. The checks live in lateregate; this file only calls it.
 # Install with: git config core.hooksPath .githooks

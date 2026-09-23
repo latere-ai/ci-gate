@@ -301,7 +301,7 @@ func pathOf(env []string) string {
 // the writer they share is whatever the caller passed. The race detector
 // caught that on a strings.Builder; the lock is what makes the contract hold
 // for every writer, not only the ones that synchronize themselves.
-func TestStreamedOutputIsSerialised(t *testing.T) {
+func TestStreamedOutputIsSerialized(t *testing.T) {
 	var sb strings.Builder
 	w := &syncWriter{w: &sb}
 	const writers, each = 8, 64

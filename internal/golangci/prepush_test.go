@@ -74,7 +74,7 @@ func prepushWaived(t *testing.T, now time.Time, run func([]string, bool, string,
 // this tree, and a push touching a waived package must not be refused for
 // findings the waiver was written for. The day after the waiver, the hook
 // lints again.
-func TestPrepushHonoursADatedLintWaiver(t *testing.T) {
+func TestPrepushHonorsADatedLintWaiver(t *testing.T) {
 	var calls []call
 	out, err := prepushWaived(t, time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC), replay(&calls, errors.New("exit 1"), "a.go\x00"))
 	if err != nil {
