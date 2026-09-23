@@ -267,6 +267,31 @@ func TestSuitePathKeepsTheCompilerOnlyUnderRace(t *testing.T) {
 	}
 }
 
+// A compiler that sits in an allowed directory, or in the toolchain's, is on
+// the PATH once.
+func TestSuitePathNamesEachDirectoryOnce(t *testing.T) {
+	for _, allow := range [][]string{{"/compilers/bin", "/opt/tools"}, {"/opt/tools", "/compilers/bin"}} {
+		root := isolated(t)
+		s := &suiteRun{do: cleanSuite(t)}
+		var sb strings.Builder
+		if err := Suite(SuiteRun{Race: true, Hermetic: true, Allow: allow}, root, suiteGo, &sb, s.exec); err != nil {
+			t.Fatal(err)
+		}
+		v, _ := envValue(s.testCall(t).env, "PATH")
+		if strings.Count(v, "/compilers/bin") != 1 || !strings.Contains(v, "/opt/tools") {
+			t.Errorf("allow %v: PATH=%q", allow, v)
+		}
+	}
+	root := isolated(t)
+	s := &suiteRun{do: cleanSuite(t)}
+	if err := Suite(SuiteRun{Race: true, Hermetic: true}, root, "/compilers/bin/go", &strings.Builder{}, s.exec); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := envValue(s.testCall(t).env, "PATH"); v != "/compilers/bin" {
+		t.Errorf("a compiler beside the toolchain: PATH=%q", v)
+	}
+}
+
 // A compiler named rather than given as a path is found on the PATH as it
 // was before stripping; one that is not there fails before the suite runs.
 func TestSuiteCompilerIsResolvedBeforeStripping(t *testing.T) {

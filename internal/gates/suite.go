@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -141,7 +142,16 @@ func suitePath(opt SuiteRun, goBin string, run Exec) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	return PathFor(dir, append([]string{filepath.Dir(cc)}, opt.Allow...)), " (kept for the race detector's C compiler " + cc + ")", nil
+	keep := []string{filepath.Dir(cc)}
+	for _, a := range opt.Allow {
+		if !slices.Contains(keep, a) && a != dir {
+			keep = append(keep, a)
+		}
+	}
+	if keep[0] == dir {
+		keep = keep[1:]
+	}
+	return PathFor(dir, keep), " (kept for the race detector's C compiler " + cc + ")", nil
 }
 
 // compiler is the C compiler the go command would call, resolved against the
