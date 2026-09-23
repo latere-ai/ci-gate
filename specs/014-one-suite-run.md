@@ -1,6 +1,6 @@
 ---
 title: One instrumented run of the suite carries test, race, cover, tempdir and hermetic
-status: draft
+status: complete
 depends_on:
   - 003-tempdir-leaks.md
   - 005-cover-tiers-and-unmeasured-packages.md
@@ -16,7 +16,7 @@ affects:
 effort: medium
 trigger: a lateregate run bills the suite five times in five jobs, 14.5 of the 21 gate minutes of an origo push, while the org's Actions budget cap trips in the second week of the month
 created: 2026-09-08
-updated: 2026-09-08
+updated: 2026-09-23
 author: changkun
 dispatched_task_id: null
 ---
@@ -99,3 +99,42 @@ flowchart LR
   at least eight.
 - The hermetic PATH line shows the compiler directory when `race` is on
   and not when it is waived.
+
+## Outcome
+
+Shipped on 2026-09-23. `gates.Suite` holds the run and `bar` holds the plan:
+the `suite` gate, the `folded` status with `into: suite`, and the waiver
+narrowing. `lateregate list -json` on this repository reports `suite` as
+`run` and the five as `folded`, and a second `GOFLAGS=-trimpath lateregate
+suite` on this tree replays every package from the test cache. The suite and
+bar packages carry one test per failure property, the waiver narrowing, the
+folded plan shape, and the PATH line with and without the compiler.
+
+What moved from the decision above:
+
+- CI runs `suite` as a gate job on the workflow's `runs_on` label, one Linux
+  run, and not in the `test_os` matrix. Repositories such as sandbox and
+  wallfacer carry macOS in `test_os`, and the suite adds `-race` and coverage
+  on top of the plain test run, which would multiply macOS minutes at ten
+  times the Linux rate in a month already at the organisation's Actions cap.
+  The other OS legs keep running `lateregate test` by name, which is why that
+  gate stays runnable and unchanged. The acceptance line for the workflow
+  reads, as shipped: `lateregate.yml` runs `suite` as a gate job on
+  `runs_on`, leaves folded gates out of the job set, and uploads
+  `coverage.out` from the suite job.
+- The run sits inside the stable, locked per-repository sandbox that
+  `tempdir` gained in v0.48.0, not a fresh directory. The go command keys a
+  cached test result on the `TMPDIR` a test read, so a fresh directory would
+  have rerun every package that makes one on every push; the stable one keeps
+  the single run cacheable, which is most of its point on a self-hosted
+  runner.
+- A live waiver on `cover` drops the profile flags as well as the floor,
+  since nothing reads the profile; `coverage.out` is then not written.
+- A repository whose `tempdir.command` names a runner other than go test
+  keeps `tempdir` as a gate of its own, and the suite runs unsandboxed: the
+  gate watches that runner, and folding it into a go test run would change
+  what it measures. No repository in the family sets one today.
+- The origo measure in the acceptance no longer applies: origo moved to
+  hosted runners as a public repository. The saving shows on the private
+  repositories on the self-hosted runner, where each push runs one suite job
+  where it ran five.
