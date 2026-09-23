@@ -22,14 +22,14 @@ import (
 // a property one of the test, race, cover, tempdir and hermetic gates checks
 // with a run of its own; a waiver on that gate turns its field off.
 type SuiteRun struct {
-	// Race runs the suite under the race detector with cgo on, and keeps the
-	// C compiler's directory on a stripped PATH.
+	// Race runs the suite under the race detector with cgo on, and puts the
+	// C toolchain shim on a stripped PATH.
 	Race bool
 	// Timeout is race.timeout, the budget a repository sets for a run under
 	// the detector. Empty leaves the toolchain's default.
 	Timeout string
-	// Hermetic strips PATH to the toolchain, the C compiler under Race, and
-	// Allow.
+	// Hermetic strips PATH to the toolchain, the C toolchain shim under Race,
+	// and Allow.
 	Hermetic bool
 	Allow    []string
 	// Sandbox runs the suite inside the repository's TMPDIR sandbox and
