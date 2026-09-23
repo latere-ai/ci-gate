@@ -10,6 +10,33 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- A `suite` gate runs the suite once with every property the five suite
+  gates checked apart: `go vet ./...`, then one `go test -race
+  -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...` with
+  `CGO_ENABLED=1`, on the `hermetic` PATH and inside the `tempdir` sandbox,
+  then the coverage floor over the profile and the check for survivors. The
+  first line of a failure names the property that broke. Under `-race` the
+  stripped PATH keeps the directory of the C compiler the toolchain names,
+  and the `PATH=` line says so. Every flag is one the go test cache accepts,
+  so an unchanged package replays its result.
+
+### Changed
+
+- `test`, `race`, `cover`, `tempdir` and `hermetic` are `folded` into `suite`
+  in the plan: `list -json` reports them with `"status": "folded"` and
+  `"into": "suite"`, and `lateregate` runs the suite once in their place. A
+  pipeline that built a job per gate from the plan runs one suite job where
+  it ran five. Each of the five still runs by name. `tempdir` stays a gate of
+  its own where `tempdir.command` names a runner other than go test.
+- A waiver on a folded gate narrows the suite instead of skipping a job: a
+  waived `race` drops `-race`, a waived `hermetic` keeps the full PATH, a
+  waived `tempdir` runs outside the sandbox, a waived `cover` keeps no floor,
+  and a waived `test` waives `suite`. The suite's plan line names what is
+  narrowed, and an expired waiver shows there as it does on any gate. Existing
+  waivers keep their names and need no edit.
+
 ## v0.48.0 - 2026-09-23
 
 ### Changed

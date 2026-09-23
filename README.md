@@ -35,10 +35,14 @@ stop at the first failure, and puts the summary last:
 ```
 PASS fmt-check
 PASS modernize
-FAIL cover        3 package(s) below 90%
 SKIP spec-lint    tracks no specs/ files
-WAIV race         until 2026-11-15: the suite is not race-clean in runner
-lateregate: 1 of 13 gates failed: cover
+FAIL suite        the suite's coverage is under the floor: below 90%: internal/store 71.2%, ... (without -race (race waived until 2026-11-15: the suite is not race-clean in runner))
+FOLD test         into suite
+FOLD race         into suite, waived until 2026-11-15: the suite is not race-clean in runner
+FOLD hermetic     into suite
+FOLD tempdir      into suite
+FOLD cover        into suite
+lateregate: 1 of 13 gates failed: suite
 ```
 
 | Gate | What it asserts | Applies when |
@@ -57,11 +61,12 @@ lateregate: 1 of 13 gates failed: cover
 | `enum-typescript` | declared TypeScript domains use native enums, named members and exhaustive switches | `enums.typescript` names a project |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
 | `vuln` | govulncheck at the pinned version finds no reachable vulnerability | always |
-| `test` | `go vet` and the suite | always |
-| `race` | the suite under the race detector | always |
-| `hermetic` | the suite passes with only the toolchain on `PATH` | always |
-| `tempdir` | the suite leaves nothing behind under `TMPDIR` | always |
-| `cover` | **every package** clears the floor, not the repository average | always |
+| `suite` | `go vet`, then one run of the suite that holds the five properties below | always; a waived `test` waives it |
+| `test` | `go vet` and the suite | folded into `suite` |
+| `race` | the suite under the race detector | folded into `suite` |
+| `hermetic` | the suite passes with only the toolchain on `PATH` | folded into `suite` |
+| `tempdir` | the suite leaves nothing behind under `TMPDIR` | folded into `suite`, unless `tempdir.command` names another runner |
+| `cover` | **every package** clears the floor, not the repository average | folded into `suite` |
 
 The recipes are in the binary. `test` is `go vet ./...` then `go test
 ./...`; `race` sets `CGO_ENABLED=1`; `cover` collects with `-coverpkg=./...
@@ -69,6 +74,29 @@ The recipes are in the binary. `test` is `go vet ./...` then `go test
 version pinned here, so one commit moves every repository. Four
 repositories used to hold four `cover` recipes, one of which wrote the
 profile to a name the gate never read.
+
+`suite` runs the suite once with every property on: `go vet ./...`, then
+`go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out
+./...` with `CGO_ENABLED=1`, inside the `tempdir` sandbox and on the
+`hermetic` PATH, then the floor over the profile and the check for
+survivors. Five separate runs compiled and ran the suite five times to learn
+the same five facts; `-race` already forces atomic coverage, and a sandbox
+or a stripped PATH wraps whatever runs inside it. The first line of a
+failure names the property: `the suite is not race-clean`, `the suite
+reached for docker, which is not on the stripped PATH`, `the suite left 2
+entries under TMPDIR`, `the suite's coverage is under the floor`. The race
+detector needs cgo, so under `-race` the stripped PATH keeps the directory
+of the C compiler the toolchain names, and the `PATH=` line says so. Every
+flag is one the go command's test cache accepts, so an unchanged package
+replays its result.
+
+The plan marks the five `folded` into `suite`, and `lateregate` runs the
+suite in their place. A waiver on one of them narrows the run instead of
+skipping it: a waived `race` drops `-race`, a waived `hermetic` keeps the
+full PATH, a waived `tempdir` runs outside the sandbox, a waived `cover`
+keeps no floor, and a waived `test` waives the suite. The suite's plan line
+says what is narrowed. Each of the five still runs by name,
+`lateregate race`, for a developer isolating one property.
 
 `lateregate <gate>` runs one, for a CI job or a developer chasing a single
 failure. `lateregate list` prints the plan, and `list -json` is what the
@@ -175,9 +203,8 @@ as it covers the full gate: until the day it names the push prints
 `lint is waived until <date>; nothing to lint`, and the day after, the
 hook lints again.
 
-`vuln`, `tempdir`, `race`, `cover`, and `hermetic` are in neither hook: the
-first needs the network and changes verdict with no commit, and the rest run
-the suite.
+`vuln`, `suite` and the five it carries are in neither hook: the first needs
+the network and changes verdict with no commit, and the rest run the suite.
 
 ## A tag is a release, and a release has notes: `release-notes`, `release`
 
@@ -1190,7 +1217,9 @@ needed to test or adopt the tooling repository.
 ## Running the bar in CI
 
 The reusable workflow in `latere-ai/ci` asks the binary for its plan and
-runs one job per gate:
+runs one job per gate that runs, `suite` included; a `folded` gate has no
+job of its own. The suite job writes `coverage.out` at the repository root,
+and the workflow keeps it as an artifact:
 
 ```yaml
 concurrency:
