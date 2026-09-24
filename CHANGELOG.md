@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- The README covers adopting the bar and the gate list; the reference moved
+  to `docs/`: every gate in `docs/gates.md`, every command and the two hooks
+  in `docs/commands.md`, `.lateregate.yaml` in `docs/configuration.md`, and
+  cutting a release in `docs/releasing.md`. `CONTRIBUTING.md` is new. No
+  behavior changed.
+
 ## v0.49.0 - 2026-09-23
 
 ### Added
