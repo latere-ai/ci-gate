@@ -37,7 +37,9 @@ In order, it:
 4. writes `## v1.4.0 - <today>` under a fresh `## Unreleased`, and
    rewrites each `release.stamp` file's version marker to `v1.4.0`;
 5. commits `changelog: v1.4.0`, creates an annotated tag, and pushes
-   `HEAD` and the tag in one push, so the release workflow runs once.
+   `HEAD` and the tag in one push, so the release workflow runs once. The
+   pre-push checks the tag's section and lints what the push sends to the
+   branch, as it does for any push.
 
 A `Makefile` target is a convenience:
 

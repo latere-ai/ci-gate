@@ -136,9 +136,13 @@ exec go tool lateregate hook
 them (`vMAJOR.MINOR.PATCH`, with an optional prerelease or build suffix)
 is refused unless `CHANGELOG.md` at its commit has a section for it. Then
 golangci-lint runs over the packages the push changes, against the config
-rendered first as the full gate renders it: each branch is diffed against
-the remote's commit (or the merge base with `origin/main` for a new
-branch), and exactly the packages the changed Go files sit in are linted.
+rendered first as the full gate renders it: each commit the push sends to a
+branch on the remote (`refs/heads/*`) is diffed against the remote's commit
+(or the merge base with `origin/main` for a branch the remote does not have
+yet), and exactly the packages the changed Go files sit in are linted. The
+remote ref decides, not the local ref's name, so `git push origin HEAD:main`
+from a worktree is linted as `git push origin main` is. A tag push and a
+branch deletion lint nothing.
 
 The linter takes a machine-wide lock by default; this run opts out of it
 with `--allow-parallel-runners`, so a lint in another checkout neither

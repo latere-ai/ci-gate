@@ -136,20 +136,84 @@ func TestPrepushOfANewBranchDiffsAgainstTheMergeBase(t *testing.T) {
 	}
 }
 
-// A tag points at a commit already pushed on a branch; a branch deletion
-// pushes nothing. Neither runs the linter.
-func TestPrepushIgnoresTagsAndDeletions(t *testing.T) {
+// What decides a lint is the ref the remote receives, not the local ref's
+// name: a worktree pushes with `git push origin HEAD:main`, and the release
+// cut pushes `HEAD` with its tag, and git names the local ref HEAD for both.
+// Git qualifies the remote ref before it runs the hook, so `HEAD:main` and
+// `HEAD:refs/heads/main` hand it the same line. A raw sha pushed to a branch
+// names the sha as its local ref.
+func TestPrepushLintsAPushToABranchWhateverTheLocalRef(t *testing.T) {
+	for _, tc := range []struct{ name, refs string }{
+		{"HEAD:main", "HEAD " + sha2 + " refs/heads/main " + sha1 + "\n"},
+		{"HEAD:refs/heads/main", "HEAD " + sha2 + " refs/heads/main " + sha1 + "\n"},
+		{"a branch", "refs/heads/main " + sha2 + " refs/heads/main " + sha1 + "\n"},
+		{"a sha", sha2 + " " + sha2 + " refs/heads/main " + sha1 + "\n"},
+		{"HEAD and a tag", "HEAD " + sha2 + " refs/heads/main " + sha1 + "\n" +
+			"refs/tags/v1.2.3 " + sha3 + " refs/tags/v1.2.3 " + zeroSHA + "\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls []call
+			out, err := prepush(t, tc.refs, replay(&calls, nil, "internal/a/a.go\x00"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(calls) != 2 {
+				t.Fatalf("the diff and the linter run; ran %v\n%s", calls, out)
+			}
+			if got := joined(calls[0]); got != "git diff --name-only --diff-filter=ACMR -z "+sha1+" "+sha2+" -- *.go" {
+				t.Errorf("diff ran as %q", got)
+			}
+			if got := joined(calls[1]); !strings.HasSuffix(got, " run --allow-parallel-runners ./internal/a") {
+				t.Errorf("linter ran as %q", got)
+			}
+		})
+	}
+}
+
+// A new branch pushed from HEAD is diffed against the merge base, and a
+// failure names the branch the remote lacks, not the local HEAD.
+func TestPrepushOfANewBranchFromHEADNamesTheRemoteRef(t *testing.T) {
 	var calls []call
-	out, err := prepush(t, "refs/tags/v1.2.3 "+sha2+" refs/tags/v1.2.3 "+zeroSHA+"\n"+
-		"refs/heads/old "+zeroSHA+" refs/heads/old "+sha1+"\n", replay(&calls, nil))
+	_, err := prepush(t, "HEAD "+sha2+" refs/heads/feature "+zeroSHA+"\n", replay(&calls, nil, sha3+"\n", "x/x.go\x00"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 0 {
-		t.Errorf("nothing runs for a tag or a deletion; ran %v", calls)
+	if len(calls) != 3 || joined(calls[0]) != "git merge-base origin/main "+sha2 {
+		t.Fatalf("ran %v", calls)
 	}
-	if !strings.Contains(out, "no branch pushed") {
-		t.Errorf("output:\n%s", out)
+	failing := func(_ []string, _ bool, _ string, _ ...string) ([]byte, error) {
+		return nil, errors.New("no origin/main")
+	}
+	_, err = prepush(t, "HEAD "+sha2+" refs/heads/feature "+zeroSHA+"\n", failing)
+	if err == nil || !strings.Contains(err.Error(), "refs/heads/feature") || strings.Contains(err.Error(), "HEAD") {
+		t.Fatalf("the error names the remote branch: %v", err)
+	}
+}
+
+// A tag points at a commit already pushed on a branch, including one pushed
+// from HEAD straight to refs/tags; a branch deletion pushes nothing. None of
+// them runs the linter. The lines are the ones git hands the hook.
+func TestPrepushIgnoresTagsAndDeletions(t *testing.T) {
+	for _, tc := range []struct{ name, refs string }{
+		{"a tag", "refs/tags/v1.2.3 " + sha2 + " refs/tags/v1.2.3 " + zeroSHA + "\n"},
+		{"HEAD to a tag", "HEAD " + sha2 + " refs/tags/v2.0.0 " + zeroSHA + "\n"},
+		{"a deletion", "(delete) " + zeroSHA + " refs/heads/old " + sha1 + "\n"},
+		{"a deletion and a tag", "(delete) " + zeroSHA + " refs/heads/old " + sha1 + "\n" +
+			"refs/tags/v1.2.3 " + sha2 + " refs/tags/v1.2.3 " + zeroSHA + "\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls []call
+			out, err := prepush(t, tc.refs, replay(&calls, nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(calls) != 0 {
+				t.Errorf("nothing runs for a tag or a deletion; ran %v", calls)
+			}
+			if !strings.Contains(out, "no branch pushed") {
+				t.Errorf("output:\n%s", out)
+			}
+		})
 	}
 }
 

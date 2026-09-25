@@ -25,11 +25,15 @@ const zeroSHA = "0000000000000000000000000000000000000000"
 // Prepush runs golangci-lint over the packages a push changes.
 //
 // in carries the lines git hands a pre-push hook on stdin, one per ref:
-// local ref, local sha, remote ref, remote sha. For each branch ref the
-// pushed commit is diffed against the remote's commit, or against the merge
-// base with origin/main when the remote has no such ref yet, and the Go
-// files in that diff name the packages. Tag refs are ignored: a tag points
-// at a commit that was already pushed on a branch. A push that changes no
+// local ref, local sha, remote ref, remote sha. A line whose remote ref is a
+// branch (refs/heads/) and whose local sha is not zero is linted, whatever
+// the local ref is called: `git push origin HEAD:main` from a worktree, and
+// the release cut's own push, name the local ref HEAD, and a sha pushed
+// directly names itself. The pushed commit is diffed against the remote's
+// commit, or against the merge base with origin/main when the remote has no
+// such branch yet, and the Go files in that diff name the packages. A push
+// to a tag is ignored, since a tag points at a commit already pushed on a
+// branch, and so is a deletion, which pushes nothing. A push that changes no
 // Go file runs nothing.
 //
 // The linter is the full gate's linter on a subset: the same pinned
@@ -59,8 +63,8 @@ func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io
 		if len(fields) != 4 {
 			continue
 		}
-		localRef, localSHA, remoteSHA := fields[0], fields[1], fields[3]
-		if !strings.HasPrefix(localRef, "refs/heads/") || localSHA == zeroSHA {
+		localSHA, remoteRef, remoteSHA := fields[1], fields[2], fields[3]
+		if !strings.HasPrefix(remoteRef, "refs/heads/") || localSHA == zeroSHA {
 			continue
 		}
 		refs++
@@ -68,13 +72,13 @@ func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io
 		if base == zeroSHA {
 			mb, err := run(nil, false, "git", "merge-base", "origin/main", localSHA)
 			if err != nil {
-				return fmt.Errorf("the remote has no %s yet and origin/main is not a merge base to diff against: %w", localRef, err)
+				return fmt.Errorf("the remote has no %s yet and origin/main is not a merge base to diff against: %w", remoteRef, err)
 			}
 			base = strings.TrimSpace(string(mb))
 		}
 		changed, err := run(nil, false, "git", "diff", "--name-only", "--diff-filter=ACMR", "-z", base, localSHA, "--", "*.go")
 		if err != nil {
-			return fmt.Errorf("listing the Go files %s changes: %w", localRef, err)
+			return fmt.Errorf("listing the Go files the push to %s changes: %w", remoteRef, err)
 		}
 		for f := range strings.SplitSeq(string(changed), "\x00") {
 			if f == "" {

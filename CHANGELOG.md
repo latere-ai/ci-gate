@@ -39,6 +39,15 @@ committed: the commit log already holds that.
   entries before it left it, and each pattern must still match exactly once.
   A single pattern spanning two markers to work around this can become one
   entry per marker.
+- `lateregate prepush` lints a push to a branch whatever the local ref is
+  called. It read only lines whose local ref was under `refs/heads/`, but
+  `git push origin HEAD:main` from a worktree, and the push `lateregate
+  release` makes, hand the hook the local ref `HEAD`, so the hook printed
+  "no branch pushed; nothing to lint" and let the push through unlinted. The
+  remote ref now decides: every commit pushed to `refs/heads/*` is linted,
+  and a tag push or a branch deletion still lints nothing. A push that went
+  through before can now be refused for findings in the packages it
+  changes.
 
 ## v0.49.0 - 2026-09-23
 
