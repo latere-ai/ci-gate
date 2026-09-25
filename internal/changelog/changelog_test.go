@@ -327,6 +327,42 @@ func TestCutStampsTheConfiguredFilesIntoTheReleaseCommit(t *testing.T) {
 	}
 }
 
+// Several stamps may name one file, each marking its own line. Every one of
+// them lands: a cut that planned each entry from the file as committed would
+// write the file once per entry, and the last write would drop the rest.
+func TestCutAppliesEveryStampOnOneFile(t *testing.T) {
+	dir := clone(t)
+	compose := "services:\n  stubs:\n    image: ghcr.io/x/stubs:v0.0.9\n  app:\n    image: ghcr.io/x/app:v0.0.9\n"
+	if err := os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte(compose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "add", "compose.yaml")
+	git(t, dir, "commit", "-q", "-m", "seed the stamped file")
+
+	stamps := []config.Stamp{
+		{File: "compose.yaml", Pattern: `stubs:v\d+\.\d+\.\d+`},
+		{File: "compose.yaml", Pattern: `app:v\d+\.\d+\.\d+`},
+	}
+	var sb strings.Builder
+	if err := Cut(dir, "v0.1.0", time.Now(), &sb, realExec(t, dir), stamps); err != nil {
+		t.Fatalf("%v\n%s", err, sb.String())
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "compose.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "services:\n  stubs:\n    image: ghcr.io/x/stubs:v0.1.0\n  app:\n    image: ghcr.io/x/app:v0.1.0\n"
+	if string(b) != want {
+		t.Errorf("both stamps on compose.yaml move to v0.1.0:\ngot:\n%s\nwant:\n%s", b, want)
+	}
+	if strings.TrimSpace(git(t, dir, "status", "--porcelain")) != "" {
+		t.Error("the stamped file is in the release commit, not left dirty in the tree")
+	}
+	if n := strings.Count(sb.String(), "compose.yaml: stamped"); n != 1 {
+		t.Errorf("one file is stamped once, reported %d times:\n%s", n, sb.String())
+	}
+}
+
 func TestCutRefusesAStampThatDoesNotMatchExactlyOnceAndWritesNothing(t *testing.T) {
 	cases := []struct {
 		name, body, pattern, want string

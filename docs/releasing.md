@@ -66,6 +66,11 @@ else. The pattern is the marker's context, not the bare version, which
 would match every version the file mentions. A stamp that matches zero or
 several times refuses the cut before anything is written.
 
+Several entries may name one file, one per marker, such as two image lines
+in a compose file. They apply in the order listed, each to the file as the
+entries before it left it, and the file is written once with every marker
+moved.
+
 ### The CI guard
 
 The bar a cut runs says the tree about to be tagged is sound. It says

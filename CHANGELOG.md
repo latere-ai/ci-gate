@@ -18,6 +18,16 @@ committed: the commit log already holds that.
   cutting a release in `docs/releasing.md`. `CONTRIBUTING.md` is new. No
   behavior changed.
 
+### Fixed
+
+- Several `release.stamp` entries naming one file all land. The cut planned
+  each entry from the file as committed and wrote the file once per entry,
+  so the last entry's write dropped every earlier stamp without a word.
+  Entries on one file now apply in the order listed, each to the file as the
+  entries before it left it, and each pattern must still match exactly once.
+  A single pattern spanning two markers to work around this can become one
+  entry per marker.
+
 ## v0.49.0 - 2026-09-23
 
 ### Added

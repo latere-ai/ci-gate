@@ -89,7 +89,8 @@ func (r Release) Green() bool { return r.RequireGreen == nil || *r.RequireGreen 
 // regular expression that must match the file exactly once and hold exactly
 // one `vX.Y.Z`; the cut replaces that version and nothing else, so the
 // pattern is the marker's context (`newTag: vX.Y.Z`), not the bare version,
-// which would match every version the file mentions.
+// which would match every version the file mentions. Several stamps may name
+// one file, one per marker; they apply in the order listed.
 type Stamp struct {
 	File    string `yaml:"file"`
 	Pattern string `yaml:"pattern"`

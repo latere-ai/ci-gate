@@ -256,17 +256,29 @@ type stampPlan struct {
 }
 
 // planStamps rewrites the version inside each configured file's marker to the
-// release version and returns the planned writes, without touching disk. A
-// pattern that does not match its file exactly once, or matches a span with no
-// version, is a configuration error — better a refused release than one that
-// ships a file naming the wrong version. A file already naming the release
-// version plans a write to identical content, which git commits as nothing.
+// release version and returns the planned writes, one per file in the order
+// the files first appear, without touching disk. Several stamps may name one
+// file: they apply in order to the same buffer, so each pattern is matched
+// against the file as the stamps before it left it, and every stamp lands in
+// the one write. A pattern that does not match exactly once, or matches a
+// span with no version, is a configuration error: better a refused release
+// than one that ships a file naming the wrong version. A file already naming
+// the release version plans a write to identical content, which git commits
+// as nothing.
 func planStamps(root, version string, stamps []config.Stamp) ([]stampPlan, error) {
-	plans := make([]stampPlan, 0, len(stamps))
+	var files []string
+	contents := map[string][]byte{}
 	for _, s := range stamps {
-		b, err := os.ReadFile(filepath.Join(root, s.File))
-		if err != nil {
-			return nil, fmt.Errorf("release stamp %s: %w", s.File, err)
+		// Cleaned, so two spellings of one path share one buffer.
+		file := filepath.Clean(s.File)
+		b, ok := contents[file]
+		if !ok {
+			var err error
+			b, err = os.ReadFile(filepath.Join(root, file))
+			if err != nil {
+				return nil, fmt.Errorf("release stamp %s: %w", s.File, err)
+			}
+			files = append(files, file)
 		}
 		re, err := regexp.Compile(s.Pattern)
 		if err != nil {
@@ -284,7 +296,11 @@ func planStamps(root, version string, stamps []config.Stamp) ([]stampPlan, error
 		content = append(content, b[:lo]...)
 		content = append(content, versionInText.ReplaceAll(b[lo:hi], []byte(version))...)
 		content = append(content, b[hi:]...)
-		plans = append(plans, stampPlan{file: s.File, content: content})
+		contents[file] = content
+	}
+	plans := make([]stampPlan, 0, len(files))
+	for _, file := range files {
+		plans = append(plans, stampPlan{file: file, content: contents[file]})
 	}
 	return plans, nil
 }
