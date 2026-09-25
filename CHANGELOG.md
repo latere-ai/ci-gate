@@ -10,6 +10,17 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- `lateregate hook` applies the outbound HTTP client rule to the staged
+  files the `otel-client` gate reads, and no others. It checked every
+  staged Go file, so a commit that touched a file under a directory
+  `otel_client.skip` names, such as a command-line tool with no inbound
+  trace to continue, was refused although the full gate passes it. The
+  hook now leaves out what the gate's walk leaves out: a directory the
+  skip list names anywhere on the path, and `.claude`, `node_modules` and
+  `testdata`. A commit refused for that reason alone now goes through.
+
 ## v0.50.1 - 2026-09-25
 
 ### Fixed

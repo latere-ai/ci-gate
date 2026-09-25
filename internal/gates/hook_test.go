@@ -244,6 +244,27 @@ func TestHookFailsOnAStagedUninstrumentedClient(t *testing.T) {
 	}
 }
 
+// A directory otel_client.skip names is outside the rule in the hook as in
+// the gate, so a commit the full gate would pass is not refused here.
+func TestHookSkipsTheDirectoriesTheConfigSkips(t *testing.T) {
+	const src = "package main\n\nimport \"net/http\"\n\nvar c = &http.Client{}\n"
+	root := stage(t, "tools/smoke/main.go", src)
+	cfg := &config.Config{OtelClient: config.OtelClient{Skip: []string{"tools"}}}
+	var calls []call
+	var sb strings.Builder
+	if err := Hook(cfg, root, "example.com/m", "go", &sb, fake(t, &calls, "tools/smoke/main.go\x00", "", "", "")); err != nil {
+		t.Fatalf("a client under a skipped directory was refused: %v\n%s", err, sb.String())
+	}
+
+	// The control: the same file with nothing skipped is refused, so the pass
+	// above is the config reaching the rule.
+	calls = nil
+	err := Hook(&config.Config{}, root, "example.com/m", "go", &sb, fake(t, &calls, "tools/smoke/main.go\x00", "", ""))
+	if err == nil || !strings.Contains(err.Error(), "uninstrumented outbound HTTP client") {
+		t.Fatalf("with nothing skipped, got %v", err)
+	}
+}
+
 func TestDelegates(t *testing.T) {
 	if !Delegates(Prepush, PrepushInvocation) {
 		t.Error("the shipped pre-push must delegate")

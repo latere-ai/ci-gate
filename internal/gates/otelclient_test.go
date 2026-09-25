@@ -189,8 +189,37 @@ func TestOtelClientFilesChecksJustTheNamedFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "p", "a_test.go"), []byte("package p\n\nimport \"net/http\"\n\nvar d = &http.Client{}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := OtelClientFiles(root, []string{"p/a.go", "p/a_test.go", "p/README.md", "p/missing.go"})
+	got := OtelClientFiles(root, []string{"p/a.go", "p/a_test.go", "p/README.md", "p/missing.go"}, nil)
 	if len(got) != 1 || !strings.HasPrefix(got[0], "p/a.go:5: ") {
 		t.Errorf("findings = %v", got)
+	}
+}
+
+// The list prunes what the walk prunes: a directory otel_client.skip names,
+// wherever it sits on the path, and the three the walk never enters. A file
+// the full gate never reads is not the hook's to refuse.
+func TestOtelClientFilesSkipsWhatTheWalkSkips(t *testing.T) {
+	const src = "package p\n\nimport \"net/http\"\n\nvar c = &http.Client{}\n"
+	root := writeGo(t, "tools/smoke/main.go", src)
+	for _, rel := range []string{"example/tools/docgen/main.go", ".claude/wt/p/a.go", "web/node_modules/x/a.go", "p/testdata/gen/a.go", "p/a.go"} {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rels := []string{"tools/smoke/main.go", "example/tools/docgen/main.go", ".claude/wt/p/a.go",
+		"web/node_modules/x/a.go", "p/testdata/gen/a.go", "p/a.go"}
+
+	got := OtelClientFiles(root, rels, []string{"tools"})
+	if len(got) != 1 || !strings.HasPrefix(got[0], "p/a.go:5: ") {
+		t.Errorf("with tools skipped, findings = %v; want only p/a.go", got)
+	}
+	// The control: with nothing skipped, the files under tools are read, so
+	// the pass above came from the skip and not from a file left unread.
+	if got := OtelClientFiles(root, rels, nil); len(got) != 3 {
+		t.Errorf("with nothing skipped, findings = %v; want tools/smoke, example/tools/docgen, and p", got)
 	}
 }

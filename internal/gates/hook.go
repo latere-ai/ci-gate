@@ -115,7 +115,7 @@ func Hook(cfg *config.Config, root, module, goBin string, out io.Writer, run Exe
 		}
 		pkgs["./"+dir] = true
 	}
-	if found := OtelClientFiles(root, scanned); len(found) > 0 {
+	if found := OtelClientFiles(root, scanned, cfg.OtelClient.Skip); len(found) > 0 {
 		for _, f := range found {
 			_, _ = fmt.Fprintln(out, "  "+f)
 		}

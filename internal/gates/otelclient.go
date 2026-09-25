@@ -82,17 +82,33 @@ func OtelClient(root string, out io.Writer, skip []string) error {
 // OtelClientFiles runs the same rule over just the named files, relative to
 // root, and returns one "path:line: reason" per uninstrumented client. It
 // is what the pre-commit hook runs over the staged files. Test files and
-// files that are not Go are skipped, as the walk skips them.
-func OtelClientFiles(root string, rels []string) []string {
+// files that are not Go are skipped, as the walk skips them, and so is a
+// file under a directory the walk prunes: one skip names, .claude,
+// node_modules, or testdata. The hook sees paths rather than a walk, and
+// without the same pruning it would refuse a commit to a directory the full
+// gate never reads.
+func OtelClientFiles(root string, rels []string, skip []string) []string {
 	var found []string
 	fset := token.NewFileSet()
 	for _, rel := range rels {
-		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") || prunedDir(skip, rel) {
 			continue
 		}
 		found = append(found, findings(fset, filepath.Join(root, rel), rel)...)
 	}
 	return found
+}
+
+// prunedDir reports whether rel, a slash path relative to the root, sits
+// under a directory OtelClient's walk does not enter.
+func prunedDir(skip []string, rel string) bool {
+	for part := range strings.SplitSeq(filepath.ToSlash(filepath.Dir(rel)), "/") {
+		switch {
+		case part == ".claude", part == "node_modules", part == "testdata", slices.Contains(skip, part):
+			return true
+		}
+	}
+	return false
 }
 
 // findings renders one file's violations as the gate reports them.

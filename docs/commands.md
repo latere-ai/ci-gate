@@ -121,7 +121,8 @@ jobs:
 the modernizers over the packages holding them. In order: gofmt;
 goimports grouping with the module path as the local prefix; the license
 notice, when `license.spdx` is declared; the outbound HTTP instrumentation
-rule; then `go fix`, reading `modernize.disable` from the same config the
+rule, leaving out the directories `otel_client.skip` names as the gate
+does; then `go fix`, reading `modernize.disable` from the same config the
 full gate reads. Each scan reads only the staged files, so the hook takes
 a few seconds. The hook script is one line that calls it:
 
