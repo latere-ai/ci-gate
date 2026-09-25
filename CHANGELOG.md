@@ -10,6 +10,18 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- `lateregate prepush` checks the changelog section of a release tag
+  whatever the local ref is called. It read only lines whose local ref was
+  under `refs/tags/`, but `git push origin HEAD:refs/tags/v1.2.3` hands the
+  hook the local ref `HEAD`, and a commit sha pushed straight to the tag
+  hands it the sha, so a release tag with no section went through
+  unchecked. The remote ref now decides, as it does for the lint: every
+  push to a release tag is checked at the pushed commit, and a tag deletion
+  or a push to a branch still checks nothing. A tag push that went through
+  before can now be refused until its commit has a section.
+
 ## v0.50.0 - 2026-09-25
 
 ### Added

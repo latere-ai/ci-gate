@@ -132,9 +132,13 @@ exec go tool lateregate hook
 
 ## The pre-push: `prepush`
 
-`prepush` reads the refs git hands the hook on stdin. A release tag among
-them (`vMAJOR.MINOR.PATCH`, with an optional prerelease or build suffix)
-is refused unless `CHANGELOG.md` at its commit has a section for it. Then
+`prepush` reads the refs git hands the hook on stdin. A push to a release
+tag (`refs/tags/vMAJOR.MINOR.PATCH`, with an optional prerelease or build
+suffix) is refused unless `CHANGELOG.md` at the pushed commit has a
+section for it. The ref the remote receives decides, not the local ref's
+name, so `git push origin HEAD:refs/tags/v1.2.3` and a commit sha pushed
+straight to the tag are checked as `git push origin v1.2.3` is. A tag
+deletion and a moving major tag such as `v1` are not checked. Then
 golangci-lint runs over the packages the push changes, against the config
 rendered first as the full gate renders it: each commit the push sends to a
 branch on the remote (`refs/heads/*`) is diffed against the remote's commit

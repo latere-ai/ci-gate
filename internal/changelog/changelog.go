@@ -133,10 +133,14 @@ func Notes(root, tag, ref string, run gates.Exec) (string, error) {
 
 // Prepush refuses a release tag whose commit has no section.
 //
-// in carries the lines git hands a pre-push hook on stdin, one per ref. A
-// local ref under refs/tags/ whose name is a release tag and whose local sha
-// is not zero is checked at that sha. A deletion is not a release, a branch
-// is the lint's concern, and a moving major tag is neither.
+// in carries the lines git hands a pre-push hook on stdin, one per ref:
+// local ref, local sha, remote ref, remote sha. A line whose remote ref is a
+// release tag under refs/tags/ and whose local sha is not zero is checked at
+// that sha, whatever the local ref is called: `git push origin
+// HEAD:refs/tags/v1.2.3` names the local ref HEAD, and a sha pushed straight
+// to the tag names the sha itself, and both create the tag on the remote as
+// `git push origin v1.2.3` does. A deletion is not a release, a branch is the
+// lint's concern, and a moving major tag is neither.
 func Prepush(root string, in io.Reader, out io.Writer, run gates.Exec) error {
 	scanner := bufio.NewScanner(in)
 	for scanner.Scan() {
@@ -144,8 +148,8 @@ func Prepush(root string, in io.Reader, out io.Writer, run gates.Exec) error {
 		if len(fields) != 4 {
 			continue
 		}
-		localRef, localSHA := fields[0], fields[1]
-		tag, ok := strings.CutPrefix(localRef, "refs/tags/")
+		localSHA, remoteRef := fields[1], fields[2]
+		tag, ok := strings.CutPrefix(remoteRef, "refs/tags/")
 		if !ok || !IsReleaseTag(tag) || localSHA == zeroSHA {
 			continue
 		}

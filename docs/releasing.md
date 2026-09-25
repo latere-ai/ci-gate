@@ -3,10 +3,10 @@
 A tag is a release, and a release has notes. `CHANGELOG.md` holds one
 level-two section per tag, and that section is the body of the GitHub
 release. Three places enforce it with one implementation: the pre-push
-refuses a release tag whose commit has no section, the release workflows
-in [`latere-ai/ci`](https://github.com/latere-ai/ci) read the section at
-the tag and fail without it, and `lateregate release` writes the section
-as it cuts the tag.
+refuses a push to a release tag whose commit has no section, the release
+workflows in [`latere-ai/ci`](https://github.com/latere-ai/ci) read the
+section at the tag and fail without it, and `lateregate release` writes
+the section as it cuts the tag.
 
 ## The changelog
 

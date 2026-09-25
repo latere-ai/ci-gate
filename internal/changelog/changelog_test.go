@@ -167,12 +167,58 @@ func TestPrepushRefusesAReleaseTagWithoutASection(t *testing.T) {
 	}
 }
 
+// What decides a check is the ref the remote receives, not the local ref's
+// name. `git push origin v1.2.3` names the local ref refs/tags/v1.2.3,
+// `git push origin HEAD:refs/tags/v1.2.3` names it HEAD, and a sha pushed
+// straight to the tag names the sha itself; all three create the release tag
+// on the remote, so all three are checked at the pushed sha. The lines are
+// the ones git hands the hook.
+func TestPrepushChecksATagPushWhateverTheLocalRef(t *testing.T) {
+	for _, tc := range []struct{ name, local string }{
+		{"a tag", "refs/tags/v1.2.3"},
+		{"HEAD", "HEAD"},
+		{"a sha", sha1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			line := tc.local + " " + sha1 + " refs/tags/v1.2.3 " + zeroSHA + "\n"
+
+			var calls []string
+			var sb strings.Builder
+			err := Prepush(t.TempDir(), strings.NewReader(line), &sb, show(t, &calls, map[string]string{sha1: sample}))
+			if err != nil {
+				t.Fatalf("a tag with a section passes: %v", err)
+			}
+			if len(calls) != 1 || calls[0] != "git show "+sha1+":"+Name {
+				t.Errorf("the changelog is read at the pushed sha, got %v", calls)
+			}
+			if !strings.Contains(sb.String(), "v1.2.3 has its release note") {
+				t.Errorf("got %q", sb.String())
+			}
+
+			calls = nil
+			err = Prepush(t.TempDir(), strings.NewReader(line), &sb,
+				show(t, &calls, map[string]string{sha1: "# Changelog\n\n## Unreleased\n"}))
+			if err == nil || !strings.Contains(err.Error(), "refusing to push v1.2.3") || !strings.Contains(err.Error(), "no section for v1.2.3") {
+				t.Fatalf("a tag without a section is refused, got %v", err)
+			}
+		})
+	}
+}
+
+// A moving major tag is not a release, a deletion pushes nothing, and a push
+// to a branch creates no tag on the remote, whatever the local ref is called:
+// a local tag pushed to refs/heads/main is a branch push. None of them reads
+// the changelog.
 func TestPrepushIgnoresWhatIsNotARelease(t *testing.T) {
 	var calls []string
 	run := show(t, &calls, nil)
 	refs := "refs/tags/v1 " + sha1 + " refs/tags/v1 " + zeroSHA + "\n" +
+		"HEAD " + sha1 + " refs/tags/v1 " + zeroSHA + "\n" +
 		"refs/tags/v1.2.3 " + zeroSHA + " refs/tags/v1.2.3 " + sha1 + "\n" +
+		"(delete) " + zeroSHA + " refs/tags/v1.2.3 " + sha1 + "\n" +
 		"refs/heads/main " + sha1 + " refs/heads/main " + sha2 + "\n" +
+		"HEAD " + sha1 + " refs/heads/main " + sha2 + "\n" +
+		"refs/tags/v1.2.3 " + sha1 + " refs/heads/main " + sha2 + "\n" +
 		"garbage line\n"
 	var sb strings.Builder
 	if err := Prepush(t.TempDir(), strings.NewReader(refs), &sb, run); err != nil {
