@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.50.1 - 2026-09-25
+
 ### Fixed
 
 - `lateregate prepush` checks the changelog section of a release tag
