@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.50.0 - 2026-09-25
+
 ### Added
 
 - A `release.stamp` entry takes an optional `placeholder`: a literal that
