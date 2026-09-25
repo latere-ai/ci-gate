@@ -363,12 +363,58 @@ func TestCutAppliesEveryStampOnOneFile(t *testing.T) {
 	}
 }
 
-func TestCutRefusesAStampThatDoesNotMatchExactlyOnceAndWritesNothing(t *testing.T) {
+// A deploy overlay can name a placeholder no tag has pinned. A stamp that
+// declares it moves it on the first release, and the same stamp moves the
+// version every release after.
+func TestCutStampsADeclaredPlaceholder(t *testing.T) {
+	dir := clone(t)
+	path := filepath.Join(dir, "kustomization.yaml")
+	if err := os.WriteFile(path, []byte("images:\n  - name: app\n    newTag: unreleased\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "add", "kustomization.yaml")
+	git(t, dir, "commit", "-q", "-m", "seed the placeholder")
+
+	stamps := []config.Stamp{{
+		File:        "kustomization.yaml",
+		Pattern:     `newTag: (v\d+\.\d+\.\d+|unreleased)`,
+		Placeholder: "unreleased",
+	}}
+	for _, version := range []string{"v0.1.0", "v0.2.0"} {
+		if version != "v0.1.0" {
+			// The next cut needs notes of its own under Unreleased.
+			body := strings.Replace(mustRead(t, dir), "## Unreleased\n", "## Unreleased\n\nAnother note.\n", 1)
+			if err := os.WriteFile(filepath.Join(dir, Name), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			git(t, dir, "commit", "-q", "-am", "notes")
+		}
+		var sb strings.Builder
+		if err := Cut(dir, version, time.Now(), &sb, realExec(t, dir), stamps); err != nil {
+			t.Fatalf("%s: %v\n%s", version, err, sb.String())
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "    newTag: " + version + "\n"; !strings.HasSuffix(string(b), want) {
+			t.Errorf("%s: the overlay was not stamped: %q", version, b)
+		}
+	}
+}
+
+// A stamp that does not match exactly once, or whose match holds nothing to
+// move, refuses the cut. A placeholder moves only where the stamp declares
+// it, so a match holding an undeclared one still refuses.
+func TestCutRefusesABadStampAndWritesNothing(t *testing.T) {
 	cases := []struct {
-		name, body, pattern, want string
+		name, body, pattern, placeholder, want string
 	}{
-		{"twice", "v0.0.1 here and v0.0.2 there\n", `v\d+\.\d+\.\d+`, "want exactly one"},
-		{"never", "no version at all\n", `newTag: v\d+\.\d+\.\d+`, "want exactly one"},
+		{"twice", "v0.0.1 here and v0.0.2 there\n", `v\d+\.\d+\.\d+`, "", "want exactly one"},
+		{"never", "no version at all\n", `newTag: v\d+\.\d+\.\d+`, "", "want exactly one"},
+		{"no version", "newTag: unreleased\n", `newTag: \S+`, "", "holds no vX.Y.Z to move"},
+		{"neither version nor placeholder", "newTag: latest\n", `newTag: \S+`, "unreleased",
+			`holds neither a vX.Y.Z nor the placeholder "unreleased"`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -380,7 +426,7 @@ func TestCutRefusesAStampThatDoesNotMatchExactlyOnceAndWritesNothing(t *testing.
 			git(t, dir, "commit", "-q", "-m", "seed")
 			before := mustRead(t, dir)
 			var sb strings.Builder
-			stamps := []config.Stamp{{File: "marker.txt", Pattern: c.pattern}}
+			stamps := []config.Stamp{{File: "marker.txt", Pattern: c.pattern, Placeholder: c.placeholder}}
 			err := Cut(dir, "v0.1.0", time.Now(), &sb, realExec(t, dir), stamps)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("want a refusal mentioning %q, got %v", c.want, err)

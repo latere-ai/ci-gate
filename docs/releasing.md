@@ -71,6 +71,23 @@ in a compose file. They apply in the order listed, each to the file as the
 entries before it left it, and the file is written once with every marker
 moved.
 
+A marker no release has pinned yet, such as `newTag: unreleased` in a
+deploy overlay, names that literal as the stamp's `placeholder`. The cut
+then replaces the placeholder inside the match as it replaces a version, so
+the first release pins itself, and every release after moves the version
+that took its place. The pattern has to match the marker in both states:
+
+```yaml
+release:
+  stamp:
+    - file: deploy/prod/kustomization.yaml
+      pattern: 'newTag: (v\d+\.\d+\.\d+|unreleased)'
+      placeholder: unreleased
+```
+
+Without `placeholder`, a match that holds no `vX.Y.Z` refuses the cut. With
+it, a match that holds neither a `vX.Y.Z` nor the placeholder refuses it.
+
 ### The CI guard
 
 The bar a cut runs says the tree about to be tagged is sound. It says

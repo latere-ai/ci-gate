@@ -91,9 +91,17 @@ func (r Release) Green() bool { return r.RequireGreen == nil || *r.RequireGreen 
 // pattern is the marker's context (`newTag: vX.Y.Z`), not the bare version,
 // which would match every version the file mentions. Several stamps may name
 // one file, one per marker; they apply in the order listed.
+//
+// Placeholder names a literal that stands for no release yet, such as
+// `unreleased` in a deploy overlay no tag has pinned. When it is set, the
+// cut also replaces that literal inside the match, so the first release
+// pins itself. The pattern must then match the marker in both states
+// (`newTag: (v\d+\.\d+\.\d+|unreleased)`). Unset, a match with no `vX.Y.Z`
+// refuses the cut, as a match holding neither refuses it when set.
 type Stamp struct {
-	File    string `yaml:"file"`
-	Pattern string `yaml:"pattern"`
+	File        string `yaml:"file"`
+	Pattern     string `yaml:"pattern"`
+	Placeholder string `yaml:"placeholder"`
 }
 
 // DefaultDisabledFixers are the go fix modernizers every repository turns

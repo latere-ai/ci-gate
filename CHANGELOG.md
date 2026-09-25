@@ -10,6 +10,18 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- A `release.stamp` entry takes an optional `placeholder`: a literal that
+  stands for no release yet, such as `newTag: unreleased` in a deploy
+  overlay no tag has pinned. The cut replaces it inside the match as it
+  replaces a version, so the first release pins itself; the pattern matches
+  both states (`newTag: (v\d+\.\d+\.\d+|unreleased)`). An overlay that
+  carried a never-cut `v0.0.0` only so the first cut had a version to move
+  can name `unreleased` instead. Without the key nothing changes: a match
+  with no `vX.Y.Z` still refuses the cut, and with it a match holding
+  neither the version nor the placeholder does.
+
 ### Changed
 
 - The README covers adopting the bar and the gate list; the reference moved

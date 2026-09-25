@@ -261,10 +261,10 @@ type stampPlan struct {
 // file: they apply in order to the same buffer, so each pattern is matched
 // against the file as the stamps before it left it, and every stamp lands in
 // the one write. A pattern that does not match exactly once, or matches a
-// span with no version, is a configuration error: better a refused release
-// than one that ships a file naming the wrong version. A file already naming
-// the release version plans a write to identical content, which git commits
-// as nothing.
+// span with no version and no declared placeholder, is a configuration
+// error: better a refused release than one that ships a file naming the
+// wrong version. A file already naming the release version plans a write to
+// identical content, which git commits as nothing.
 func planStamps(root, version string, stamps []config.Stamp) ([]stampPlan, error) {
 	var files []string
 	contents := map[string][]byte{}
@@ -288,13 +288,22 @@ func planStamps(root, version string, stamps []config.Stamp) ([]stampPlan, error
 		if len(locs) != 1 {
 			return nil, fmt.Errorf("release stamp %s: pattern %q matched %d times, want exactly one", s.File, s.Pattern, len(locs))
 		}
+		// A declared placeholder moves as a version does: the first release
+		// replaces it, and every release after finds a version in its place.
+		move := versionInText
+		if s.Placeholder != "" {
+			move = regexp.MustCompile(versionInText.String() + "|" + regexp.QuoteMeta(s.Placeholder))
+		}
 		lo, hi := locs[0][0], locs[0][1]
-		if !versionInText.Match(b[lo:hi]) {
+		if !move.Match(b[lo:hi]) {
+			if s.Placeholder != "" {
+				return nil, fmt.Errorf("release stamp %s: pattern %q holds neither a vX.Y.Z nor the placeholder %q to move", s.File, s.Pattern, s.Placeholder)
+			}
 			return nil, fmt.Errorf("release stamp %s: pattern %q holds no vX.Y.Z to move", s.File, s.Pattern)
 		}
 		content := make([]byte, 0, len(b))
 		content = append(content, b[:lo]...)
-		content = append(content, versionInText.ReplaceAll(b[lo:hi], []byte(version))...)
+		content = append(content, move.ReplaceAll(b[lo:hi], []byte(version))...)
 		content = append(content, b[hi:]...)
 		contents[file] = content
 	}

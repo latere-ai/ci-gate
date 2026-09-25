@@ -688,6 +688,20 @@ func TestTheLongestMatchingCoverSuffixNamesTheReason(t *testing.T) {
 	}
 }
 
+// A stamp reads its placeholder from the file; the key is part of the strict
+// schema, not an unknown key the load refuses.
+func TestReleaseStampReadsAPlaceholder(t *testing.T) {
+	yaml := "release:\n  stamp:\n    - file: deploy/prod/kustomization.yaml\n" +
+		"      pattern: 'newTag: (v\\d+\\.\\d+\\.\\d+|unreleased)'\n      placeholder: unreleased\n"
+	c, err := Load(write(t, yaml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Release.Stamp) != 1 || c.Release.Stamp[0].Placeholder != "unreleased" {
+		t.Errorf("stamp = %+v, want one entry with placeholder unreleased", c.Release.Stamp)
+	}
+}
+
 // require_green is true when the file says nothing, so a repository adopts
 // the guard by adopting the binary. Turning it off is a decision; restating
 // the default is drift the contract report names.

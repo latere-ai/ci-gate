@@ -146,7 +146,7 @@ otel_client: {skip: []}
 
 release:
   require_green: true      # false skips the CI guard before a cut
-  stamp: []                # entries: {file, pattern}; the vX.Y.Z inside each match moves to the version being cut; several may name one file
+  stamp: []                # entries: {file, pattern, placeholder}; the vX.Y.Z inside each match, or the declared placeholder, moves to the version being cut; several may name one file
 
 registers:                 # applies when user_surfaces names a function
   user_surfaces: []        # package path and function: internal/api.WriteError
