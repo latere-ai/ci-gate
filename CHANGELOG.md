@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.50.2 - 2026-09-26
+
 ### Fixed
 
 - `lateregate hook` applies the outbound HTTP client rule to the staged
