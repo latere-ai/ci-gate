@@ -67,6 +67,37 @@ func TestAPackageBelowTheFloorFails(t *testing.T) {
 	}
 }
 
+// -coverpkg=./... instruments the Go source a JavaScript package ships under
+// node_modules, and no test of the repository runs it. The floor judges the
+// module's own packages, so those rows are left out instead of failing the
+// gate on every workstation with the frontend installed.
+func TestAPackageUnderNodeModulesIsNotJudged(t *testing.T) {
+	p := profile(t,
+		mod+"good/a.go:1.1,2.1 10 1",
+		mod+"frontend/node_modules/flatted/golang/pkg/flatted/flatted.go:1.1,2.1 164 0",
+	)
+	out, err := run(t, cfg(), p)
+	if err != nil {
+		t.Fatalf("a dependency's untested Go source must not fail the floor: %v", err)
+	}
+	if strings.Contains(out, "node_modules") {
+		t.Errorf("the report lists the module's own packages only:\n%s", out)
+	}
+	if !strings.Contains(out, "(1 measured)") {
+		t.Errorf("one package of the module was measured:\n%s", out)
+	}
+}
+
+// A profile that holds a dependency's rows and nothing else measured none of
+// the module's packages, which is the tests not having run.
+func TestAProfileOfNodeModulesAloneCoversNothing(t *testing.T) {
+	p := profile(t, mod+"frontend/node_modules/flatted/golang/pkg/flatted/flatted.go:1.1,2.1 164 164")
+	_, err := run(t, cfg(), p)
+	if err == nil || !strings.Contains(err.Error(), "covers no packages") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestEveryPackageClearingTheFloorPasses(t *testing.T) {
 	p := profile(t, mod+"a/a.go:1.1,2.1 10 1", mod+"b/b.go:1.1,2.1 5 3")
 	out, err := run(t, cfg(), p)

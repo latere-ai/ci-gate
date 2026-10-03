@@ -110,6 +110,12 @@ The tool instruments statements, so such a package produces no data however
 it is tested. A package that has no tests on purpose is exempted like any
 other, with the reason attached.
 
+Go source under a `node_modules` directory is left out of the floor, of the
+profile's rows and of that list alike. `./...` reaches it, a JavaScript
+package is free to ship it, and no test of the repository runs it, so
+without the rule the gate would pass on a runner and fail on every
+workstation with the frontend's dependencies installed.
+
 Repeat `-profile` for a repository whose coverage is split across test
 tiers. The tiers merge as a union rather than a sum: with `-coverpkg` the
 same block appears in every tier that built it, so a service whose logic

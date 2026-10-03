@@ -200,6 +200,21 @@ func TestModernizeLeavesNodeModulesAlone(t *testing.T) {
 	}
 }
 
+// The directory is matched by name as a whole path element, in an import
+// path and in a file path alike, and a name that merely contains it is not.
+func TestInNodeModulesMatchesTheDirectoryByName(t *testing.T) {
+	for p, want := range map[string]bool{
+		"example.com/m/frontend/node_modules/flatted/golang/pkg/flatted": true,
+		"node_modules/x/a.go":                      true,
+		"example.com/m/internal/node_modules_scan": false,
+		"example.com/m":                            false,
+	} {
+		if got := InNodeModules(p); got != want {
+			t.Errorf("InNodeModules(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
+
 func TestModernizeFailsWhenTheModuleHasNoPackages(t *testing.T) {
 	var calls []call
 	err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, "", ""))

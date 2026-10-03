@@ -49,6 +49,25 @@ func TestGoListerNamesThePackagesThatCanBeMeasured(t *testing.T) {
 	}
 }
 
+// go list ./... reaches the Go source a JavaScript package ships under
+// node_modules. It is a dependency's, so it is not a package the floor could
+// find unmeasured.
+func TestGoListerLeavesOutPackagesUnderNodeModules(t *testing.T) {
+	root := module(t, map[string]string{
+		"logic/logic.go": "package logic\n\nfunc Add(a, b int) int { return a + b }\n",
+		"frontend/node_modules/flatted/golang/pkg/flatted/flatted.go": "package flatted\n\nfunc Parse() int { return 1 }\n",
+	})
+
+	got, err := GoLister("go", root)()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"example.com/m/logic"}
+	if !slices.Equal(got, want) {
+		t.Errorf("listed %v, want %v; a package under node_modules is not the module's own", got, want)
+	}
+}
+
 func TestGoListerFailsOnATreeItCannotList(t *testing.T) {
 	root := t.TempDir() // no go.mod, so there is no module to list
 	if _, err := GoLister("go", root)(); err == nil {

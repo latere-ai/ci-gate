@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"latere.ai/x/ci-gate/internal/config"
+	"latere.ai/x/ci-gate/internal/gates"
 )
 
 // Run reads the coverage profiles and reports whether every non-exempt
@@ -142,6 +143,11 @@ type counts struct{ covered, total int }
 // executed it, and again in each tier's profile. Each block is therefore
 // counted once and marked covered if any run covered it; summing the
 // appearances inflates both totals and is a bug, not a variant.
+//
+// -coverpkg=./... also instruments Go source a JavaScript package ships under
+// node_modules, which no test of the repository runs. Those blocks are a
+// dependency's and are left out, so the floor judges the module's own
+// packages and reads the same with and without the frontend installed.
 func parse(profiles []string) (map[string]*counts, error) {
 	blocks := map[blockKey]blockVal{}
 	for _, profile := range profiles {
@@ -152,6 +158,9 @@ func parse(profiles []string) (map[string]*counts, error) {
 
 	byPkg := map[string]*counts{}
 	for _, b := range blocks {
+		if gates.InNodeModules(b.pkg) {
+			continue
+		}
 		c := byPkg[b.pkg]
 		if c == nil {
 			c = &counts{}

@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"latere.ai/x/ci-gate/internal/gates"
 )
 
 // Lister returns every package in the module that can produce coverage data.
@@ -29,6 +31,9 @@ type Lister func() ([]string, error)
 // coverage tool instruments statements, so a package that holds none produces
 // no data however it is tested, and reporting it as unmeasured would be a
 // finding no test can clear.
+//
+// A package under node_modules is a JavaScript dependency's Go source, not
+// the module's own, and is left out before its files are read.
 func GoLister(goBin, dir string) Lister {
 	return func() ([]string, error) {
 		cmd := exec.CommandContext(context.Background(), goBin,
@@ -53,7 +58,7 @@ func GoLister(goBin, dir string) Lister {
 			if err := dec.Decode(&pkg); err != nil {
 				return nil, fmt.Errorf("parsing the package list: %w", err)
 			}
-			if len(pkg.GoFiles) == 0 {
+			if len(pkg.GoFiles) == 0 || gates.InNodeModules(pkg.ImportPath) {
 				continue
 			}
 			executable, err := hasStatements(pkg.Dir, pkg.GoFiles)

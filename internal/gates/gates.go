@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -212,16 +213,25 @@ func modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec, hint
 	return nil
 }
 
+// InNodeModules reports whether a slash-separated path, an import path or a
+// file's, has a node_modules element.
+//
+// `./...` reaches such a directory. A JavaScript package is free to ship Go
+// source, and a repository with a frontend has a tree of them under
+// frontend/node_modules the moment anyone installs dependencies. That code is
+// a dependency's and not the repository's, so a gate that judges the module's
+// own packages leaves it out. The directory is excluded by name, the way the
+// license and cgo scans already exclude it.
+func InNodeModules(p string) bool {
+	return slices.Contains(strings.Split(p, "/"), "node_modules")
+}
+
 // ownPackages lists the module's packages, minus anything under a
 // node_modules directory.
 //
-// `./...` reaches those. A JavaScript package is free to ship Go source, and a
-// repository with a frontend has a tree of them under frontend/node_modules
-// the moment anyone installs dependencies. Their code is not this
-// repository's to modernize and no patch here could be applied to it, so the
-// gate would fail on every workstation with the frontend set up. The
-// directory is excluded by name, the way the license and cgo scans already
-// exclude it.
+// Code there is not this repository's to modernize and no patch here could be
+// applied to it, so the gate would fail on every workstation with the frontend
+// set up.
 func ownPackages(goBin string, run Exec) ([]string, error) {
 	listed, err := run(nil, false, goBin, "list", "./...")
 	if err != nil {
@@ -229,7 +239,7 @@ func ownPackages(goBin string, run Exec) ([]string, error) {
 	}
 	var pkgs []string
 	for _, p := range nonEmptyLines(string(listed)) {
-		if strings.Contains(p, "/node_modules/") {
+		if InNodeModules(p) {
 			continue
 		}
 		pkgs = append(pkgs, p)

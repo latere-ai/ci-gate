@@ -18,6 +18,13 @@ committed: the commit log already holds that.
   the push that would have created it. With no merge base the hook now
   lints the packages of every Go file the pushed commit holds, says so, and
   runs nothing when the commit holds no Go file.
+- The coverage floor leaves out Go source under `node_modules`. A
+  JavaScript package that ships a Go package, as `flatted` does, was
+  instrumented by `-coverpkg=./...` and judged at 0%, so `suite` and
+  `cover` failed on every workstation with the frontend's dependencies
+  installed and passed on a runner without them. The profile's rows and
+  the list of packages that must be measured both skip the directory, as
+  `modernize` already did.
 
 ### Changed
 
