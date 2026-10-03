@@ -36,10 +36,8 @@ spec:
   # Every spec here is NNN-name.md, and the number is what the index rows, the
   # wikilinks and the commit messages all cite.
   numbered: true
-  # This tree has no dispatch statuses, so `complete` is both the point at
-  # which work has started and the point at which a dependency has closed. A
-  # tree with a longer vocabulary lists more of them.
-  started: [complete]
+  # No started list: status records a spec's own criteria; review holds the depends_on order.
+  # The identity gate reads `settled`: a `complete` spec is a record.
   settled: [complete]
 
 hermetic:

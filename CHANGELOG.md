@@ -10,6 +10,15 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- `docs/gates.md` says the rule that compares a started spec with its
+  dependencies runs only when `spec.started` is set, and that Latere's
+  repositories leave it unset: a spec's status records its own criteria
+  and review holds the order `depends_on` states. This repository's own
+  `.lateregate.yaml` drops `started` and keeps `settled` for the identity
+  gate. No behavior changed.
+
 ## v0.50.2 - 2026-09-26
 
 ### Fixed

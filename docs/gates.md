@@ -304,6 +304,12 @@ ordering that never happened. Both vocabularies are yours; `started`
 without `settled` is refused at load, because no dependency could ever
 close and the gate would fail on everything.
 
+The rule runs only when `started` is set, and Latere's repositories leave
+it unset: there a spec's status records its own acceptance criteria, and
+review, not the gate, holds the order `depends_on` states. `settled` alone
+is accepted, and the [`identity`](#identity-the-familys-identity-shape)
+gate reads it to skip a settled spec as a record.
+
 A third rule files the specs that are finished:
 
 ```yaml
