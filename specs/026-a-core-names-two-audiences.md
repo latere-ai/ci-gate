@@ -1,6 +1,6 @@
 ---
 title: A core names two audiences, its own name and the origin
-status: partial
+status: complete
 depends_on:
   - 019-identity-gate.md
 affects:
@@ -9,7 +9,7 @@ affects:
   - CHANGELOG.md
 effort: medium
 created: 2026-09-20
-updated: 2026-09-20
+updated: 2026-10-03
 author: changkun
 dispatched_task_id: null
 ---
@@ -199,9 +199,13 @@ with no overlay reports `SKIP` with a reason rather than passing. Nothing here
 blocks it, and the family's arca 027, origo 029 and lux 024 close the waivers
 it opens.
 
-## State on 2026-09-20
+## State on 2026-10-03
 
-Status `partial`: every criterion of this spec holds in the product, and the one open item is inherited, 019 (the identity gate this rule belongs to) is itself `partial`, so this row cannot read `complete` before it does.
+Status `complete`: every criterion of this spec holds in the product, each
+proven by the test its row names. It read `partial` from 2026-09-20 only
+because 019, the identity gate this rule belongs to, is `partial`; a
+spec's status now records its own criteria, and review holds the order
+its dependencies state.
 
 Shipped as recommended: option B for the manifest, `identity.audience` for
 the name, and a row of its own rather than the `audience` rule extended.
