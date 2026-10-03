@@ -171,3 +171,9 @@ the same hour; `contract` in CI holds the shape from here.
   the delegation and reads the captured `$refs`; `contract` passes on it.
 - The hook takes about four seconds on this repository once goimports is
   built; the goimports pin is v0.49.0.
+- 2026-10-03: the first push of a new repository was refused. Its remote
+  had no `main`, so the zero remote sha of acceptance 5 had no
+  `origin/main` to find a merge base with, and `prepush` failed. With no
+  merge base the hook now lists the pushed commit's tree and lints the
+  packages of every Go file in it, which for a push with no Go file is
+  nothing.

@@ -144,7 +144,10 @@ golangci-lint runs over the packages the push changes, against the config
 rendered first as the full gate renders it: each commit the push sends to a
 branch on the remote (`refs/heads/*`) is diffed against the remote's commit
 (or the merge base with `origin/main` for a branch the remote does not have
-yet), and exactly the packages the changed Go files sit in are linted. The
+yet), and exactly the packages the changed Go files sit in are linted. A
+push with no merge base either, the first push to an empty remote, lints
+the packages of every Go file the pushed commit holds, and goes through
+when it holds none. The
 remote ref decides, not the local ref's name, so `git push origin HEAD:main`
 from a worktree is linted as `git push origin main` is. A tag push and a
 branch deletion lint nothing.

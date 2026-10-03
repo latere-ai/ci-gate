@@ -38,6 +38,20 @@ func replay(calls *[]call, lintErr error, outputs ...string) func([]string, bool
 	}
 }
 
+// orphan answers like a remote that holds nothing the push stands on: the
+// merge-base call is recorded and fails, and every other call is answered as
+// replay answers it.
+func orphan(calls *[]call, lintErr error, outputs ...string) func([]string, bool, string, ...string) ([]byte, error) {
+	next := replay(calls, lintErr, outputs...)
+	return func(env []string, stream bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && len(args) > 0 && args[0] == "merge-base" {
+			*calls = append(*calls, call{name, args})
+			return nil, errors.New("exit status 128")
+		}
+		return next(env, stream, name, args...)
+	}
+}
+
 func joined(c call) string { return c.name + " " + strings.Join(c.args, " ") }
 
 func prepush(t *testing.T, refs string, run func([]string, bool, string, ...string) ([]byte, error)) (string, error) {
@@ -133,6 +147,51 @@ func TestPrepushOfANewBranchDiffsAgainstTheMergeBase(t *testing.T) {
 	}
 	if got := joined(calls[2]); !strings.HasSuffix(got, " run --allow-parallel-runners ./x") {
 		t.Errorf("linter ran as %q", got)
+	}
+}
+
+// The first push to an empty remote has no remote commit and no origin/main
+// to find a merge base with. Everything the pushed commit holds is new to the
+// remote, so every Go file in its tree names a package, and the push is
+// linted instead of refused.
+func TestPrepushOfAFirstPushLintsEveryGoFileThePushCarries(t *testing.T) {
+	var calls []call
+	out, err := prepush(t, "refs/heads/main "+sha2+" refs/heads/main "+zeroSHA+"\n",
+		orphan(&calls, nil, "README.md\x00main.go\x00internal/a/a.go\x00web/app.ts\x00"))
+	if err != nil {
+		t.Fatalf("a first push must be linted, not refused: %v", err)
+	}
+	if len(calls) != 3 {
+		t.Fatalf("ran %v", calls)
+	}
+	if got := joined(calls[0]); got != "git merge-base origin/main "+sha2 {
+		t.Errorf("merge-base ran as %q", got)
+	}
+	if got := joined(calls[1]); got != "git ls-tree -r --name-only -z "+sha2 {
+		t.Errorf("the pushed tree was listed as %q", got)
+	}
+	if got := joined(calls[2]); !strings.HasSuffix(got, " run --allow-parallel-runners . ./internal/a") {
+		t.Errorf("linter ran as %q", got)
+	}
+	if !strings.Contains(out, "the remote has no refs/heads/main") || !strings.Contains(out, "linting every Go file the push carries") {
+		t.Errorf("the output says what the hook fell back to:\n%s", out)
+	}
+}
+
+// A repository that starts as a readme and its specs pushes no Go file on its
+// first push: nothing is linted and the push goes through.
+func TestPrepushOfAFirstPushWithNoGoFileRunsNothing(t *testing.T) {
+	var calls []call
+	out, err := prepush(t, "refs/heads/main "+sha2+" refs/heads/main "+zeroSHA+"\n",
+		orphan(&calls, errors.New("the linter must not run"), "README.md\x00Makefile\x00go.mod\x00"))
+	if err != nil {
+		t.Fatalf("a first push with no Go file must go through: %v", err)
+	}
+	if len(calls) != 2 {
+		t.Errorf("only merge-base and the tree listing run; ran %v", calls)
+	}
+	if !strings.Contains(out, "changes no Go file") {
+		t.Errorf("output:\n%s", out)
 	}
 }
 
@@ -248,8 +307,10 @@ func TestPrepushReportsGitFailing(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "listing the Go files") {
 		t.Fatalf("got %v", err)
 	}
+	// With no merge base the hook lists the pushed tree, and a git that
+	// cannot do that either is an error, not an empty push.
 	_, err = prepush(t, "refs/heads/new "+sha2+" refs/heads/new "+zeroSHA+"\n", failing)
-	if err == nil || !strings.Contains(err.Error(), "merge base") {
+	if err == nil || !strings.Contains(err.Error(), "listing the files the push to refs/heads/new carries") {
 		t.Fatalf("got %v", err)
 	}
 }

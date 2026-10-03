@@ -31,10 +31,11 @@ const zeroSHA = "0000000000000000000000000000000000000000"
 // the release cut's own push, name the local ref HEAD, and a sha pushed
 // directly names itself. The pushed commit is diffed against the remote's
 // commit, or against the merge base with origin/main when the remote has no
-// such branch yet, and the Go files in that diff name the packages. A push
-// to a tag is ignored, since a tag points at a commit already pushed on a
-// branch, and so is a deletion, which pushes nothing. A push that changes no
-// Go file runs nothing.
+// such branch yet, and the Go files in that diff name the packages. With no
+// merge base either, as on the first push to an empty remote, every Go file
+// the pushed commit holds names them. A push to a tag is ignored, since a tag
+// points at a commit already pushed on a branch, and so is a deletion, which
+// pushes nothing. A push that changes no Go file runs nothing.
 //
 // The linter is the full gate's linter on a subset: the same pinned
 // version against the same rendered config, so a package this passes is a
@@ -68,22 +69,11 @@ func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io
 			continue
 		}
 		refs++
-		base := remoteSHA
-		if base == zeroSHA {
-			mb, err := run(nil, false, "git", "merge-base", "origin/main", localSHA)
-			if err != nil {
-				return fmt.Errorf("the remote has no %s yet and origin/main is not a merge base to diff against: %w", remoteRef, err)
-			}
-			base = strings.TrimSpace(string(mb))
-		}
-		changed, err := run(nil, false, "git", "diff", "--name-only", "--diff-filter=ACMR", "-z", base, localSHA, "--", "*.go")
+		files, err := pushedGoFiles(out, run, localSHA, remoteRef, remoteSHA)
 		if err != nil {
-			return fmt.Errorf("listing the Go files the push to %s changes: %w", remoteRef, err)
+			return err
 		}
-		for f := range strings.SplitSeq(string(changed), "\x00") {
-			if f == "" {
-				continue
-			}
+		for _, f := range files {
 			dir := path.Dir(f)
 			// A package under testdata is outside ./..., which the full gate
 			// reads, so the hook must not hold it to more.
@@ -127,6 +117,48 @@ func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io
 	// another checkout is the hook people bypass; this run is a subset in a
 	// session that is already waiting, so it opts out of the lock.
 	return lint(root, cfg, goBin, out, run, []string{"--allow-parallel-runners"}, patterns)
+}
+
+// pushedGoFiles lists the Go files one pushed ref brings to the remote, as
+// slash paths relative to the repository root.
+//
+// A branch the remote has is diffed against the remote's commit, and a branch
+// it does not have yet against the merge base with origin/main. When there is
+// no merge base either, the remote holds nothing the pushed history stands
+// on: the first push to an empty remote, or a history that shares no commit
+// with origin/main. Everything the pushed commit holds is then new to the
+// remote, so every Go file in its tree is listed. Refusing that push would
+// leave a new repository no way through its own hook.
+func pushedGoFiles(out io.Writer, run gates.Exec, localSHA, remoteRef, remoteSHA string) ([]string, error) {
+	base := remoteSHA
+	if base == zeroSHA {
+		mb, err := run(nil, false, "git", "merge-base", "origin/main", localSHA)
+		if err != nil {
+			_, _ = fmt.Fprintf(out, "the remote has no %s and origin/main is no merge base (%v); linting every Go file the push carries\n", remoteRef, err)
+			tree, err := run(nil, false, "git", "ls-tree", "-r", "--name-only", "-z", localSHA)
+			if err != nil {
+				return nil, fmt.Errorf("listing the files the push to %s carries: %w", remoteRef, err)
+			}
+			return goFiles(string(tree)), nil
+		}
+		base = strings.TrimSpace(string(mb))
+	}
+	changed, err := run(nil, false, "git", "diff", "--name-only", "--diff-filter=ACMR", "-z", base, localSHA, "--", "*.go")
+	if err != nil {
+		return nil, fmt.Errorf("listing the Go files the push to %s changes: %w", remoteRef, err)
+	}
+	return goFiles(string(changed)), nil
+}
+
+// goFiles picks the Go files out of a NUL-separated path list.
+func goFiles(list string) []string {
+	var files []string
+	for f := range strings.SplitSeq(list, "\x00") {
+		if strings.HasSuffix(f, ".go") {
+			files = append(files, f)
+		}
+	}
+	return files
 }
 
 // inNestedModule reports whether dir, a slash path relative to root, sits

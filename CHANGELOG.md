@@ -10,6 +10,15 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- `lateregate prepush` lets the first push to an empty remote through. A
+  branch the remote lacks was diffed against its merge base with
+  `origin/main`, and a remote with no `main` has none, so the hook refused
+  the push that would have created it. With no merge base the hook now
+  lints the packages of every Go file the pushed commit holds, says so, and
+  runs nothing when the commit holds no Go file.
+
 ### Changed
 
 - `docs/gates.md` says the rule that compares a started spec with its
