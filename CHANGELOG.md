@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.50.3 - 2026-10-03
+
 ### Fixed
 
 - `lateregate prepush` lets the first push to an empty remote through. A
