@@ -110,11 +110,11 @@ func (c *checker) configure(policy Policy, pkgs []*packages.Package) error {
 		}
 	}
 	resolve := func(selector string) types.Object {
-		i := strings.LastIndex(selector, ".")
-		if i < 0 {
+		path, name, ok := strings.CutLast(selector, ".")
+		if !ok {
 			return nil
 		}
-		path, name := strings.TrimPrefix(selector[:i], "./"), selector[i+1:]
+		path = strings.TrimPrefix(path, "./")
 		p := imports[path]
 		if p == nil {
 			p = imports[strings.TrimSuffix(module+"/"+path, "/")]
@@ -157,15 +157,15 @@ func (c *checker) configure(policy Policy, pkgs []*packages.Package) error {
 		c.domains[typ], configured[selector] = d, d
 	}
 	for _, selector := range sortedKeys(policy.Fields) {
-		i := strings.LastIndex(selector, ".")
-		if i < 0 {
+		typeName, fieldName, found := strings.CutLast(selector, ".")
+		if !found {
 			return fmt.Errorf("enum-go: unknown field %q", selector)
 		}
-		obj, ok := resolve(selector[:i]).(*types.TypeName)
+		obj, ok := resolve(typeName).(*types.TypeName)
 		if !ok {
 			return fmt.Errorf("enum-go: unknown field %q", selector)
 		}
-		field, _, _ := types.LookupFieldOrMethod(obj.Type(), true, obj.Pkg(), selector[i+1:])
+		field, _, _ := types.LookupFieldOrMethod(obj.Type(), true, obj.Pkg(), fieldName)
 		v, ok := field.(*types.Var)
 		if !ok || !v.IsField() {
 			return fmt.Errorf("enum-go: unknown field %q", selector)

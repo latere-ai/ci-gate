@@ -14,7 +14,7 @@ import (
 // Version pins golangci-lint. It was pinned in the pipeline's input, in
 // this repository's Makefile and in every consumer's, and three pins agree
 // only until one moves.
-const Version = "v2.13.1"
+const Version = "v2.14.0"
 
 // Module is the linter's main package, run through the toolchain so the
 // binary is built by the module's own Go version rather than a system

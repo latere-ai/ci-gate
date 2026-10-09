@@ -201,11 +201,10 @@ func addProfile(blocks map[blockKey]blockVal, profile string) error {
 			continue
 		}
 		// path/to/file.go:startLine.col,endLine.col numStmts count
-		colon := strings.LastIndex(text, ":")
-		if colon < 0 {
+		file, rest, ok := strings.CutLast(text, ":")
+		if !ok {
 			return fmt.Errorf("%s:%d: no file/span separator in %q", profile, line, text)
 		}
-		file, rest := text[:colon], text[colon+1:]
 		fields := strings.Fields(rest)
 		if len(fields) != 3 {
 			return fmt.Errorf("%s:%d: want 'span stmts count', got %q", profile, line, rest)
