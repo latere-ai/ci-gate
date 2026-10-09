@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.51.0 - 2026-10-09
+
 ### Changed
 
 - **The lint gate runs golangci-lint v2.14.0.** v2.13.1 is built against a golang.org/x/tools that cannot read the export data Go 1.27.2 writes, so on Go 1.27.2 it failed every package with "export data version 5 is greater than maximum supported version 4". v2.14.0 also brings the `stringscut` modernizer, which asks for `strings.Cut`, `strings.CutLast` and the like over an index and two slices.
