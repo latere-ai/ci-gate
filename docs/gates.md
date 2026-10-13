@@ -228,13 +228,15 @@ if err != nil && ctr != nil {
 ```
 
 `reap.Labels` marks the container with its owner, `<pid>@<host>`, and with
-the `lateregate` run in `LATEREGATE_RUN` when there is one. `reap.Sweep`
-removes each labelled container whose owner on this host has exited. It
-never judges by age, so it is safe while other suites on the machine are
-using theirs.
+the `lateregate` run in `LATEREGATE_RUN` when there is one. A network the
+helper makes takes the same labels, `network.WithLabels(reap.Labels())`.
+`reap.Sweep` removes each labelled container, and then each labelled
+network, whose owner on this host has exited. It never judges by age, so
+it is safe while other suites on the machine are using theirs.
 
 Around `go test`, the gate does the same sweep, names the run, and after
-the run removes every container still carrying the run's label:
+the run removes every container and network still carrying the run's
+label:
 
 ```
   removed 0c4e5a1f2b3d postgres:17-alpine, which an exited process left

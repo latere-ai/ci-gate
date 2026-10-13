@@ -118,8 +118,9 @@ if err != nil && ctr != nil {
 }
 ```
 
-The labels name the process that owns the container and the `lateregate`
-run it belongs to. `suite` sweeps before it runs and, after `go test`
+A network the helper makes takes the same labels, through
+`network.WithLabels(reap.Labels())`. The labels name the process that owns
+the container and the `lateregate` run it belongs to. `suite` sweeps before it runs and, after `go test`
 exits, removes and fails on every container the run left. Between them a
 container is removed when its test binary panics, is killed, or has no
 `TestMain`, on engines where testcontainers' own reaper cannot run, such
