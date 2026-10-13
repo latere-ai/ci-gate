@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.53.0 - 2026-10-14
+
 ### Added
 
 - **`containers` covers networks.** A network a test helper makes with `network.WithLabels(reap.Labels())` is swept once its owner process has exited, after that owner's containers, and a network a run leaves is named, removed and fails the suite beside its containers. `reap.Sweep` counts the networks it removed.
