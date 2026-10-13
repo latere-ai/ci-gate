@@ -22,9 +22,10 @@ import (
 // engine stands in for a container engine: it lists what it holds, filtered
 // by label the way an engine filters, and removes on request.
 type engine struct {
-	mu      sync.Mutex
-	held    []containers.Container
-	removed []string
+	mu       sync.Mutex
+	held     []containers.Container
+	networks []containers.Network
+	removed  []string
 	// down makes every request fail the way an engine that is not running
 	// does behind a socket that still exists.
 	down bool
@@ -38,18 +39,37 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodDelete {
-		id := strings.TrimPrefix(r.URL.Path, "/containers/")
-		e.removed = append(e.removed, id)
-		e.held = slices.DeleteFunc(e.held, func(c containers.Container) bool { return c.ID == id })
+		if id, ok := strings.CutPrefix(r.URL.Path, "/networks/"); ok {
+			e.removed = append(e.removed, "network "+id)
+			e.networks = slices.DeleteFunc(e.networks, func(n containers.Network) bool { return n.ID == id })
+		} else {
+			id := strings.TrimPrefix(r.URL.Path, "/containers/")
+			e.removed = append(e.removed, id)
+			e.held = slices.DeleteFunc(e.held, func(c containers.Container) bool { return c.ID == id })
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	var q map[string][]string
 	_ = json.Unmarshal([]byte(r.URL.Query().Get("filters")), &q)
-	var out []containers.Container
+	k, v, hasValue := strings.Cut(q["label"][0], "=")
+	matches := func(labels map[string]string) bool {
+		got, ok := labels[k]
+		return ok && (!hasValue || got == v)
+	}
+	if r.URL.Path == "/networks" {
+		out := []containers.Network{}
+		for _, n := range e.networks {
+			if matches(n.Labels) {
+				out = append(out, n)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(out)
+		return
+	}
+	out := []containers.Container{}
 	for _, c := range e.held {
-		k, v, hasValue := strings.Cut(q["label"][0], "=")
-		if got, ok := c.Labels[k]; ok && (!hasValue || got == v) {
+		if matches(c.Labels) {
 			out = append(out, c)
 		}
 	}
@@ -287,5 +307,50 @@ func TestContainersGateWithoutAnEngineRunsTheSuite(t *testing.T) {
 	s = &suiteRun{err: errors.New("exit status 1")}
 	if err := Containers(suiteGo, &strings.Builder{}, s.exec); err == nil {
 		t.Fatal("a failed suite passed")
+	}
+}
+
+func TestSuiteNamesANetworkTheRunLeft(t *testing.T) {
+	root := isolated(t)
+	e := &engine{}
+	withEngine(t, e)
+	s := &suiteRun{do: func(env []string) {
+		run, _ := envValue(env, containers.RunEnv)
+		e.mu.Lock()
+		e.networks = append(e.networks, containers.Network{ID: "n1", Name: "pgtest-net", Labels: containers.Labels(1, "box", run)})
+		e.mu.Unlock()
+		startsContainers(e, 2, 0)(env)
+	}}
+	var sb strings.Builder
+	err := Suite(SuiteRun{Containers: true}, root, suiteGo, &sb, s.exec)
+	if err == nil || !strings.Contains(err.Error(), "the suite left 2 containers and 1 network behind") {
+		t.Fatalf("err = %v, want the containers and the network counted", err)
+	}
+	if !strings.Contains(sb.String(), "  network pgtest-net") || !slices.Contains(e.removed, "network n1") {
+		t.Fatalf("the network must be named and removed:\n%s\nremoved %v", sb.String(), e.removed)
+	}
+}
+
+func TestSuiteSweepsANetworkAnExitedProcessLeft(t *testing.T) {
+	root := isolated(t)
+	host, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &engine{networks: []containers.Network{{ID: "n0", Name: "old-net", Labels: containers.Labels(exitedPid(t), host, "")}}}
+	withEngine(t, e)
+	var sb strings.Builder
+	s := &suiteRun{}
+	if err := Suite(SuiteRun{Containers: true}, root, suiteGo, &sb, s.exec); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sb.String(), "removed network old-net, which an exited process left") {
+		t.Fatalf("the sweep must say what it removed:\n%s", sb.String())
+	}
+}
+
+func TestOneOfANounIsSingular(t *testing.T) {
+	if ofNoun(1, "network") != "1 network" || ofNoun(3, "network") != "3 networks" {
+		t.Fatal("ofNoun")
 	}
 }

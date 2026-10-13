@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"latere.ai/x/ci-gate/internal/containers"
@@ -78,8 +79,11 @@ func watchContainers(out io.Writer) *containerWatch {
 		_, _ = fmt.Fprintf(out, "the suite's containers are not watched: %v\n", err)
 		return nil
 	}
-	for _, c := range gone {
+	for _, c := range gone.Containers {
 		_, _ = fmt.Fprintf(out, "  removed %s %s, which an exited process left\n", containers.Short(c.ID), c.Image)
+	}
+	for _, n := range gone.Networks {
+		_, _ = fmt.Fprintf(out, "  removed network %s, which an exited process left\n", n.Name)
 	}
 	return &containerWatch{engine: e, run: runID()}
 }
@@ -89,29 +93,44 @@ func (w *containerWatch) env(env []string) []string {
 	return append(withoutKey(env, containers.RunEnv), containers.RunEnv+"="+w.run)
 }
 
-// leftovers removes and names each container still carrying the run's label,
-// or returns "" when there is none. It runs after go test has exited, so every
-// process of the run is gone and nothing will stop what is left.
+// leftovers removes and names each container and network still carrying the
+// run's label, or returns "" when there is none. It runs after go test has
+// exited, so every process of the run is gone and nothing will stop what is
+// left.
 func (w *containerWatch) leftovers(out io.Writer) string {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	left, err := containers.Leftovers(ctx, w.engine, w.run)
-	for _, c := range left {
+	for _, c := range left.Containers {
 		_, _ = fmt.Fprintf(out, "  %s %s (%s)\n", containers.Short(c.ID), c.Image, c.State)
+	}
+	for _, n := range left.Networks {
+		_, _ = fmt.Fprintf(out, "  network %s\n", n.Name)
 	}
 	if err != nil {
 		return fmt.Sprintf("removing the containers the suite left: %v", err)
 	}
-	if len(left) == 0 {
+	if left.Len() == 0 {
 		return ""
 	}
-	noun := "containers"
-	if len(left) == 1 {
-		noun = "container"
+	var what []string
+	if n := len(left.Containers); n > 0 {
+		what = append(what, ofNoun(n, "container"))
 	}
-	return fmt.Sprintf("the suite left %d %s behind after its tests exited, removed now; "+
+	if n := len(left.Networks); n > 0 {
+		what = append(what, ofNoun(n, "network"))
+	}
+	return fmt.Sprintf("the suite left %s behind after its tests exited, removed now; "+
 		"a test that starts a container stops it on every path, a failed start included",
-		len(left), noun)
+		strings.Join(what, " and "))
+}
+
+// ofNoun is n of noun, in the plural when n is not one.
+func ofNoun(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // runID names one run. Sixteen hex digits from the system's random source,
