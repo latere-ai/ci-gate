@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package reap is for a test helper that starts containers: it labels each
-// one with the process that owns it, and removes the ones whose owner died
-// before it could stop them.
+// one, and each network it makes, with the process that owns it, and removes
+// the ones whose owner died before it could stop them.
 //
 // A helper that starts a container once per test binary stops it after
 // m.Run returns, which never happens when the binary panics on -timeout, is
@@ -16,6 +16,8 @@
 //	if err != nil && ctr != nil {
 //		_ = ctr.Terminate(ctx) // a failed start still made a container
 //	}
+//
+// A network takes the same labels: network.New(ctx, network.WithLabels(reap.Labels())).
 //
 // The labels also carry the lateregate run, so the suite gate can name and
 // remove whatever the run left behind.
@@ -42,10 +44,11 @@ func Labels() map[string]string {
 	return containers.Labels(os.Getpid(), host, run)
 }
 
-// Sweep removes each labelled container on this machine's engine whose owner
-// has exited, and returns how many it removed. A container whose owner is
-// alive is never touched, however old it is, so a sweep is safe while other
-// suites run. With no engine socket there is nothing to sweep.
+// Sweep removes each labelled container, and then each labelled network, on
+// this machine's engine whose owner has exited, and returns how many it
+// removed. One whose owner is alive is never touched, however old it is, so a
+// sweep is safe while other suites run. With no engine socket there is
+// nothing to sweep.
 func Sweep(ctx context.Context) (int, error) {
 	e, ok := containers.Find()
 	if !ok {
@@ -56,5 +59,5 @@ func Sweep(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	gone, err := containers.Sweep(ctx, e, host, containers.Alive)
-	return len(gone), err
+	return gone.Len(), err
 }

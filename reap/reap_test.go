@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,17 +48,22 @@ func TestSweepWithNoEngineHasNothingToDo(t *testing.T) {
 
 // engine serves a container list over a unix socket and records removals.
 type engine struct {
-	mu      sync.Mutex
-	list    []containers.Container
-	removed []string
+	mu       sync.Mutex
+	list     []containers.Container
+	networks []containers.Network
+	removed  []string
 }
 
 func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if r.Method == http.MethodDelete {
-		e.removed = append(e.removed, strings.TrimPrefix(r.URL.Path, "/containers/"))
+		e.removed = append(e.removed, strings.TrimPrefix(r.URL.Path, "/containers"))
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.URL.Path == "/networks" {
+		_ = json.NewEncoder(w).Encode(e.networks)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(e.list)
@@ -72,10 +78,16 @@ func TestSweepRemovesWhatAnExitedProcessLeft(t *testing.T) {
 	if err := exited.Run(); err != nil {
 		t.Fatal(err)
 	}
-	e := &engine{list: []containers.Container{
-		{ID: "left", Labels: containers.Labels(exited.Process.Pid, host, "")},
-		{ID: "mine", Labels: Labels()},
-	}}
+	e := &engine{
+		list: []containers.Container{
+			{ID: "left", Labels: containers.Labels(exited.Process.Pid, host, "")},
+			{ID: "mine", Labels: Labels()},
+		},
+		networks: []containers.Network{
+			{ID: "left-net", Labels: containers.Labels(exited.Process.Pid, host, "")},
+			{ID: "my-net", Labels: Labels()},
+		},
+	}
 	// A short relative path: a unix socket path is limited to about a
 	// hundred bytes, which a test's temporary directory can exceed alone.
 	t.Chdir(t.TempDir())
@@ -92,7 +104,7 @@ func TestSweepRemovesWhatAnExitedProcessLeft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 || len(e.removed) != 1 || e.removed[0] != "left" {
-		t.Fatalf("Sweep removed %d: %v; want only the exited process's container", n, e.removed)
+	if want := []string{"/left", "/networks/left-net"}; n != 2 || !slices.Equal(e.removed, want) {
+		t.Fatalf("Sweep removed %d: %v; want %v, the exited process's container and network", n, e.removed, want)
 	}
 }
