@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.52.0 - 2026-10-13
+
 ### Added
 
 - **`containers`: the suite leaves no container behind.** A test helper that starts a container labels it with `reap.Labels()` and sweeps with `reap.Sweep(ctx)`, from the new package `latere.ai/x/ci-gate/reap`. The suite then sweeps what exited test binaries left on the machine, names its run in `LATEREGATE_RUN`, and after `go test` exits removes every container still carrying the run's label and fails on it. A container is removed when its owner process is gone, never for its age. This covers what testcontainers' Ryuk covers, a panic on `-timeout`, a kill, a package with no `TestMain`, on engines where Ryuk cannot start, such as Podman. With no engine socket the suite runs as before and says nothing was watched. `containers` folds into `suite`; a waiver on it turns the watch off.
