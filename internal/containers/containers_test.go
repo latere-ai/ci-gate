@@ -20,13 +20,18 @@ import (
 // fakeEngine serves the two requests this package makes over a container
 // list of its own, and records what was removed.
 type fakeEngine struct {
-	mu      sync.Mutex
-	list    []Container
-	removed []string
+	mu       sync.Mutex
+	list     []Container
+	networks []Network
+	removed  []string
+	// ops is every removal in order, a network's prefixed with "network ".
+	ops []string
 	// status, when set, is what a removal of that id answers.
 	status map[string]int
-	// listStatus, when set, is what every listing answers.
-	listStatus int
+	// listStatus, when set, is what every container listing answers, and
+	// networkListStatus what every network listing does.
+	listStatus        int
+	networkListStatus int
 	// filters is the label filter of the last listing.
 	filters []string
 }
@@ -58,6 +63,33 @@ func (f *fakeEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		_ = json.NewEncoder(w).Encode(out)
+	case r.Method == http.MethodGet && r.URL.Path == "/networks":
+		var q map[string][]string
+		if err := json.Unmarshal([]byte(r.URL.Query().Get("filters")), &q); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		f.filters = q["label"]
+		if f.networkListStatus != 0 {
+			w.WriteHeader(f.networkListStatus)
+			return
+		}
+		var out []Network
+		for _, n := range f.networks {
+			if matches(Container{Labels: n.Labels}, f.filters) {
+				out = append(out, n)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/networks/"):
+		id := strings.TrimPrefix(r.URL.Path, "/networks/")
+		if s, ok := f.status[id]; ok {
+			w.WriteHeader(s)
+			_, _ = w.Write([]byte(`{"message":"network has active endpoints"}`))
+			return
+		}
+		f.ops = append(f.ops, "network "+id)
+		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/containers/"):
 		if r.URL.Query().Get("force") != "1" || r.URL.Query().Get("v") != "1" {
 			http.Error(w, "removal must force and take volumes", http.StatusTeapot)
@@ -69,6 +101,7 @@ func (f *fakeEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.removed = append(f.removed, id)
+		f.ops = append(f.ops, id)
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.NotFound(w, r)
@@ -137,7 +170,7 @@ func TestSweepRemovesOnlyWhatAnExitedOwnerOnThisHostLeft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(gone) != 1 || gone[0].ID != "dead-here" || !slices.Equal(f.removed, []string{"dead-here"}) {
+	if len(gone.Containers) != 1 || gone.Containers[0].ID != "dead-here" || !slices.Equal(f.removed, []string{"dead-here"}) {
 		t.Fatalf("swept %v, removed %v; want only dead-here", gone, f.removed)
 	}
 	if !slices.Equal(f.filters, []string{OwnerLabel}) {
@@ -154,7 +187,7 @@ func TestSweepKeepsGoingPastARemovalTheEngineRefuses(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "removing container stuck") {
 		t.Fatalf("err = %v, want the refused removal named", err)
 	}
-	if len(gone) != 1 || gone[0].ID != "fine" {
+	if len(gone.Containers) != 1 || gone.Containers[0].ID != "fine" {
 		t.Fatalf("swept %v, want fine removed despite stuck", gone)
 	}
 }
@@ -181,7 +214,7 @@ func TestLeftoversRemovesEverythingTheRunLabelled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(gone) != 3 || !slices.Equal(f.removed, []string{"mine-1", "mine-2"}) {
+	if len(gone.Containers) != 3 || !slices.Equal(f.removed, []string{"mine-1", "mine-2"}) {
 		t.Fatalf("left %v, removed %v; want run-a's three, theirs untouched", gone, f.removed)
 	}
 	if !slices.Equal(f.filters, []string{RunLabel + "=run-a"}) {
@@ -343,5 +376,72 @@ func TestAliveTellsARunningProcessFromAnExitedOne(t *testing.T) {
 func TestShortCutsAnIDToTwelve(t *testing.T) {
 	if Short("0123456789abcdef") != "0123456789ab" || Short("abc") != "abc" {
 		t.Fatal("Short")
+	}
+}
+
+func network(id, owner, run string) Network {
+	return Network{ID: id, Name: id, Labels: owned(id, owner, run).Labels}
+}
+
+// A network goes after the containers, which would hold it, and by the same
+// owner rule.
+func TestSweepRemovesAnExitedOwnersNetworkAfterItsContainers(t *testing.T) {
+	f := &fakeEngine{
+		list: []Container{owned("c-dead", "1@box", "")},
+		networks: []Network{
+			network("n-dead", "1@box", ""),
+			network("n-alive", "2@box", ""),
+			network("n-elsewhere", "1@other", ""),
+		},
+	}
+	gone, err := Sweep(context.Background(), serve(t, f), "box", func(pid int) bool { return pid == 2 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(f.ops, []string{"c-dead", "network n-dead"}) {
+		t.Fatalf("removed %v, want the container and then its owner's network", f.ops)
+	}
+	if gone.Len() != 2 || len(gone.Networks) != 1 || gone.Networks[0].ID != "n-dead" {
+		t.Fatalf("swept %+v", gone)
+	}
+}
+
+func TestLeftoversRemovesTheRunsNetworks(t *testing.T) {
+	f := &fakeEngine{networks: []Network{network("mine", "1@box", "r"), network("theirs", "1@box", "s")}}
+	gone, err := Leftovers(context.Background(), serve(t, f), "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gone.Networks) != 1 || !slices.Equal(f.ops, []string{"network mine"}) {
+		t.Fatalf("left %+v, removed %v; want the run's network only", gone, f.ops)
+	}
+}
+
+func TestANetworkStillInUseIsReported(t *testing.T) {
+	f := &fakeEngine{
+		networks: []Network{network("busy", "1@box", ""), network("free", "1@box", "")},
+		status:   map[string]int{"busy": http.StatusConflict},
+	}
+	gone, err := Sweep(context.Background(), serve(t, f), "box", func(int) bool { return false })
+	if err == nil || !strings.Contains(err.Error(), "network has active endpoints") {
+		t.Fatalf("err = %v, want the engine's reason", err)
+	}
+	if len(gone.Networks) != 1 || gone.Networks[0].ID != "free" {
+		t.Fatalf("swept %+v, want free removed despite busy", gone)
+	}
+	f.status = map[string]int{"gone": http.StatusNotFound}
+	if err := serve(t, f).RemoveNetwork(context.Background(), "gone"); err != nil {
+		t.Fatalf("a network already gone: %v", err)
+	}
+	if err := Socket("no-such.sock").RemoveNetwork(context.Background(), "x"); err == nil {
+		t.Fatal("removing through a missing socket succeeded")
+	}
+}
+
+func TestANetworkListingThatFailsKeepsWhatWasRemoved(t *testing.T) {
+	f := &fakeEngine{list: []Container{owned("c", "1@box", "")}, networkListStatus: http.StatusInternalServerError}
+	gone, err := Sweep(context.Background(), serve(t, f), "box", func(int) bool { return false })
+	if err == nil || len(gone.Containers) != 1 {
+		t.Fatalf("swept %+v, err %v; want the container kept in the result and the listing's error", gone, err)
 	}
 }

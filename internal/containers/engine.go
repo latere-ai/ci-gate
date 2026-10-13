@@ -38,6 +38,13 @@ type Container struct {
 	Labels map[string]string `json:"Labels"`
 }
 
+// Network is the part of an engine's network listing this package reads.
+type Network struct {
+	ID     string            `json:"Id"`
+	Name   string            `json:"Name"`
+	Labels map[string]string `json:"Labels"`
+}
+
 // Find returns the engine a test helper on this machine would reach, or false
 // when no socket answers to the name.
 func Find() (*Engine, bool) {
@@ -103,24 +110,33 @@ func Socket(path string) *Engine {
 // List returns every container, running or not, that carries label. label is
 // a key, or key=value for one value of it.
 func (e *Engine) List(ctx context.Context, label string) ([]Container, error) {
+	var cs []Container
+	return cs, e.list(ctx, "/containers/json?all=1&", label, "container", &cs)
+}
+
+// Networks returns every network that carries label, a key or key=value.
+func (e *Engine) Networks(ctx context.Context, label string) ([]Network, error) {
+	var ns []Network
+	return ns, e.list(ctx, "/networks?", label, "network", &ns)
+}
+
+func (e *Engine) list(ctx context.Context, path, label, kind string, into any) error {
 	filters, err := json.Marshal(map[string][]string{"label": {label}})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	q := url.Values{"all": {"1"}, "filters": {string(filters)}}
-	resp, err := e.do(ctx, http.MethodGet, "/containers/json?"+q.Encode())
+	resp, err := e.do(ctx, http.MethodGet, path+url.Values{"filters": {string(filters)}}.Encode())
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, refused(resp, "listing containers")
+		return refused(resp, "listing "+kind+"s")
 	}
-	var cs []Container
-	if err := json.NewDecoder(resp.Body).Decode(&cs); err != nil {
-		return nil, fmt.Errorf("reading the container list: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
+		return fmt.Errorf("reading the %s list: %w", kind, err)
 	}
-	return cs, nil
+	return nil
 }
 
 // Remove stops and deletes the container id with its anonymous volumes. A
@@ -137,6 +153,22 @@ func (e *Engine) Remove(ctx context.Context, id string) error {
 		return nil
 	}
 	return refused(resp, "removing container "+Short(id))
+}
+
+// RemoveNetwork deletes the network id. One already gone is not an error. One
+// that still has a container attached is, and says so: the containers go
+// first, so a network left in use holds a container nothing labelled.
+func (e *Engine) RemoveNetwork(ctx context.Context, id string) error {
+	resp, err := e.do(ctx, http.MethodDelete, "/networks/"+url.PathEscape(id))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNoContent, http.StatusNotFound:
+		return nil
+	}
+	return refused(resp, "removing network "+Short(id))
 }
 
 func (e *Engine) do(ctx context.Context, method, path string) (*http.Response, error) {

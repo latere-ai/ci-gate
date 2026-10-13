@@ -22,8 +22,8 @@ const (
 	RunEnv = "LATEREGATE_RUN"
 )
 
-// Labels are the labels for a container started by process pid on host,
-// during run when run is not empty.
+// Labels are the labels for a container or network made by process pid on
+// host, during run when run is not empty.
 func Labels(pid int, host, run string) map[string]string {
 	l := map[string]string{OwnerLabel: strconv.Itoa(pid) + "@" + host}
 	if run != "" {
@@ -45,51 +45,70 @@ func owner(v string) (int, string, bool) {
 	return pid, host, true
 }
 
-// Sweep removes each labelled container whose owner ran on host and is no
-// longer alive, and returns the ones it removed.
+// Removed is what a sweep or a run's check took off the engine.
+type Removed struct {
+	Containers []Container
+	Networks   []Network
+}
+
+// Len is how many containers and networks were removed.
+func (r Removed) Len() int { return len(r.Containers) + len(r.Networks) }
+
+// Sweep removes each labelled container, then each labelled network, whose
+// owner ran on host and is no longer alive, and returns what it removed.
 //
 // Liveness is the only test. A container is never judged by its age, because
 // a suite on this machine may be minutes into using one; and a container
 // whose owner ran elsewhere is left alone, because its pid names some other
-// machine's process.
-func Sweep(ctx context.Context, e *Engine, host string, alive func(pid int) bool) ([]Container, error) {
-	cs, err := e.List(ctx, OwnerLabel)
-	if err != nil {
-		return nil, err
+// machine's process. Containers go first, so a network is free by its turn.
+func Sweep(ctx context.Context, e *Engine, host string, alive func(pid int) bool) (Removed, error) {
+	orphaned := func(labels map[string]string) bool {
+		pid, h, ok := owner(labels[OwnerLabel])
+		return ok && h == host && !alive(pid)
 	}
-	var gone []Container
-	var errs []error
-	for _, c := range cs {
-		pid, h, ok := owner(c.Labels[OwnerLabel])
-		if !ok || h != host || alive(pid) {
-			continue
-		}
-		if err := e.Remove(ctx, c.ID); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		gone = append(gone, c)
-	}
-	return gone, errors.Join(errs...)
+	return remove(ctx, e, OwnerLabel, orphaned)
 }
 
-// Leftovers removes every container labelled with run, whoever owns it, and
-// returns the ones it removed. It is for after the run: once every process of
-// the run has exited, each container still carrying its label is one nothing
-// stopped.
-func Leftovers(ctx context.Context, e *Engine, run string) ([]Container, error) {
-	cs, err := e.List(ctx, RunLabel+"="+run)
+// Leftovers removes every container and network labelled with run, whoever
+// owns it, and returns what it removed. It is for after the run: once every
+// process of the run has exited, each one still carrying its label is one
+// nothing stopped.
+func Leftovers(ctx context.Context, e *Engine, run string) (Removed, error) {
+	return remove(ctx, e, RunLabel+"="+run, func(map[string]string) bool { return true })
+}
+
+// remove takes off the engine each container, then each network, that
+// carries label and that pick chooses by its labels.
+func remove(ctx context.Context, e *Engine, label string, pick func(map[string]string) bool) (Removed, error) {
+	var gone Removed
+	cs, err := e.List(ctx, label)
 	if err != nil {
-		return nil, err
+		return gone, err
 	}
-	var gone []Container
 	var errs []error
 	for _, c := range cs {
+		if !pick(c.Labels) {
+			continue
+		}
 		if err := e.Remove(ctx, c.ID); err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		gone = append(gone, c)
+		gone.Containers = append(gone.Containers, c)
+	}
+	ns, err := e.Networks(ctx, label)
+	if err != nil {
+		return gone, errors.Join(append(errs, err)...)
+	}
+	for _, n := range ns {
+		if !pick(n.Labels) {
+			continue
+		}
+		if err := e.RemoveNetwork(ctx, n.ID); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		gone.Networks = append(gone.Networks, n)
 	}
 	return gone, errors.Join(errs...)
 }
