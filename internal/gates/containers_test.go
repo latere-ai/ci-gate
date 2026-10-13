@@ -189,13 +189,16 @@ func TestSuiteSweepsWhatAnExitedProcessLeftBeforeItRuns(t *testing.T) {
 func TestSuiteWithoutAnEngineSaysSoAndClaimsNothing(t *testing.T) {
 	root := isolated(t)
 	setFindEngine(t, func() (*containers.Engine, bool) { return nil, false })
+	// An enclosing run's label passes through untouched: that run watches
+	// what this one starts.
+	t.Setenv(containers.RunEnv, "enclosing")
 	s := &suiteRun{}
 	var sb strings.Builder
 	if err := Suite(SuiteRun{Containers: true}, root, suiteGo, &sb, s.exec); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := envValue(s.testCall(t).env, containers.RunEnv); ok {
-		t.Fatal("a run with nothing watching it was named")
+	if v, _ := envValue(s.testCall(t).env, containers.RunEnv); v != "enclosing" {
+		t.Fatalf("%s=%q, want the enclosing run's label left as it was", containers.RunEnv, v)
 	}
 	out := sb.String()
 	if !strings.Contains(out, "no container engine socket") || strings.Contains(out, "no container left behind") {
