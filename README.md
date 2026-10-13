@@ -71,6 +71,7 @@ FOLD test         into suite
 FOLD race         into suite
 FOLD hermetic     into suite
 FOLD tempdir      into suite
+FOLD containers   into suite
 FOLD cover        into suite
 lateregate: 1 of 13 gates failed: suite
 ```
@@ -90,17 +91,40 @@ lateregate: 1 of 13 gates failed: suite
 | `enum-go`, `enum-typescript` | declared enum domains use named members and exhaustive switches |
 | `lint` | golangci-lint at a pinned version, against a shared config rendered on every run |
 | `vuln` | govulncheck at a pinned version finds no reachable vulnerability |
-| `suite` | `go vet`, then one run of the test suite that is race-clean, over a per-package coverage floor, leaves nothing under `TMPDIR`, and needs only the Go toolchain on `PATH` |
+| `suite` | `go vet`, then one run of the test suite that is race-clean, over a per-package coverage floor, leaves nothing under `TMPDIR` and no container behind, and needs only the Go toolchain on `PATH` |
 
 A gate that does not apply is skipped with the reason: `spec-lint` needs a
 `specs/` directory, `depcheck`, `registers` and the enum gates need a key
-naming what to check. `test`, `race`, `hermetic`, `tempdir` and `cover`
-are the five properties `suite` checks in one run, and each still runs by
-name for isolating one of them. [`docs/gates.md`](docs/gates.md) is the
+naming what to check. `test`, `race`, `hermetic`, `tempdir`, `containers`
+and `cover` are the six properties `suite` checks in one run, and each
+still runs by name for isolating one of them. [`docs/gates.md`](docs/gates.md) is the
 reference: what each gate checks, how it fails, and how to configure it.
 
 `go tool lateregate list` prints the plan without running it, and `go
 tool lateregate <gate>` runs one gate.
+
+## Containers a test starts
+
+A test helper that starts a container labels it and sweeps before it
+starts one, with the `reap` package this module ships:
+
+```go
+import "latere.ai/x/ci-gate/reap"
+
+_, _ = reap.Sweep(ctx) // what an exited test binary left, on this machine
+ctr, err := postgres.Run(ctx, image, testcontainers.WithLabels(reap.Labels()))
+if err != nil && ctr != nil {
+	_ = ctr.Terminate(ctx) // a failed start still made a container
+}
+```
+
+The labels name the process that owns the container and the `lateregate`
+run it belongs to. `suite` sweeps before it runs and, after `go test`
+exits, removes and fails on every container the run left. Between them a
+container is removed when its test binary panics, is killed, or has no
+`TestMain`, on engines where testcontainers' own reaper cannot run, such
+as Podman. [`docs/gates.md`](docs/gates.md#containers-tests-that-fill-the-engine)
+has the details.
 
 ## Waivers and configuration
 

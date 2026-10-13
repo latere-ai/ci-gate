@@ -24,11 +24,12 @@ another. `go tool lateregate <gate>` runs one.
 | `enum-typescript` | declared TypeScript domains use native enums, named members and exhaustive switches | `enums.typescript` names a project |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
 | `vuln` | govulncheck at the pinned version finds no reachable vulnerability | always |
-| `suite` | `go vet`, then one run of the suite that holds the five properties below | always; a waived `test` waives it |
+| `suite` | `go vet`, then one run of the suite that holds the six properties below | always; a waived `test` waives it |
 | `test` | `go vet` and the suite | folded into `suite` |
 | `race` | the suite under the race detector | folded into `suite` |
 | `hermetic` | the suite passes with only the toolchain on `PATH` | folded into `suite` |
 | `tempdir` | the suite leaves nothing behind under `TMPDIR` | folded into `suite`, unless `tempdir.command` names another runner |
+| `containers` | the suite leaves no container behind | folded into `suite` |
 | `cover` | every package clears the floor, not the repository average | folded into `suite` |
 
 The recipes are in the binary, so no repository carries its own copy of
@@ -38,21 +39,22 @@ one. `test` is `go vet ./...` then `go test ./...`; `race` sets
 this repository, so one release moves every repository to the same tool
 versions.
 
-## `suite` and the five gates it folds
+## `suite` and the six gates it folds
 
 `suite` runs the test suite once with every property on: `go vet ./...`,
 then `go test -race -covermode=atomic -coverpkg=./...
 -coverprofile=coverage.out ./...` with `CGO_ENABLED=1`, inside the
-`tempdir` sandbox and on the `hermetic` PATH, then the coverage floor over
-the profile and the check for surviving temporary files. Running the five
-properties separately compiles and runs the suite five times to learn the
-same five facts; `-race` already forces atomic coverage, and a sandbox or a
-stripped PATH wraps whatever runs inside it.
+`tempdir` sandbox, on the `hermetic` PATH and under a `containers` run
+label, then the coverage floor over the profile and the checks for
+surviving temporary files and containers. Running the six properties
+separately compiles and runs the suite six times to learn the same six
+facts; `-race` already forces atomic coverage, and a sandbox, a stripped
+PATH or a run label wraps whatever runs inside it.
 
 The first line of a failure names the property: `the suite is not
 race-clean`, `the suite reached for docker, which is not on the stripped
-PATH`, `the suite left 2 entries under TMPDIR`, `the suite's coverage is
-under the floor`.
+PATH`, `the suite left 2 entries under TMPDIR`, `the suite left 3
+containers behind`, `the suite's coverage is under the floor`.
 
 The race detector needs cgo, and cgo needs the compiler the toolchain
 names in `CC` and the `as` and `ld` it calls. Under `-race` the stripped
@@ -63,13 +65,14 @@ compiler's own directory stays off the PATH, since on Linux that is
 names the shim and what it holds. Every flag is one the go command's test
 cache accepts, so an unchanged package replays its result.
 
-The plan marks `test`, `race`, `hermetic`, `tempdir` and `cover` as
-`FOLD`, and `lateregate` runs the suite in their place. A waiver on one of
-them narrows the run instead of skipping it: a waived `race` drops
-`-race`, a waived `hermetic` keeps the full PATH, a waived `tempdir` runs
-outside the sandbox, a waived `cover` keeps no floor, and a waived `test`
-waives the suite. The suite's plan line says what is narrowed. Each of the
-five still runs by name, `lateregate race`, for isolating one property.
+The plan marks `test`, `race`, `hermetic`, `tempdir`, `containers` and
+`cover` as `FOLD`, and `lateregate` runs the suite in their place. A waiver
+on one of them narrows the run instead of skipping it: a waived `race`
+drops `-race`, a waived `hermetic` keeps the full PATH, a waived `tempdir`
+runs outside the sandbox, a waived `containers` watches no container, a
+waived `cover` keeps no floor, and a waived `test` waives the suite. The
+suite's plan line says what is narrowed. Each of the six still runs by
+name, `lateregate race`, for isolating one property.
 
 ## `cover`: a floor per package, not an average
 
@@ -199,6 +202,60 @@ an unchanged package replay its result. A run whose packages all replay
 still counts as having used the sandbox, because the go command makes its
 build directory there on every invocation. On a platform without `flock`
 each run makes a directory of its own instead.
+
+## `containers`: tests that fill the engine
+
+A test helper that starts a container once per test binary stops it from
+`TestMain`, after `m.Run` returns. A binary that panics on `-timeout`, is
+killed or is interrupted never gets there, a package with no `TestMain`
+never stops it, and a container that failed its start is returned with the
+error and dropped by a helper that keeps it only on success.
+testcontainers' reaper, Ryuk, removes such containers where it can start,
+and on Podman it cannot: Podman refuses to create the network named
+`bridge` that Ryuk asks to join. Without it each leaked container runs
+until somebody removes it by hand, and a few hundred of them exhaust the
+engine's memory.
+
+The gate and the helper share a contract of two labels, and the helper's
+half is the package `latere.ai/x/ci-gate/reap`:
+
+```go
+_, _ = reap.Sweep(ctx)
+ctr, err := postgres.Run(ctx, image, testcontainers.WithLabels(reap.Labels()))
+if err != nil && ctr != nil {
+	_ = ctr.Terminate(ctx)
+}
+```
+
+`reap.Labels` marks the container with its owner, `<pid>@<host>`, and with
+the `lateregate` run in `LATEREGATE_RUN` when there is one. `reap.Sweep`
+removes each labelled container whose owner on this host has exited. It
+never judges by age, so it is safe while other suites on the machine are
+using theirs.
+
+Around `go test`, the gate does the same sweep, names the run, and after
+the run removes every container still carrying the run's label:
+
+```
+  removed 0c4e5a1f2b3d postgres:17-alpine, which an exited process left
+  ...
+  7d1f0e9a8b2c postgres:17-alpine (running)
+lateregate: the suite left 1 container behind after its tests exited, removed now; a test that starts a container stops it on every path, a failed start included
+```
+
+What the opening sweep removes fails nothing: it was another run's leak. A
+run killed along with its gate, or a bare `go test`, leaves its containers
+to the next sweep on the machine, in any repository.
+
+The run label is read with `syscall.Getenv`, because the go command keys a
+cached test result on each variable the test reads through `os`, and a
+label that changes every run would keep every package that starts a
+container from replaying.
+
+With no engine socket the gate says so and claims nothing: nothing the
+suite runs can have started a container. The socket is the one the
+clients find: `DOCKER_HOST` when set, then `/var/run/docker.sock`, Docker
+Desktop's and rootless Podman's. An engine over TCP is not watched.
 
 ## `license`: the terms on every file
 
