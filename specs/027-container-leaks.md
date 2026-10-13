@@ -160,15 +160,25 @@ opening sweep removes fails nothing: it is another run's leak, reclaimed.
 the suite carries the label, and a waiver on `containers` turns the watch
 off rather than skipping the suite.
 
+## Networks
+
+A helper that puts its containers on a network of its own makes the network
+with the same labels, `network.WithLabels(reap.Labels())`, and the sweep
+and the run's check treat it as they treat a container. Containers go
+first, so a network is free by its turn; one still in use after them holds
+a container nothing labelled, and its removal fails with the engine's
+reason. Added after the first release, once a helper that makes networks
+adopted the contract and the networks of killed runs were found on the
+engine with nothing attached.
+
 ## Limits
 
-- A container started without the labels is invisible to both halves. A
-  repository's helper adopts the contract; the gate cannot see one that
-  has not.
+- A container or network made without the labels is invisible to both
+  halves. A repository's helper adopts the contract; the gate cannot see
+  one that has not.
 - A container started over a `DOCKER_HOST` on TCP is not watched.
 - A host whose name changed between runs leaves containers named for the
   old one alone, by D1.
-- Networks a helper creates for its containers are not swept.
 
 ## Acceptance
 
@@ -186,6 +196,9 @@ off rather than skipping the suite.
       line.
 - [x] A package that starts a container keeps replaying from the test
       cache while the run label changes.
+- [x] A labelled network is swept after the containers when its owner has
+      exited, and a network the run left is named, removed, and fails the
+      suite beside its containers.
 - [x] Verified on a consumer: a package with no `TestMain` fails the
       gate, and passes once it stops its container. On 2026-10-13, against
       a Podman machine: a one-package module whose test starts Postgres
