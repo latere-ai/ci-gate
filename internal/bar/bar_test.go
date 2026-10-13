@@ -360,7 +360,7 @@ func TestTheSuiteGatesFoldIntoSuite(t *testing.T) {
 	if e := entry(plan, Suite); e.Status != Run || e.Reason != "" {
 		t.Errorf("suite: %+v", e)
 	}
-	for _, name := range []string{"test", "race", "cover", "tempdir", "hermetic"} {
+	for _, name := range []string{"test", "race", "cover", "tempdir", "hermetic", "containers"} {
 		if e := entry(plan, name); e.Status != Folded || e.Into != Suite {
 			t.Errorf("%s: %+v, want folded into suite", name, e)
 		}
@@ -370,6 +370,9 @@ func TestTheSuiteGatesFoldIntoSuite(t *testing.T) {
 			t.Errorf("list -json lacks %s:\n%s", want, sb.String())
 		}
 	}
+	if run, _ := suiteRun(c); !run.Containers {
+		t.Error("the suite must watch its containers unless the containers gate is waived")
+	}
 }
 
 // A live waiver on a folded gate turns its property off in the one run; an
@@ -377,10 +380,11 @@ func TestTheSuiteGatesFoldIntoSuite(t *testing.T) {
 func TestAWaiverNarrowsTheSuite(t *testing.T) {
 	c, _ := ctx(t, nil, withSpecs)
 	c.Cfg.Waive = map[string]config.Waiver{
-		"race":     {Reason: "flaky under load", Until: "2026-09-30"},
-		"hermetic": {Reason: "needs git", Until: "2026-09-30"},
-		"tempdir":  {Reason: "fixtures leak", Until: "2026-09-30"},
-		"cover":    {Reason: "was behind", Until: "2026-08-01"},
+		"race":       {Reason: "flaky under load", Until: "2026-09-30"},
+		"hermetic":   {Reason: "needs git", Until: "2026-09-30"},
+		"tempdir":    {Reason: "fixtures leak", Until: "2026-09-30"},
+		"containers": {Reason: "helpers unlabelled", Until: "2026-09-30"},
+		"cover":      {Reason: "was behind", Until: "2026-08-01"},
 	}
 	plan, err := Plan(c)
 	if err != nil {
@@ -391,6 +395,7 @@ func TestAWaiverNarrowsTheSuite(t *testing.T) {
 		"without -race (race waived until 2026-09-30: flaky under load)",
 		"with the full PATH (hermetic waived until 2026-09-30: needs git)",
 		"outside the TMPDIR sandbox (tempdir waived until 2026-09-30: fixtures leak)",
+		"without watching its containers (containers waived until 2026-09-30: helpers unlabelled)",
 		"cover waiver expired 2026-08-01: was behind",
 	} {
 		if s.Status != Run || !strings.Contains(s.Reason, want) {
@@ -405,7 +410,7 @@ func TestAWaiverNarrowsTheSuite(t *testing.T) {
 	}
 
 	run, _ := suiteRun(c)
-	if run.Race || run.Hermetic || run.Sandbox {
+	if run.Race || run.Hermetic || run.Sandbox || run.Containers {
 		t.Errorf("waived properties must be off: %+v", run)
 	}
 	if run.Floor == nil || run.Profile == "" {

@@ -132,7 +132,7 @@ var Gates = []Gate{
 		Run: func(c Ctx) error { return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec) }},
 	{Name: "vuln", Doc: "govulncheck " + gates.VulnVersion + " finds no reachable vulnerability",
 		Run: func(c Ctx) error { return gates.Vuln(c.GoBin, c.Out, c.Exec) }},
-	{Name: "suite", Doc: "go vet, then one run of the suite that is race-clean, over the coverage floor, leaves nothing under TMPDIR and needs only the toolchain on PATH",
+	{Name: "suite", Doc: "go vet, then one run of the suite that is race-clean, over the coverage floor, leaves nothing under TMPDIR and no container behind, and needs only the toolchain on PATH",
 		Run: runSuite},
 	{Name: "test", Doc: "go vet and the suite",
 		Run: func(c Ctx) error { return gates.Test(c.GoBin, c.Out, c.Exec) }},
@@ -142,6 +142,8 @@ var Gates = []Gate{
 		Run: func(c Ctx) error { return gates.Hermetic(c.Cfg.Hermetic, c.GoBin, c.Out, c.Exec) }},
 	{Name: "tempdir", Doc: "the suite leaves nothing under TMPDIR",
 		Run: func(c Ctx) error { return gates.TempDir(c.Cfg.TempDir, c.Root, c.Args, c.Out, c.Exec) }},
+	{Name: "containers", Doc: "the suite leaves no container behind",
+		Run: func(c Ctx) error { return gates.Containers(c.GoBin, c.Out, c.Exec) }},
 	{Name: "cover", Doc: "every package clears the floor",
 		Run: runCover},
 }
@@ -154,7 +156,7 @@ const Suite = "suite"
 // watches go test: a repository whose tempdir.command names another runner
 // has a suite the go test run is not, and keeps the gate to itself.
 func folded(cfg *config.Config) map[string]bool {
-	f := map[string]bool{"test": true, "race": true, "cover": true, "hermetic": true}
+	f := map[string]bool{"test": true, "race": true, "cover": true, "hermetic": true, "containers": true}
 	if len(cfg.TempDir.Command) == 0 {
 		f["tempdir"] = true
 	}
@@ -172,13 +174,14 @@ func folded(cfg *config.Config) map[string]bool {
 func suiteRun(c Ctx) (gates.SuiteRun, []string) {
 	f := folded(c.Cfg)
 	run := gates.SuiteRun{
-		Race:     true,
-		Timeout:  c.Cfg.Race.Timeout,
-		Hermetic: true,
-		Allow:    c.Cfg.Hermetic.Allow,
-		Sandbox:  f["tempdir"],
-		TempDir:  c.Cfg.TempDir,
-		Profile:  cover.Profile,
+		Race:       true,
+		Timeout:    c.Cfg.Race.Timeout,
+		Hermetic:   true,
+		Allow:      c.Cfg.Hermetic.Allow,
+		Sandbox:    f["tempdir"],
+		TempDir:    c.Cfg.TempDir,
+		Containers: true,
+		Profile:    cover.Profile,
 	}
 	run.Floor = func(profile string) error {
 		return cover.Run(c.Cfg.Cover, append([]string{profile}, c.Profiles...), c.Out, cover.GoLister(c.GoBin, c.Root))
@@ -191,6 +194,7 @@ func suiteRun(c Ctx) (gates.SuiteRun, []string) {
 		{"race", "without -race", func() { run.Race = false }},
 		{"hermetic", "with the full PATH", func() { run.Hermetic = false }},
 		{"tempdir", "outside the TMPDIR sandbox", func() { run.Sandbox = false }},
+		{"containers", "without watching its containers", func() { run.Containers = false }},
 		{"cover", "without the coverage floor", func() { run.Profile, run.Floor = "", nil }},
 	} {
 		w, ok := c.Cfg.Waive[n.gate]

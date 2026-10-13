@@ -19,8 +19,8 @@ import (
 )
 
 // SuiteRun is what one run of the suite wraps around go test. Each field is
-// a property one of the test, race, cover, tempdir and hermetic gates checks
-// with a run of its own; a waiver on that gate turns its field off.
+// a property one of the test, race, cover, tempdir, hermetic and containers
+// gates checks with a run of its own; a waiver on that gate turns its field off.
 type SuiteRun struct {
 	// Race runs the suite under the race detector with cgo on, and puts the
 	// C toolchain shim on a stripped PATH.
@@ -36,6 +36,9 @@ type SuiteRun struct {
 	// reports what survives it; TempDir holds the admitted survivors.
 	Sandbox bool
 	TempDir config.TempDir
+	// Containers names the run to the container engine, sweeps what earlier
+	// runs' exited processes left, and reports each container this run left.
+	Containers bool
 	// Profile is the coverage profile the run writes, relative to the
 	// repository root. Empty collects none.
 	Profile string
@@ -46,10 +49,11 @@ type SuiteRun struct {
 // Suite runs go vet, then the suite once with every property in opt on, and
 // reports each property that failed.
 //
-// The five properties are independent of each other and none of them is
+// The six properties are independent of each other and none of them is
 // independent of the suite, so one run holds all of them: -race already
 // forces atomic coverage, a watched TMPDIR watches whatever runs inside it,
-// and a stripped PATH strips it for whatever runs inside it. Five separate
+// a stripped PATH strips it for whatever runs inside it, and a run label
+// reaches every container a test inside it starts. Five separate
 // runs compiled and ran the suite five times to learn the same five facts.
 //
 // Every flag is one the go command's test cache accepts, so a package whose
@@ -98,6 +102,13 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 		_, _ = fmt.Fprintf(out, "TMPDIR=%s\n", sandbox)
 	}
 
+	var watch *containerWatch
+	if opt.Containers {
+		if watch = watchContainers(out); watch != nil {
+			env = watch.env(env)
+		}
+	}
+
 	output, runErr := run(env, true, goBin, args...)
 
 	var failures []string
@@ -113,6 +124,11 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 			failures = append(failures, f)
 		}
 	}
+	if watch != nil {
+		if f := watch.leftovers(out); f != "" {
+			failures = append(failures, f)
+		}
+	}
 	// A floor over a run that failed measures the tests that happened to
 	// finish, so it reports nothing the failure has not already said.
 	if opt.Floor != nil && runErr == nil {
@@ -123,6 +139,8 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 	if len(failures) > 0 {
 		return errors.New(strings.Join(failures, "\nand "))
 	}
+	// No engine means nothing was watched, so the verdict does not claim it.
+	opt.Containers = watch != nil
 	_, _ = fmt.Fprintf(out, "the suite passes%s\n", describe(opt))
 	return nil
 }
@@ -231,6 +249,9 @@ func describe(opt SuiteRun) string {
 	}
 	if opt.Sandbox {
 		on = append(on, "nothing left under TMPDIR")
+	}
+	if opt.Containers {
+		on = append(on, "no container left behind")
 	}
 	if opt.Hermetic {
 		on = append(on, "on the stripped PATH")
