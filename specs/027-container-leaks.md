@@ -1,6 +1,6 @@
 ---
 title: Gate the containers a test run leaves behind
-status: partial
+status: complete
 depends_on:
   - 001-gate-principles.md
   - 003-tempdir-leaks.md
@@ -186,5 +186,11 @@ off rather than skipping the suite.
       line.
 - [x] A package that starts a container keeps replaying from the test
       cache while the run label changes.
-- [ ] Verified on a consumer: a package with no `TestMain` fails the
-      gate, and passes once it stops its container.
+- [x] Verified on a consumer: a package with no `TestMain` fails the
+      gate, and passes once it stops its container. On 2026-10-13, against
+      a Podman machine: a one-package module whose test starts Postgres
+      and never stops it failed `lateregate containers` with "the suite
+      left 1 container behind", and passed once a `TestMain` stopped it;
+      a repository's package with no `TestMain` left one labelled
+      container, and the next start's sweep removed it after its owner
+      exited.
