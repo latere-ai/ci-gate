@@ -82,6 +82,7 @@ lateregate: 1 of 13 gates failed: suite
 | `modernize` | no code that a standard library call already covers |
 | `cgo-free` | no Go file imports `"C"` |
 | `otel-client` | no outbound HTTP client is built without a tracing transport |
+| `container-labels` | every package that imports testcontainers-go imports `reap`, which labels its containers |
 | `license` | every source file carries the declared SPDX notice |
 | `spec-lint` | the spec tree agrees with itself and with its index |
 | `depcheck` | no build reaches a dependency nobody admitted |
@@ -94,7 +95,8 @@ lateregate: 1 of 13 gates failed: suite
 | `suite` | `go vet`, then one run of the test suite that is race-clean, over a per-package coverage floor, leaves nothing under `TMPDIR` and no container behind, and needs only the Go toolchain on `PATH` |
 
 A gate that does not apply is skipped with the reason: `spec-lint` needs a
-`specs/` directory, `depcheck`, `registers` and the enum gates need a key
+`specs/` directory, `container-labels` a package that imports
+testcontainers-go, and `depcheck`, `registers` and the enum gates a key
 naming what to check. `test`, `race`, `hermetic`, `tempdir`, `containers`
 and `cover` are the six properties `suite` checks in one run, and each
 still runs by name for isolating one of them. [`docs/gates.md`](docs/gates.md) is the
@@ -124,7 +126,9 @@ the container and the `lateregate` run it belongs to. `suite` sweeps before it r
 exits, removes and fails on every container the run left. Between them a
 container is removed when its test binary panics, is killed, or has no
 `TestMain`, on engines where testcontainers' own reaper cannot run, such
-as Podman. [`docs/gates.md`](docs/gates.md#containers-tests-that-fill-the-engine)
+as Podman. A container without the labels is invisible to both, so
+`container-labels` fails a package that imports testcontainers-go and not
+`reap`. [`docs/gates.md`](docs/gates.md#containers-tests-that-fill-the-engine)
 has the details.
 
 ## Waivers and configuration
