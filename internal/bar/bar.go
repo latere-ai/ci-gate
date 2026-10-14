@@ -72,6 +72,14 @@ var Gates = []Gate{
 		Run: func(c Ctx) error { return gates.CgoFree(c.Root, c.Out, c.Cfg.CgoFree.Skip) }},
 	{Name: "otel-client", Doc: "no outbound HTTP client without a tracing transport",
 		Run: func(c Ctx) error { return gates.OtelClient(c.Root, c.Out, c.Cfg.OtelClient.Skip) }},
+	{Name: "container-labels", Doc: "every package that imports testcontainers-go imports reap, which labels its containers",
+		// The subject is read from the tree, as spec-lint's is from git: a
+		// repository whose first test starts a container is gated that day.
+		Applies: func(c Ctx) (bool, string, error) {
+			ok, err := gates.ImportsTestcontainers(c.Root)
+			return ok, "no package imports testcontainers-go", err
+		},
+		Run: func(c Ctx) error { return gates.ContainerLabels(c.Root, c.Out) }},
 	{Name: "license", Doc: "every source file carries the declared SPDX notice",
 		Run: func(c Ctx) error { return license.Run(c.Cfg.License, c.Root, c.Out) }},
 	{Name: "spec-lint", Doc: "the spec tree agrees with itself and its index",

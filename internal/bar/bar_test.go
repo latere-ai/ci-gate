@@ -6,6 +6,8 @@ package bar
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -87,15 +89,26 @@ func TestPlanSkipsAGateWithNoSubject(t *testing.T) {
 	if e := entry(plan, "registers"); e.Status != Skip || !strings.Contains(e.Reason, "names no function") {
 		t.Errorf("registers with no surface: %+v", e)
 	}
+	if e := entry(plan, "container-labels"); e.Status != Skip || !strings.Contains(e.Reason, "no package imports testcontainers-go") {
+		t.Errorf("container-labels with no testcontainers import: %+v", e)
+	}
 
 	c, _ = ctx(t, nil, withSpecs)
 	c.Cfg.Depcheck.Packages = map[string]config.Gated{"example.com/m": {Decision: "d"}}
 	c.Cfg.Registers.UserSurfaces = []string{"internal/api.WriteError"}
+	db := filepath.Join(c.Root, "internal", "testdb")
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(db, "testdb_test.go"),
+		[]byte("package testdb\n\nimport \"github.com/testcontainers/testcontainers-go\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	plan, err = Plan(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"spec-lint", "depcheck", "registers"} {
+	for _, name := range []string{"spec-lint", "depcheck", "registers", "container-labels"} {
 		if e := entry(plan, name); e.Status != Run {
 			t.Errorf("%s has a subject and must run: %+v", name, e)
 		}
