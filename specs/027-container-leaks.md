@@ -15,7 +15,7 @@ affects:
   - CHANGELOG.md
 effort: medium
 created: 2026-10-13
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 dispatched_task_id: null
 ---
@@ -171,11 +171,38 @@ reason. Added after the first release, once a helper that makes networks
 adopted the contract and the networks of killed runs were found on the
 engine with nothing attached.
 
+## The helper half is gated
+
+A container or network made without the labels is invisible to both
+halves, and the suite reports nothing left behind over it. The labels go
+on at the call that starts the container, through option slices and
+helpers a syntax scan cannot follow. So `container-labels`, a static gate
+of its own, checks one level up: every package that imports a
+testcontainers-go package imports `reap`.
+
+The package is the directory, test files included, because a test that
+starts a container with no helper does it from a `_test.go` file and an
+external test package shares the directory it tests. The scan reads the
+tree as `./...` does, and also skips a directory holding a `.git` entry:
+an agent's worktree under the repository is another checkout, on its own
+version of the contract. The gate applies once a package imports
+testcontainers-go, read from the tree as `spec-lint` reads git, so the
+first test that starts a container is gated the day it lands. It is
+package-level, so the pre-commit hook, which sees staged files, does not
+run it; `lateregate` and CI do.
+
+Added after the second release, once every helper in the family had
+adopted the contract and nothing stopped the next one from skipping it.
+
 ## Limits
 
-- A container or network made without the labels is invisible to both
-  halves. A repository's helper adopts the contract; the gate cannot see
-  one that has not.
+- The helper half is checked by import, not by call. A package that
+  imports `reap` and starts a container without its labels passes
+  `container-labels`, and its containers stay invisible to both halves.
+  A package that imports testcontainers-go only for a type owes the
+  import too, and goes through its helper instead.
+- A container started without testcontainers, through a raw engine
+  client or `docker run`, is outside both gates.
 - A container started over a `DOCKER_HOST` on TCP is not watched.
 - A host whose name changed between runs leaves containers named for the
   old one alone, by D1.
@@ -207,3 +234,9 @@ engine with nothing attached.
       a repository's package with no `TestMain` left one labelled
       container, and the next start's sweep removed it after its owner
       exited.
+- [x] `container-labels` names each package, test files included, that
+      imports testcontainers-go and not `reap`, at its first file and
+      line, and is skipped with the reason in a tree with no such import.
+- [x] Verified on the family on 2026-10-14: the five repositories whose
+      tests start containers pass, the 22 others skip it, and platform's
+      worktree from before the contract fails with its `testdb` named.
