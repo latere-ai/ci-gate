@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.54.0 - 2026-10-14
+
 ### Added
 
 - **`container-labels`: a package that imports testcontainers-go imports `reap`.** The `containers` watch sees only containers and networks carrying the `reap` labels, so a helper that never adopted the contract leaked as before while the suite reported nothing left behind. The new gate reads every Go package of the tree, test files included, and names each one that imports a testcontainers-go package and no file of which imports `latere.ai/x/ci-gate/reap`. It applies once a package imports testcontainers-go, and is skipped with that reason before. A nested checkout under the tree, such as an agent's worktree, is another repository and is not read.
