@@ -14,6 +14,7 @@ another. `go tool lateregate <gate>` runs one.
 | `modernize` | no code that a standard library call already covers | always |
 | `cgo-free` | no Go file imports `"C"` | always |
 | `otel-client` | no outbound HTTP client is built without a tracing transport | always |
+| `container-labels` | every package that imports testcontainers-go imports `reap`, which labels its containers | a package imports testcontainers-go |
 | `license` | every source file carries the SPDX notice the repository declared | always; needs `license.spdx` |
 | `spec-lint` | the spec tree agrees with itself and with its index | git tracks `specs/` |
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
@@ -258,6 +259,39 @@ With no engine socket the gate says so and claims nothing: nothing the
 suite runs can have started a container. The socket is the one the
 clients find: `DOCKER_HOST` when set, then `/var/run/docker.sock`, Docker
 Desktop's and rootless Podman's. An engine over TCP is not watched.
+
+## `container-labels`: the helper keeps its half
+
+`containers` sees only what carries the labels. A helper that starts
+containers without `reap` leaks them exactly as before, and the suite
+still reports that it left nothing behind. `container-labels` holds the
+helper's half: every package that imports a testcontainers-go package
+also imports `latere.ai/x/ci-gate/reap`.
+
+```
+  internal/testdb/testdb.go:20: imports github.com/testcontainers/testcontainers-go, and no file of the package imports latere.ai/x/ci-gate/reap
+lateregate: 1 package imports testcontainers-go without reap, so no sweep and no suite sees the containers it starts; label each container and network with reap.Labels() and sweep with reap.Sweep(ctx)
+```
+
+A package is a directory, test files included: a test that starts its
+container with no helper does it from a `_test.go` file, and an external
+`_test` package shares the directory of the package it tests. The scan
+reads the tree the way `./...` does, so it skips `testdata`, `vendor`,
+and directories whose names start with `.` or `_`. It also skips
+`node_modules` and any directory holding a `.git` entry: a nested
+checkout, such as an agent's worktree, is another repository with its own
+gate. The gate applies once a package imports testcontainers-go, and is
+skipped with that reason before.
+
+It checks the import, not the call. It cannot follow labels through
+option slices and helpers, so it does not prove that every container is
+labelled. A package that imports `reap` and starts a container without
+`WithLabels(reap.Labels())` passes, and so does `import _` of `reap`. A
+package that imports testcontainers-go only for a type owes the import
+too. Such a package has no reason to call `reap`, and Go refuses an
+unused import, so it goes through the helper instead. A container
+started some other way, through a raw Docker client or `docker run`, is
+outside this gate.
 
 ## `license`: the terms on every file
 
