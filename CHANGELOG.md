@@ -10,6 +10,11 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- **Built with Go 1.27.3,** which fixes GO-2026-6809, a flaw in the
+  standard library's certificate verification that this code can reach.
+
 ## v0.54.0 - 2026-10-14
 
 ### Added
