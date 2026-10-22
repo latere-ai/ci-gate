@@ -114,11 +114,15 @@ lateregate: 3 platform route(s) outside latere.ai/x/sdk-go; make each call throu
 ```
 
 The instead-clause comes from a table in the gate of the routes the SDK's
-calls make, keyed by the route as a finding prints it. A capability's
-base path names its package. The table is the SDK's v0.5.0 surface, and
-it is refreshed from the SDK before the release that turns the gate on in
-a client: a route the table does not have is named as one to add, which
-is wrong only for a call the SDK added after the table was written.
+calls make, keyed by the route as a finding prints it, with a list's
+iterator and its Page form alike. A capability's base path names its
+package, and so does a base followed by a part the source does not fix,
+such as a base constant with a path a caller passes: every call under
+the base is the package's. A route whose parameter is a kind, such as an
+evals definition's, names the calls of every kind it can be. The table
+is the SDK's v0.7.0 surface. A route it does not have is named as one to
+add, which is wrong only for a call the SDK added after the table was
+written, so it is refreshed when an SDK release adds calls.
 
 ### Exceptions
 
@@ -184,3 +188,12 @@ package is 95.3%.
 No client turns it on yet. Run by name against each client's main on
 2026-10-22, before any has moved onto the SDK: Latere Chat 89 findings,
 the command line 18, the Studio core 3.
+
+The call table moved to the SDK's v0.7.0 surface the same day, which adds
+a call for every route the clients sent directly. Run again against each
+client's main: Latere Chat 89, the command line 18, the Studio core 2,
+one of its routes already moved. Every finding names its call but four,
+the command line's and the Studio core's `/v1/environments`, which reach
+environments through the environments core's own client rather than the
+SDK. A client that turns the gate on writes that route in
+`platform_via_sdk.allow` with the reason, or the SDK gains the calls.
