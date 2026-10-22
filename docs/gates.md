@@ -685,7 +685,10 @@ the source does not fix, and what to use instead:
 ```
 
 The instead-clause names the SDK call when the gate's table of the SDK's
-calls has the route, and otherwise says the call belongs in the SDK.
+calls has the route, and otherwise says the call belongs in the SDK. The
+table follows the SDK's v0.7.0 release. A capability's base path, alone
+or followed by a path the source does not fix, names the capability's
+package.
 
 A string names a platform route when its value starts with `/v1/` and a
 segment the platform origin serves: `account`, `agents`, `apps`,
