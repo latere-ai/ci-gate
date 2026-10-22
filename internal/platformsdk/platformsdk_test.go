@@ -93,7 +93,7 @@ var sessions = "/v1/agents/sessions"
 `})
 	out, err := run(t, config.PlatformViaSDK{}, root)
 	expect(t, out, err,
-		"c.go:3: platform route /v1/agents/sessions in a string; use ListSessions or CreateSession in latere.ai/x/sdk-go/agents")
+		"c.go:3: platform route /v1/agents/sessions in a string; use ListSessions, ListSessionsPage or CreateSession in latere.ai/x/sdk-go/agents")
 	if !strings.Contains(err.Error(), "1 platform route(s) outside latere.ai/x/sdk-go") {
 		t.Errorf("the summary counts the findings: %v", err)
 	}
@@ -169,8 +169,8 @@ func unfinished() string { return fmt.Sprintf("/v1/web/icons/%", 1) }
 	expect(t, out, err,
 		"c.go:9: platform route /v1/agents/sessions/{} in a string; use GetSession, UpdateSession or DeleteSession in latere.ai/x/sdk-go/agents",
 		"c.go:11: platform route /v1/account/wallet in a string; use GetWallet in latere.ai/x/sdk-go/account",
-		"c.go:13: platform route /v1/web/images in a string; add it to latere.ai/x/sdk-go",
-		"c.go:15: platform route /v1/web in a string; add it to latere.ai/x/sdk-go",
+		"c.go:13: platform route /v1/web/images in a string; use ReadImage in latere.ai/x/sdk-go/web",
+		"c.go:15: platform route /v1/web in a string; use latere.ai/x/sdk-go/web",
 		"c.go:17: platform route /v1/web/icons/% in a string; add it to latere.ai/x/sdk-go",
 		"internal/platform/platform.go:5: platform route /v1/agents in a string; use latere.ai/x/sdk-go/agents",
 		"internal/platform/platform.go:6: platform route /v1/storage in a string; use latere.ai/x/sdk-go/storage")
@@ -293,7 +293,7 @@ func dynamic(f string) string { return fmt.Sprintf(f, "/v1/agents/sessions") }
 `})
 	out, err := run(t, config.PlatformViaSDK{}, root)
 	expect(t, out, err,
-		"c.go:5: platform route /v1/agents/sessions in a string; use ListSessions or CreateSession in latere.ai/x/sdk-go/agents")
+		"c.go:5: platform route /v1/agents/sessions in a string; use ListSessions, ListSessionsPage or CreateSession in latere.ai/x/sdk-go/agents")
 }
 
 // An allowed route passes and is counted; an allowance no finding needs
@@ -333,7 +333,7 @@ var images = "/v1/web/images"
 func host() string { return "" }
 `})
 	out, err := run(t, config.PlatformViaSDK{Allow: map[string]string{"/v1/web/icons": "a public read"}}, root)
-	expect(t, out, err, "c.go:4: platform route /v1/web/images in a string; add it to latere.ai/x/sdk-go")
+	expect(t, out, err, "c.go:4: platform route /v1/web/images in a string; use ReadImage in latere.ai/x/sdk-go/web")
 }
 
 // Test files are not read: a test that serves a route to an httptest
@@ -491,7 +491,7 @@ func TestATreeWithoutAModuleResolvesByDirectory(t *testing.T) {
 	}
 	out, err := run(t, config.PlatformViaSDK{}, root)
 	expect(t, out, err,
-		"c/c.go:5: platform route /v1/agents/triggers in a string; use ListTriggers or ListRoutines in latere.ai/x/sdk-go/agents",
+		"c/c.go:5: platform route /v1/agents/triggers in a string; use ListTriggers, ListTriggersPage, ListRoutines or ListRoutinesPage in latere.ai/x/sdk-go/agents",
 		"p/p.go:3: platform route /v1/agents in a string; use latere.ai/x/sdk-go/agents")
 }
 
@@ -549,11 +549,21 @@ func TestAddressReadsSchemesHostsAndQueries(t *testing.T) {
 
 func TestHintNamesTheCallOrTheSDK(t *testing.T) {
 	for route, want := range map[string]string{
-		"/v1/agents":                  "use latere.ai/x/sdk-go/agents",
-		"/v1/account/wallet":          "use GetWallet in latere.ai/x/sdk-go/account",
-		"/v1/agents/sessions":         "use ListSessions or CreateSession in latere.ai/x/sdk-go/agents",
-		"/v1/agents/sessions/{}":      "use GetSession, UpdateSession or DeleteSession in latere.ai/x/sdk-go/agents",
-		"/v1/account/wallet/checkout": "add it to latere.ai/x/sdk-go",
+		"/v1/agents":                    "use latere.ai/x/sdk-go/agents",
+		"/v1/account/wallet":            "use GetWallet in latere.ai/x/sdk-go/account",
+		"/v1/agents/sessions":           "use ListSessions, ListSessionsPage or CreateSession in latere.ai/x/sdk-go/agents",
+		"/v1/agents/sessions/{}":        "use GetSession, UpdateSession or DeleteSession in latere.ai/x/sdk-go/agents",
+		"/v1/account/wallet/checkout":   "use StartCheckout in latere.ai/x/sdk-go/account",
+		"/v1/evals/{}/{}":               "use GetMetric, GetGrader, GetTask, GetSuite, GetCandidate or GetExperiment in latere.ai/x/sdk-go/evals",
+		"/v1/evals/graders/{}/versions": "use ListGraderVersions or ListGraderVersionsPage in latere.ai/x/sdk-go/evals",
+		// A capability's base and a path the source does not fix: the
+		// package, since every call under the base is its.
+		"/v1/evals{}": "use latere.ai/x/sdk-go/evals",
+		// The same tail after a route that is not a base names no call.
+		"/v1/apps/apps{}":     "add it to latere.ai/x/sdk-go",
+		"/v1/apps/apps/{}/{}": "add it to latere.ai/x/sdk-go",
+		// Environments are reached through their own client, not the SDK.
+		"/v1/environments": "add it to latere.ai/x/sdk-go",
 	} {
 		if got := hint(route); got != want {
 			t.Errorf("hint(%q) = %q, want %q", route, got, want)

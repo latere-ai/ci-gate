@@ -36,75 +36,155 @@ type sdkCall struct {
 }
 
 // calls maps a route, as normalize writes it, to the SDK calls that make it,
-// as the SDK's v0.5.0 surface has them. It names a call only where the SDK
-// has one; every other route is a call the SDK does not make yet, and the
-// finding says to add it there. Refresh it from the SDK before the release
-// that turns this gate on in a client.
+// as the SDK's v0.7.0 surface has them: the iterator and the Page form of a
+// list alike. A route whose parameter is a kind, such as an evals
+// definition's, names the calls of every kind it can be. It names a call
+// only where the SDK has one; every other route is a call the SDK does not
+// make, and the finding says to add it there. Refresh it from the SDK when
+// a release adds calls.
 var calls = map[string]sdkCall{
-	"/v1/agents":                                {pkg: "agents"},
-	"/v1/agents/sessions":                       {"agents", []string{"ListSessions", "CreateSession"}},
-	"/v1/agents/sessions/search":                {"agents", []string{"SearchSessions"}},
-	"/v1/agents/sessions/{}":                    {"agents", []string{"GetSession", "UpdateSession", "DeleteSession"}},
-	"/v1/agents/sessions/{}/archive":            {"agents", []string{"ArchiveSession"}},
-	"/v1/agents/sessions/{}/unarchive":          {"agents", []string{"UnarchiveSession"}},
-	"/v1/agents/sessions/{}/end":                {"agents", []string{"EndSession"}},
-	"/v1/agents/sessions/{}/resume":             {"agents", []string{"ResumeSession"}},
-	"/v1/agents/sessions/{}/fork":               {"agents", []string{"ForkSession"}},
-	"/v1/agents/sessions/{}/events":             {"agents", []string{"ListEvents", "SendMessage", "Interrupt", "AnswerQuestion", "ConfirmTool", "SendToolResult"}},
-	"/v1/agents/sessions/{}/stream":             {"agents", []string{"StreamEvents"}},
-	"/v1/agents/sessions/{}/blobs/{}":           {"agents", []string{"ReadBlob"}},
-	"/v1/agents/sessions/{}/files":              {"agents", []string{"ReadSessionFile"}},
-	"/v1/agents/triggers":                       {"agents", []string{"ListTriggers", "ListRoutines"}},
-	"/v1/agents/triggers/{}":                    {"agents", []string{"GetTrigger", "ApplyTrigger", "DeleteTrigger", "GetRoutine", "CreateRoutine", "ChangeRoutine", "DeleteRoutine"}},
-	"/v1/agents/triggers/{}/fire":               {"agents", []string{"FireTrigger", "RunRoutine"}},
-	"/v1/agents/triggers/{}/firings":            {"agents", []string{"ListFirings"}},
-	"/v1/account":                               {pkg: "account"},
-	"/v1/account/agents/{}":                     {"account", []string{"ApplyManagedAgent"}},
-	"/v1/account/effort":                        {"account", []string{"GetEffortLevels"}},
-	"/v1/account/wallet":                        {"account", []string{"GetWallet"}},
-	"/v1/account/preferences":                   {"account", []string{"GetPreferences"}},
-	"/v1/account/preferences/pins/{}":           {"account", []string{"PinSession", "UnpinSession"}},
-	"/v1/account/devices":                       {"account", []string{"ListDevices"}},
-	"/v1/account/devices/{}":                    {"account", []string{"RenameDevice", "RemoveDevice"}},
-	"/v1/account/environments/context":          {"account", []string{"GetEnvironmentsContext"}},
-	"/v1/account/apps/{}/access":                {"apps", []string{"GetAccess"}},
-	"/v1/account/apps/{}/access/invites":        {"apps", []string{"Invite"}},
-	"/v1/account/apps/{}/access/password":       {"apps", []string{"SetPassword", "RemovePassword"}},
-	"/v1/account/apps/{}/access/{}":             {"apps", []string{"RevokeAccess"}},
-	"/v1/apps":                                  {pkg: "apps"},
-	"/v1/apps/apps":                             {"apps", []string{"ListApps", "CreateApp"}},
-	"/v1/apps/apps/{}":                          {"apps", []string{"GetApp", "UpdateApp", "DeleteApp"}},
-	"/v1/apps/apps/{}/deploys":                  {"apps", []string{"ListDeploys"}},
-	"/v1/apps/apps/{}/deploys/{}":               {"apps", []string{"GetDeploy"}},
-	"/v1/apps/apps/{}/deploys/{}/logs":          {"apps", []string{"ReadDeployLog", "FollowDeployLog"}},
-	"/v1/apps/apps/{}/releases":                 {"apps", []string{"ListReleases"}},
-	"/v1/apps/apps/{}/releases/{}":              {"apps", []string{"GetRelease"}},
+	"/v1/agents":                       {pkg: "agents"},
+	"/v1/agents/sessions":              {"agents", []string{"ListSessions", "ListSessionsPage", "CreateSession"}},
+	"/v1/agents/sessions/search":       {"agents", []string{"SearchSessions", "SearchSessionsPage"}},
+	"/v1/agents/sessions/summary":      {"agents", []string{"GetSessionSummary"}},
+	"/v1/agents/sessions/{}":           {"agents", []string{"GetSession", "UpdateSession", "DeleteSession"}},
+	"/v1/agents/sessions/{}/archive":   {"agents", []string{"ArchiveSession"}},
+	"/v1/agents/sessions/{}/unarchive": {"agents", []string{"UnarchiveSession"}},
+	"/v1/agents/sessions/{}/end":       {"agents", []string{"EndSession"}},
+	"/v1/agents/sessions/{}/resume":    {"agents", []string{"ResumeSession"}},
+	"/v1/agents/sessions/{}/fork":      {"agents", []string{"ForkSession"}},
+	"/v1/agents/sessions/{}/events":    {"agents", []string{"ListEvents", "ListEventsPage", "SendMessage", "Interrupt", "AnswerQuestion", "ConfirmTool", "SendToolResult"}},
+	"/v1/agents/sessions/{}/stream":    {"agents", []string{"StreamEvents"}},
+	"/v1/agents/sessions/{}/blobs/{}":  {"agents", []string{"ReadBlob"}},
+	"/v1/agents/sessions/{}/files":     {"agents", []string{"ReadSessionFile"}},
+	"/v1/agents/triggers":              {"agents", []string{"ListTriggers", "ListTriggersPage", "ListRoutines", "ListRoutinesPage"}},
+	"/v1/agents/triggers/{}":           {"agents", []string{"GetTrigger", "ApplyTrigger", "DeleteTrigger", "GetRoutine", "CreateRoutine", "ChangeRoutine", "DeleteRoutine"}},
+	"/v1/agents/triggers/{}/fire":      {"agents", []string{"FireTrigger", "RunRoutine"}},
+	"/v1/agents/triggers/{}/firings":   {"agents", []string{"ListFirings", "ListFiringsPage"}},
+	// The read of a shared conversation by its link's token, which anyone
+	// holding the link makes, with a Config built WithoutCredentials.
+	"/v1/shares":             {pkg: "agents"},
+	"/v1/shares/{}":          {"agents", []string{"GetSharedPage", "ListSharedEvents"}},
+	"/v1/shares/{}/blobs/{}": {"agents", []string{"ReadSharedBlob"}},
+	"/v1/shares/{}/images":   {"web", []string{"ReadSharedImage"}},
+
+	"/v1/account":                                {pkg: "account"},
+	"/v1/account/agents/{}":                      {"account", []string{"ApplyManagedAgent"}},
+	"/v1/account/effort":                         {"account", []string{"GetEffortLevels"}},
+	"/v1/account/wallet":                         {"account", []string{"GetWallet"}},
+	"/v1/account/wallet/checkout":                {"account", []string{"StartCheckout"}},
+	"/v1/account/data":                           {"account", []string{"GetDataPlaces"}},
+	"/v1/account/data/models":                    {"account", []string{"GetModelDataTerms"}},
+	"/v1/account/arrival":                        {"account", []string{"RecordArrival"}},
+	"/v1/account/preferences":                    {"account", []string{"GetPreferences", "UpdatePreferences"}},
+	"/v1/account/preferences/network/domains/{}": {"account", []string{"AddSite", "RemoveSite"}},
+	"/v1/account/preferences/bookmarks/{}/{}":    {"account", []string{"BookmarkTurn", "UnbookmarkTurn"}},
+	"/v1/account/preferences/pins/{}":            {"account", []string{"PinSession", "UnpinSession"}},
+	"/v1/account/preferences/pins/apps/{}":       {"account", []string{"PinApp", "UnpinApp"}},
+	"/v1/account/preferences/pins/projects/{}":   {"account", []string{"PinProject", "UnpinProject"}},
+	"/v1/account/projects":                       {"account", []string{"ListProjects", "ListProjectsPage", "CreateProject"}},
+	"/v1/account/projects/{}":                    {"account", []string{"GetProject", "UpdateProject", "DeleteProject"}},
+	"/v1/account/projects/{}/apps/{}":            {"account", []string{"AddProjectApp", "RemoveProjectApp"}},
+	"/v1/account/shares":                         {"account", []string{"ListShares", "ListSharesPage", "CreateShare"}},
+	"/v1/account/shares/{}":                      {"account", []string{"UpdateShare", "DeleteShare"}},
+	"/v1/account/triggers/inbound":               {"account", []string{"ListTriggerInbound"}},
+	// A trigger's way in, by a kind the path names last.
+	"/v1/account/triggers/{}":             {"account", []string{"IssueTriggerHook", "RemoveTriggerHook", "IssueTriggerAddress", "RemoveTriggerAddress"}},
+	"/v1/account/triggers/{}/hook":        {"account", []string{"IssueTriggerHook", "RemoveTriggerHook"}},
+	"/v1/account/triggers/{}/address":     {"account", []string{"IssueTriggerAddress", "RemoveTriggerAddress"}},
+	"/v1/account/devices":                 {"account", []string{"ListDevices"}},
+	"/v1/account/devices/{}":              {"account", []string{"RenameDevice", "RemoveDevice"}},
+	"/v1/account/environments/context":    {"account", []string{"GetEnvironmentsContext"}},
+	"/v1/account/apps/{}/access":          {"apps", []string{"GetAccess"}},
+	"/v1/account/apps/{}/access/invites":  {"apps", []string{"Invite"}},
+	"/v1/account/apps/{}/access/password": {"apps", []string{"SetPassword", "RemovePassword"}},
+	"/v1/account/apps/{}/access/{}":       {"apps", []string{"RevokeAccess"}},
+
+	"/v1/apps":                              {pkg: "apps"},
+	"/v1/apps/apps":                         {"apps", []string{"ListApps", "ListAppsPage", "CreateApp"}},
+	"/v1/apps/apps/gate/sessions":           {"apps", []string{"EndGateSessions"}},
+	"/v1/apps/apps/{}":                      {"apps", []string{"GetApp", "UpdateApp", "DeleteApp"}},
+	"/v1/apps/apps/{}/sessions":             {"apps", []string{"ListAppSessions", "ListAppSessionsPage"}},
+	"/v1/apps/apps/{}/visits":               {"apps", []string{"GetAppVisits"}},
+	"/v1/apps/apps/{}/frame":                {"apps", []string{"CreateFramePass"}},
+	"/v1/apps/apps/{}/listing":              {"apps", []string{"GetListing", "RequestListing", "WithdrawListing"}},
+	"/v1/apps/apps/{}/deploys":              {"apps", []string{"ListDeploys"}},
+	"/v1/apps/apps/{}/deploys/{}":           {"apps", []string{"GetDeploy"}},
+	"/v1/apps/apps/{}/deploys/{}/logs":      {"apps", []string{"ReadDeployLog", "FollowDeployLog"}},
+	"/v1/apps/apps/{}/deploys/{}/thumbnail": {"apps", []string{"ReadThumbnail"}},
+	"/v1/apps/apps/{}/releases":             {"apps", []string{"ListReleases"}},
+	"/v1/apps/apps/{}/releases/{}":          {"apps", []string{"GetRelease"}},
+	"/v1/apps/deploys":                      {pkg: "apps"},
+	"/v1/apps/deploys/{}":                   {"apps", []string{"GetDeployByID"}},
+	"/v1/apps/deploys/{}/app":               {"apps", []string{"GetDeployApp"}},
+
 	"/v1/connections":                           {pkg: "connections"},
-	"/v1/connections/connections":               {"connections", []string{"ListConnections", "CreateConnection"}},
+	"/v1/connections/connections":               {"connections", []string{"ListConnections", "ListConnectionsPage", "CreateConnection"}},
 	"/v1/connections/connections/{}":            {"connections", []string{"GetConnection", "RenameConnection", "DeleteConnection"}},
 	"/v1/connections/connections/{}/confirm":    {"connections", []string{"ConfirmConnection"}},
 	"/v1/connections/connections/{}/reconnect":  {"connections", []string{"ReconnectConnection"}},
 	"/v1/connections/connections/{}/credential": {"connections", []string{"ReplaceCredential"}},
 	"/v1/connections/connections/{}/tools":      {"connections", []string{"ListTools"}},
-	"/v1/connections/connections/{}/calls":      {"connections", []string{"ListCalls"}},
-	"/v1/connections/connectors":                {"connections", []string{"ListConnectors", "CreateConnector"}},
+	"/v1/connections/connections/{}/calls":      {"connections", []string{"ListCalls", "ListCallsPage"}},
+	"/v1/connections/connectors":                {"connections", []string{"ListConnectors", "ListConnectorsPage", "CreateConnector"}},
 	"/v1/connections/connectors/{}":             {"connections", []string{"GetConnector", "UpdateConnector", "DeleteConnector"}},
-	"/v1/storage":                               {pkg: "storage"},
-	"/v1/storage/files/{}":                      {"storage", []string{"ListFiles"}},
-	"/v1/storage/files/{}/{}":                   {"storage", []string{"ReadFile", "WriteFile", "StatFile", "ListFiles", "GetDownloadURL"}},
-	"/v1/storage/uploads":                       {"storage", []string{"StartUpload", "UploadFile"}},
-	"/v1/storage/uploads/{}":                    {"storage", []string{"AbortUpload"}},
-	"/v1/storage/uploads/{}/complete":           {"storage", []string{"CompleteUpload"}},
-	"/v1/models":                                {pkg: "llm"},
-	"/v1/models/lux/v1/generate":                {"llm", []string{"Generate", "Stream"}},
-	"/v1/models/lux/v1/count_tokens":            {"llm", []string{"CountTokens"}},
-	"/v1/models/lux/v1/models":                  {"llm", []string{"ListModels"}},
+
+	"/v1/storage":                     {pkg: "storage"},
+	"/v1/storage/files/{}":            {"storage", []string{"ListFiles", "ListFilesPage"}},
+	"/v1/storage/files/{}/{}":         {"storage", []string{"ReadFile", "WriteFile", "StatFile", "ListFiles", "ListFilesPage", "GetDownloadURL", "MoveFile", "MoveFolder", "DeleteFile", "DeleteFolder"}},
+	"/v1/storage/uploads":             {"storage", []string{"StartUpload", "UploadFile"}},
+	"/v1/storage/uploads/{}":          {"storage", []string{"AbortUpload"}},
+	"/v1/storage/uploads/{}/complete": {"storage", []string{"CompleteUpload"}},
+	"/v1/storage/shares/with-me":      {"storage", []string{"ListSharedWithMe", "ListSharedWithMePage"}},
+
+	"/v1/web":          {pkg: "web"},
+	"/v1/web/icons/{}": {"web", []string{"GetIcon"}},
+	"/v1/web/images":   {"web", []string{"ReadImage"}},
+
+	"/v1/models":                     {pkg: "llm"},
+	"/v1/models/lux/v1/generate":     {"llm", []string{"Generate", "Stream"}},
+	"/v1/models/lux/v1/count_tokens": {"llm", []string{"CountTokens"}},
+	"/v1/models/lux/v1/models":       {"llm", []string{"ListModels"}},
+
+	"/v1/evals":                            {pkg: "evals"},
+	"/v1/evals/metrics":                    {"evals", []string{"ListMetrics", "ListMetricsPage"}},
+	"/v1/evals/metrics/{}":                 {"evals", []string{"GetMetric"}},
+	"/v1/evals/metrics/{}/versions":        {"evals", []string{"ListMetricVersions", "ListMetricVersionsPage"}},
+	"/v1/evals/graders":                    {"evals", []string{"ListGraders", "ListGradersPage"}},
+	"/v1/evals/graders/{}":                 {"evals", []string{"GetGrader"}},
+	"/v1/evals/graders/{}/versions":        {"evals", []string{"ListGraderVersions", "ListGraderVersionsPage"}},
+	"/v1/evals/tasks":                      {"evals", []string{"ListTasks", "ListTasksPage"}},
+	"/v1/evals/tasks/{}":                   {"evals", []string{"GetTask"}},
+	"/v1/evals/tasks/{}/versions":          {"evals", []string{"ListTaskVersions", "ListTaskVersionsPage"}},
+	"/v1/evals/suites":                     {"evals", []string{"ListSuites", "ListSuitesPage"}},
+	"/v1/evals/suites/{}":                  {"evals", []string{"GetSuite"}},
+	"/v1/evals/suites/{}/versions":         {"evals", []string{"ListSuiteVersions", "ListSuiteVersionsPage"}},
+	"/v1/evals/candidates":                 {"evals", []string{"ListCandidates", "ListCandidatesPage"}},
+	"/v1/evals/candidates/{}":              {"evals", []string{"GetCandidate"}},
+	"/v1/evals/candidates/{}/versions":     {"evals", []string{"ListCandidateVersions", "ListCandidateVersionsPage"}},
+	"/v1/evals/experiments":                {"evals", []string{"ListExperiments", "ListExperimentsPage"}},
+	"/v1/evals/experiments/{}":             {"evals", []string{"GetExperiment"}},
+	"/v1/evals/experiments/{}/cells":       {"evals", []string{"ListCells", "ListCellsPage"}},
+	"/v1/evals/experiments/{}/comparisons": {"evals", []string{"ListExperimentComparisons", "ListExperimentComparisonsPage"}},
+	"/v1/evals/experiments/{}/stream":      {"evals", []string{"StreamEvents"}},
+	// A definition or an experiment by a kind the source does not fix.
+	"/v1/evals/{}":             {"evals", []string{"ListMetrics", "ListGraders", "ListTasks", "ListSuites", "ListCandidates", "ListExperiments"}},
+	"/v1/evals/{}/{}":          {"evals", []string{"GetMetric", "GetGrader", "GetTask", "GetSuite", "GetCandidate", "GetExperiment"}},
+	"/v1/evals/{}/{}/versions": {"evals", []string{"ListMetricVersions", "ListGraderVersions", "ListTaskVersions", "ListSuiteVersions", "ListCandidateVersions"}},
 }
 
 // hint is the instead-clause of a finding on route: the SDK call that makes
-// it, or the instruction to add one.
+// it, or the instruction to add one. A route that is a capability's base
+// followed by a part the source does not fix, such as a base constant with
+// a path a caller passes, names that capability's package: every call under
+// it is the package's.
 func hint(route string) string {
 	c, ok := calls[route]
+	if base, tail := strings.CutSuffix(route, unknown); !ok && tail && !strings.HasSuffix(base, "/") {
+		if b, found := calls[base]; found && len(b.names) == 0 {
+			c, ok = b, true
+		}
+	}
 	if !ok {
 		return "add it to " + SDK
 	}
