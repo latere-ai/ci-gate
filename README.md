@@ -87,6 +87,7 @@ lateregate: 1 of 13 gates failed: suite
 | `spec-lint` | the spec tree agrees with itself and with its index |
 | `depcheck` | no build reaches a dependency nobody admitted |
 | `registers` | no developer sentence in a string handed to a user-facing function |
+| `platform-via-sdk` | no platform route outside the Go SDK, `latere.ai/x/sdk-go` |
 | `identity` | the repository holds the rules of the identity role it declares |
 | `postgres` | the repository holds the Postgres connection role it declares |
 | `enum-go`, `enum-typescript` | declared enum domains use named members and exhaustive switches |
@@ -96,8 +97,9 @@ lateregate: 1 of 13 gates failed: suite
 
 A gate that does not apply is skipped with the reason: `spec-lint` needs a
 `specs/` directory, `container-labels` a package that imports
-testcontainers-go, and `depcheck`, `registers` and the enum gates a key
-naming what to check. `test`, `race`, `hermetic`, `tempdir`, `containers`
+testcontainers-go, `depcheck`, `registers` and the enum gates a key
+naming what to check, and `platform-via-sdk` its
+`platform_via_sdk.enabled` key, which a client sets. `test`, `race`, `hermetic`, `tempdir`, `containers`
 and `cover` are the six properties `suite` checks in one run, and each
 still runs by name for isolating one of them. [`docs/gates.md`](docs/gates.md) is the
 reference: what each gate checks, how it fails, and how to configure it.
