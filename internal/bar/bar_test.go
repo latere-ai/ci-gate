@@ -92,10 +92,14 @@ func TestPlanSkipsAGateWithNoSubject(t *testing.T) {
 	if e := entry(plan, "container-labels"); e.Status != Skip || !strings.Contains(e.Reason, "no package imports testcontainers-go") {
 		t.Errorf("container-labels with no testcontainers import: %+v", e)
 	}
+	if e := entry(plan, "platform-via-sdk"); e.Status != Skip || !strings.Contains(e.Reason, "platform_via_sdk.enabled is not set") {
+		t.Errorf("platform-via-sdk is off until a repository turns it on: %+v", e)
+	}
 
 	c, _ = ctx(t, nil, withSpecs)
 	c.Cfg.Depcheck.Packages = map[string]config.Gated{"example.com/m": {Decision: "d"}}
 	c.Cfg.Registers.UserSurfaces = []string{"internal/api.WriteError"}
+	c.Cfg.PlatformViaSDK.Enabled = true
 	db := filepath.Join(c.Root, "internal", "testdb")
 	if err := os.MkdirAll(db, 0o755); err != nil {
 		t.Fatal(err)
@@ -108,7 +112,7 @@ func TestPlanSkipsAGateWithNoSubject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"spec-lint", "depcheck", "registers", "container-labels"} {
+	for _, name := range []string{"spec-lint", "depcheck", "registers", "container-labels", "platform-via-sdk"} {
 		if e := entry(plan, name); e.Status != Run {
 			t.Errorf("%s has a subject and must run: %+v", name, e)
 		}

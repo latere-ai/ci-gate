@@ -93,6 +93,28 @@ func TestAnExemptionWithoutAReasonIsRejected(t *testing.T) {
 	}
 }
 
+// The platform gate's allow list follows the same rule: an exception to
+// reaching the platform through the SDK says why the route is not a call to
+// it, or it does not load. The block reads with the gate off by default.
+func TestAPlatformAllowanceWithoutAReasonIsRejected(t *testing.T) {
+	c, err := Load(write(t, "platform_via_sdk:\n  allow:\n    /v1/models: the local model server shares the path\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PlatformViaSDK.Enabled || c.PlatformViaSDK.Allow["/v1/models"] == "" {
+		t.Errorf("the block reads as written, and off unless enabled says so: %+v", c.PlatformViaSDK)
+	}
+	_, err = Load(write(t, "platform_via_sdk:\n  enabled: true\n  allow:\n    /v1/web/icons: \"\"\n    /v1/models: \" \"\n"))
+	if err == nil {
+		t.Fatal("an allowance with no reason must fail the load")
+	}
+	for _, want := range []string{"/v1/models, /v1/web/icons", "not a call to the platform"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
 func TestAThresholdOutsideAPercentageIsRejected(t *testing.T) {
 	for _, v := range []string{"-1", "101"} {
 		if _, err := Load(write(t, "cover:\n  threshold: "+v+"\n")); err == nil {

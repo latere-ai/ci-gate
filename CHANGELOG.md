@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **`platform-via-sdk`: a client reaches the platform through the Go SDK.** In a repository that sets `platform_via_sdk.enabled`, a string that names a platform route fails the gate: `/v1/` and a segment the platform origin serves, such as `agents`, `account` or `storage`, read through concatenation, the module's own constants in any package, and fmt formats. So does a `net/http` request or a `url.URL` addressed to a platform route or to `api.latere.ai`. Test files and the SDK's own module are not read. Each finding names the file, the line and the route, and the SDK call that makes it, or says to add the call to `latere.ai/x/sdk-go`. `platform_via_sdk.allow` takes a route with the reason it is not a call to the platform; an entry no finding needs fails the gate.
+
+### Upgrading
+
+- Nothing changes for a repository that does not set `platform_via_sdk.enabled`: the gate is skipped with that reason. A client turns it on once its calls go through the SDK.
+
 ### Fixed
 
 - **Built with Go 1.27.3,** which fixes GO-2026-6809, a flaw in the

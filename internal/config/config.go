@@ -55,6 +55,8 @@ type Config struct {
 	Postgres   Postgres   `yaml:"postgres"`
 	Release    Release    `yaml:"release"`
 
+	PlatformViaSDK PlatformViaSDK `yaml:"platform_via_sdk"`
+
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
 	// every entry is temporary by construction.
@@ -519,6 +521,30 @@ type OtelClient struct {
 	Skip []string `yaml:"skip"`
 }
 
+// PlatformViaSDK configures the gate that holds a client to reaching the
+// Latere platform through its Go SDK, latere.ai/x/sdk-go.
+//
+// A client that writes a platform route itself, or builds a request against
+// the platform origin with net/http, carries a second copy of the API: its
+// own paths, its own error decoding, its own retries. The SDK is where those
+// live once, so a route written outside it is the copy this gate finds.
+// Only a client turns it on: a service that serves the routes, or the SDK
+// itself, has every reason to write them.
+type PlatformViaSDK struct {
+	// Enabled turns the gate on. Off by default: a repository opts in once
+	// its calls to the platform go through the SDK.
+	Enabled bool `yaml:"enabled"`
+	// Allow maps a route prefix, as a finding prints it, to why it is not a
+	// call to the platform API in this repository: a path a local service
+	// shares with a platform route, say. The value is the reason, and Load
+	// rejects an empty one. An entry that no finding matches fails the gate,
+	// so the list holds only exceptions something still needs.
+	Allow map[string]string `yaml:"allow"`
+	// Skip names directories the scan does not enter, besides .git, .claude,
+	// testdata, vendor and node_modules.
+	Skip []string `yaml:"skip"`
+}
+
 // Registers configures the user-surface register gate.
 //
 // Every sentence a product emits is written for one reader, and the most
@@ -808,6 +834,19 @@ func (c *Config) validate(path string) error {
 			"write the date the waiver stops working, as YYYY-MM-DD: a "+
 			"waiver with no end is the bar being lowered permanently",
 			path, strings.Join(noDate, ", "))
+	}
+	var unexplained []string
+	for route, why := range c.PlatformViaSDK.Allow {
+		if strings.TrimSpace(why) == "" {
+			unexplained = append(unexplained, route)
+		}
+	}
+	if len(unexplained) > 0 {
+		sort.Strings(unexplained)
+		return fmt.Errorf("%s: platform_via_sdk allowance without a reason: %s\n"+
+			"a route written outside the SDK is a second copy of the platform API: "+
+			"write why this one is not a call to the platform, or delete the entry",
+			path, strings.Join(unexplained, ", "))
 	}
 	var unowned []string
 	for prefix, why := range c.TempDir.Allow {

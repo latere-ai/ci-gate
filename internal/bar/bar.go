@@ -27,6 +27,7 @@ import (
 	"latere.ai/x/ci-gate/internal/golangci"
 	"latere.ai/x/ci-gate/internal/identity"
 	"latere.ai/x/ci-gate/internal/license"
+	"latere.ai/x/ci-gate/internal/platformsdk"
 	"latere.ai/x/ci-gate/internal/postgres"
 	"latere.ai/x/ci-gate/internal/registers"
 	"latere.ai/x/ci-gate/internal/speclint"
@@ -101,6 +102,13 @@ var Gates = []Gate{
 			return true, "", nil
 		},
 		Run: func(c Ctx) error { return registers.Run(c.Cfg.Registers, c.Root, c.Out) }},
+	{Name: "platform-via-sdk", Doc: "no platform route outside the Go SDK, " + platformsdk.SDK,
+		// Opt-in: a client turns it on once its calls go through the SDK,
+		// and a service, which serves the routes, never does.
+		Applies: func(c Ctx) (bool, string, error) {
+			return c.Cfg.PlatformViaSDK.Enabled, "platform_via_sdk.enabled is not set", nil
+		},
+		Run: func(c Ctx) error { return platformsdk.Run(c.Cfg.PlatformViaSDK, c.Root, c.Out) }},
 	{Name: "identity", Doc: "the repository declares its identity role and holds that role's rules",
 		// No Applies: a repository with no block is precisely the gap, so
 		// the absence fails inside the gate rather than skipping it.
