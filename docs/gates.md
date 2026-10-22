@@ -19,6 +19,7 @@ another. `go tool lateregate <gate>` runs one.
 | `spec-lint` | the spec tree agrees with itself and with its index | git tracks `specs/` |
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
 | `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
+| `platform-via-sdk` | no platform route outside the Go SDK, `latere.ai/x/sdk-go` | `platform_via_sdk.enabled` is true |
 | `identity` | the repository declares its identity role and holds that role's rules | always |
 | `postgres` | the repository's Postgres role holds | always |
 | `enum-go` | declared Go domains use named types, named members and exhaustive switches | `enums.go.types` names a domain |
@@ -659,6 +660,71 @@ that no file calls fails the gate rather than reporting clean over
 nothing, so a typo in the name is a failure and not a silently disabled
 check. Review still carries the tells no pattern can, such as a hint with
 no action.
+
+## `platform-via-sdk`: a client reaches the platform through the SDK
+
+A client of the Latere platform makes its calls through the Go SDK,
+`latere.ai/x/sdk-go`, which holds the platform's routes, its error
+envelope, its retries and its pagination once. A client that writes a
+route itself keeps a second copy, and the copy drifts from the SDK when
+the API changes. In a repository that turns the gate on, each of these
+fails it:
+
+```go
+const Agents = "/v1/agents"                    // a platform route in a string
+path := platform.Agents + "/sessions/" + id    // a route built from a prefix constant
+req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/account/wallet", nil)
+```
+
+Each finding names the file, the line and the route, with `{}` for a part
+the source does not fix, and what to use instead:
+
+```
+  internal/chat/sessions.go:42: platform route /v1/agents/sessions/{}/fork in a string; use ForkSession in latere.ai/x/sdk-go/agents
+  internal/chat/wallet.go:17: platform route /v1/account/wallet/checkout in a string; add it to latere.ai/x/sdk-go
+```
+
+The instead-clause names the SDK call when the gate's table of the SDK's
+calls has the route, and otherwise says the call belongs in the SDK.
+
+A string names a platform route when its value starts with `/v1/` and a
+segment the platform origin serves: `account`, `agents`, `apps`,
+`connections`, `environments`, `evals`, `models`, `parsing`, `repos`,
+`shares`, `storage` or `web`. The route may follow a scheme and
+`api.latere.ai`, or a part the scan cannot know, such as a base URL read
+from configuration. These pass: a local service's own `/v1/status`,
+`https://example.com/v1/agents`, a sentence that mentions a route, and a
+bare base URL, `https://api.latere.ai`, handed to the SDK's
+configuration.
+
+The value is read from the source through literals, `+`, `string(...)`,
+the module's own constants in any package, and `fmt.Sprintf`, `Errorf`,
+`Printf` and `Fprintf` with a constant format. A prefix constant is a
+finding where it is declared and wherever a route is built from it. A
+request built with `net/http` (`NewRequest`, `NewRequestWithContext`,
+`Get`, `Head`, `Post`, `PostForm`) or a `url.URL` literal fails when its
+URL is a platform route, or names `api.latere.ai` on any path. The scan
+follows constants, not variables: a route that reaches a request through
+a variable is reported where the string is written.
+
+Test files are not read, nor `testdata`, `vendor`, `.claude`,
+`node_modules`, the SDK's own module (a directory whose `go.mod` declares
+`latere.ai/x/sdk-go`), or the directories `platform_via_sdk.skip` names.
+
+Turn the gate on, and write down each route that is not a call to the
+platform, with why:
+
+```yaml
+platform_via_sdk:
+  enabled: true
+  allow:
+    /v1/models: a local inference server this tool starts serves the same path
+```
+
+An entry covers its route and the routes under it. An entry that no
+finding needs fails the gate, so the list holds only the exceptions
+something still uses. There is no line marker: every exception lives in
+`.lateregate.yaml` with its reason.
 
 ## `identity`: the family's identity shape
 

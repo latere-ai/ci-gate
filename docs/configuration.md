@@ -152,6 +152,11 @@ registers:                 # applies when user_surfaces names a function
   user_surfaces: []        # package path and function: internal/api.WriteError
   skip: []                 # directories the scan does not enter
 
+platform_via_sdk:          # applies when enabled is true
+  enabled: false           # a client turns it on once its calls go through the SDK
+  allow: {}                # route prefix -> why it is not a call to the platform
+  skip: []                 # directories the scan does not enter
+
 identity:                  # mandatory: a repository with no block fails the gate
   role: ""                 # issuer | core | platform | service | bff | client | none
   audience: ""             # what a token addressed here carries; core, service, platform
