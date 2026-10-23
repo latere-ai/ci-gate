@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -95,6 +96,9 @@ func TestPlanSkipsAGateWithNoSubject(t *testing.T) {
 	if e := entry(plan, "platform-via-sdk"); e.Status != Skip || !strings.Contains(e.Reason, "platform_via_sdk.enabled is not set") {
 		t.Errorf("platform-via-sdk is off until a repository turns it on: %+v", e)
 	}
+	if e := entry(plan, "lean"); e.Status != Skip || !strings.Contains(e.Reason, "tracks no Lake project") {
+		t.Errorf("lean with no Lake project: %+v", e)
+	}
 
 	c, _ = ctx(t, nil, withSpecs)
 	c.Cfg.Depcheck.Packages = map[string]config.Gated{"example.com/m": {Decision: "d"}}
@@ -116,6 +120,34 @@ func TestPlanSkipsAGateWithNoSubject(t *testing.T) {
 		if e := entry(plan, name); e.Status != Run {
 			t.Errorf("%s has a subject and must run: %+v", name, e)
 		}
+	}
+}
+
+// A tracked lakefile is a subject for lean, whatever else git lists.
+func TestPlanRunsLeanForATrackedLakeProject(t *testing.T) {
+	lake := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && slices.Contains(args, "*/lakefile.toml") {
+			return []byte("formal/lakefile.toml\n"), nil
+		}
+		return withSpecs(nil, false, name, args...)
+	}
+	c, _ := ctx(t, nil, lake)
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, "lean"); e.Status != Run {
+		t.Errorf("lean with a tracked lakefile: %+v", e)
+	}
+	broken := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if slices.Contains(args, "*/lakefile.toml") {
+			return nil, errors.New("not a git repository")
+		}
+		return withSpecs(nil, false, name, args...)
+	}
+	c, _ = ctx(t, nil, broken)
+	if _, err := Plan(c); err == nil || !strings.Contains(err.Error(), "proofs to build is asked of git") {
+		t.Fatalf("a git that cannot list Lake projects: %v", err)
 	}
 }
 

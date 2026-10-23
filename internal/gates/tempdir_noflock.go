@@ -15,6 +15,6 @@ import (
 // directory of its own and gives up the test cache that a shared one allows.
 const lockable = false
 
-func lockFile(string, io.Writer) (func(), error) {
+func lockFile(string, string, io.Writer) (func(), error) {
 	return nil, errors.New("no file lock on this platform")
 }

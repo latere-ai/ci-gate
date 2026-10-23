@@ -24,6 +24,7 @@ another. `go tool lateregate <gate>` runs one.
 | `postgres` | the repository's Postgres role holds | always |
 | `enum-go` | declared Go domains use named types, named members and exhaustive switches | `enums.go.types` names a domain |
 | `enum-typescript` | declared TypeScript domains use native enums, named members and exhaustive switches | `enums.typescript` names a project |
+| `lean` | every Lake project builds with `lake build --wfail`, so no proof uses `sorry` | git tracks a `lakefile.toml` or `lakefile.lean` |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
 | `vuln` | govulncheck at the pinned version finds no reachable vulnerability | always |
 | `suite` | `go vet`, then one run of the suite that holds the six properties below | always; a waived `test` waives it |
@@ -1135,3 +1136,26 @@ Bun.
 govulncheck at the version pinned in this repository and fails on a
 vulnerability reachable from the module's code. `vuln` needs the network
 and can change verdict with no commit, which is why neither hook runs it.
+
+## `lean`: the proofs still check
+
+A repository that keeps a Lean 4 model of its design next to the code,
+with proofs about it, is gated on those proofs the day it tracks a
+`lakefile.toml` or `lakefile.lean`. Each directory holding one, outside
+`.lake`, is a project, and the gate runs `lake build --wfail` in it.
+`--wfail` fails the build on any warning a module logs, a cached module's
+included, and a proof that uses `sorry` logs one, so a project passes only
+when every theorem in it is proved. A deprecated name is a warning too.
+
+lake runs in the project's own directory, because elan picks the
+toolchain from the `lean-toolchain` file of the directory it runs in. The
+project's `lean-toolchain` is what decides the Lean version.
+
+A `lake` on `PATH` is used as it is. Without one, as on a CI runner, the
+gate installs elan at the version this tool pins, checked against the
+SHA-256 elan's release publishes, under the user's cache directory, and
+that elan fetches the project's toolchain the first time lake runs. The
+next run on the machine reuses both. A Lean toolchain is a few gigabytes
+unpacked, so a runner that starts empty spends about a minute on it.
+Darwin and Linux on arm64 and amd64 are pinned; elsewhere, put lake on
+`PATH`.

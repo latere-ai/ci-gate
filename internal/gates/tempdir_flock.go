@@ -18,9 +18,10 @@ import (
 const lockable = true
 
 // lockFile takes an exclusive lock on path, creating the file, and waits for a
-// holder in another process to finish. The file stays: removing a lock file
-// while another process waits on it hands the two of them different locks.
-func lockFile(path string, out io.Writer) (func(), error) {
+// holder in another process to finish, saying so on out with what holds it.
+// The file stays: removing a lock file while another process waits on it
+// hands the two of them different locks.
+func lockFile(path, holder string, out io.Writer) (func(), error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
@@ -28,7 +29,7 @@ func lockFile(path string, out io.Writer) (func(), error) {
 	fd := int(f.Fd())
 	err = flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
-		_, _ = fmt.Fprintf(out, "waiting for another run of this repository's suite to release %s\n", path)
+		_, _ = fmt.Fprintf(out, "waiting for another %s to release %s\n", holder, path)
 		err = flock(fd, syscall.LOCK_EX)
 	}
 	if err != nil {

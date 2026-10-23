@@ -131,7 +131,7 @@ func claimSandbox(root string, out io.Writer) (string, func(), error) {
 		return "", nil, err
 	}
 	dir := filepath.Join(os.TempDir(), name)
-	unlock, err := lockFile(dir+".lock", out)
+	unlock, err := lockFile(dir+".lock", "run of this repository's suite", out)
 	if err != nil {
 		return "", nil, fmt.Errorf("locking the sandbox: %w", err)
 	}

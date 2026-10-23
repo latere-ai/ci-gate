@@ -91,6 +91,7 @@ lateregate: 1 of 13 gates failed: suite
 | `identity` | the repository holds the rules of the identity role it declares |
 | `postgres` | the repository holds the Postgres connection role it declares |
 | `enum-go`, `enum-typescript` | declared enum domains use named members and exhaustive switches |
+| `lean` | every Lake project the repository tracks builds with no warning, so no proof uses `sorry` |
 | `lint` | golangci-lint at a pinned version, against a shared config rendered on every run |
 | `vuln` | govulncheck at a pinned version finds no reachable vulnerability |
 | `suite` | `go vet`, then one run of the test suite that is race-clean, over a per-package coverage floor, leaves nothing under `TMPDIR` and no container behind, and needs only the Go toolchain on `PATH` |
@@ -98,8 +99,9 @@ lateregate: 1 of 13 gates failed: suite
 A gate that does not apply is skipped with the reason: `spec-lint` needs a
 `specs/` directory, `container-labels` a package that imports
 testcontainers-go, `depcheck`, `registers` and the enum gates a key
-naming what to check, and `platform-via-sdk` its
-`platform_via_sdk.enabled` key, which a client sets. `test`, `race`, `hermetic`, `tempdir`, `containers`
+naming what to check, `platform-via-sdk` its
+`platform_via_sdk.enabled` key, which a client sets, and `lean` a tracked
+`lakefile.toml` or `lakefile.lean`. `test`, `race`, `hermetic`, `tempdir`, `containers`
 and `cover` are the six properties `suite` checks in one run, and each
 still runs by name for isolating one of them. [`docs/gates.md`](docs/gates.md) is the
 reference: what each gate checks, how it fails, and how to configure it.

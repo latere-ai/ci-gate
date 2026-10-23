@@ -321,7 +321,7 @@ func TestTempDirRunsOfOneRepositoryTakeTurns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := lockFile(filepath.Join(os.TempDir(), name)+".lock", io.Discard)
+	unlock, err := lockFile(filepath.Join(os.TempDir(), name)+".lock", "run of this repository's suite", io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

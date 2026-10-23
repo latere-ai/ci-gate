@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -144,6 +145,15 @@ var Gates = []Gate{
 			}
 			return tsenum.Run(projects, c.Root, c.Out, c.Exec)
 		}},
+	{Name: "lean", Doc: "every Lake project git tracks builds with no warning, so no proof uses sorry",
+		// Before lint and the suite: a machine without lake installs elan and
+		// a toolchain first, which is a minute, not seconds.
+		Applies: tracksLake,
+		Run: func(c Ctx) error {
+			return gates.Lean(gates.DefaultLeanToolchain(), c.Out, c.Exec, func(dir string) gates.Exec {
+				return gates.OSExec(filepath.Join(c.Root, dir), c.Out)
+			})
+		}},
 	{Name: "lint", Doc: "golangci-lint " + golangci.Version + " against the shared config",
 		Run: func(c Ctx) error { return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec) }},
 	{Name: "vuln", Doc: "govulncheck " + gates.VulnVersion + " finds no reachable vulnerability",
@@ -263,6 +273,20 @@ func tracksSpecs(c Ctx) (bool, string, error) {
 	}
 	if strings.TrimSpace(string(out)) == "" {
 		return false, "tracks no " + config.DefaultSpecDir + "/ files", nil
+	}
+	return true, "", nil
+}
+
+// tracksLake asks git for Lake projects, as tracksSpecs asks it for specs: a
+// repository whose proofs are checked in is gated the day it adds them.
+func tracksLake(c Ctx) (bool, string, error) {
+	dirs, err := gates.LakeProjects(c.Exec)
+	if err != nil {
+		return false, "", fmt.Errorf("%w\nwhether a repository has proofs to build is asked of git, "+
+			"so this needs to run inside a git repository", err)
+	}
+	if len(dirs) == 0 {
+		return false, "tracks no Lake project (lakefile.toml or lakefile.lean)", nil
 	}
 	return true, "", nil
 }
