@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.56.0 - 2026-10-23
+
 ### Added
 
 - **`lean`: a repository's Lean proofs build.** A repository that tracks a `lakefile.toml` or `lakefile.lean` gets a gate that runs `lake build --wfail` in each Lake project's directory, so a proof that uses `sorry`, or any other warning, fails it. A `lake` on `PATH` is used as it is; without one, as on a CI runner, the gate installs elan v4.2.4, checked against its published SHA-256, under the user's cache directory, and elan fetches the toolchain the project's `lean-toolchain` names. A repository with no Lake project skips the gate.
