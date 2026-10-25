@@ -157,6 +157,13 @@ platform_via_sdk:          # applies when enabled is true
   allow: {}                # route prefix -> why it is not a call to the platform
   skip: []                 # directories the scan does not enter
 
+words:                     # applies when vocabulary is set
+  vocabulary: ""           # the vocabulary file whose do_not_use list the gate reads, e.g. ../onboarding/vocabulary.yaml
+  model_facing: []         # globs of the files a model reads; a file's name is read as its tool's name
+  person_facing: []        # globs of the string files a person reads
+  spec_overview: false     # read each spec's title and Overview section in spec.dir
+  allow: []                # entries: {text, path, reason}; a text, a path glob or both, and why the word stays
+
 identity:                  # mandatory: a repository with no block fails the gate
   role: ""                 # issuer | core | platform | service | bff | client | none
   audience: ""             # what a token addressed here carries; core, service, platform

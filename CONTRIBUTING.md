@@ -34,7 +34,7 @@ when you run `go run ./cmd/lateregate` from the working tree.
 | `internal/contract` | `contract` and `init` |
 | `internal/changelog` | `release-notes`, the pre-push tag check, `release` and its stamps |
 | `internal/greencut` | the CI guard `release` runs before a cut |
-| `internal/identity`, `internal/postgres`, `internal/license`, `internal/registers`, `internal/speclint`, `internal/depcheck`, `internal/enumcheck` | one gate each |
+| `internal/identity`, `internal/postgres`, `internal/license`, `internal/registers`, `internal/speclint`, `internal/depcheck`, `internal/enumcheck`, `internal/words` | one gate each |
 | `internal/tsenum`, `internal/enumsetup` | the TypeScript enum analyzer and the dependency preparation it needs |
 | `specs/` | the design record: why each gate is shaped the way it is |
 

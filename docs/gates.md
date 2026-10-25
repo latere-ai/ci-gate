@@ -20,6 +20,7 @@ another. `go tool lateregate <gate>` runs one.
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
 | `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
 | `platform-via-sdk` | no platform route outside the Go SDK, `latere.ai/x/sdk-go` | `platform_via_sdk.enabled` is true |
+| `words` | no word on the organization's do-not-use list in what a model or a person reads | `words.vocabulary` names the vocabulary file |
 | `identity` | the repository declares its identity role and holds that role's rules | always |
 | `postgres` | the repository's Postgres role holds | always |
 | `enum-go` | declared Go domains use named types, named members and exhaustive switches | `enums.go.types` names a domain |
@@ -729,6 +730,96 @@ An entry covers its route and the routes under it. An entry that no
 finding needs fails the gate, so the list holds only the exceptions
 something still uses. There is no line marker: every exception lives in
 `.lateregate.yaml` with its reason.
+
+## `words`: what a model or a person reads keeps to the vocabulary
+
+The organization's vocabulary, `vocabulary.yaml` in
+`latere-ai/onboarding`, carries a `do_not_use` list: the words that what a
+model or a person reads does not use, each with the readers it is banned
+for (`model-facing`, `person-facing`, `spec-overview`), the forms
+matched, the reason and the words to write instead. Operating-system and
+process jargon such as `spawn`, `thread`, `kill` and `lease` is out of
+tool names, tool descriptions, screens and spec overviews; the words that
+name a screen's mechanism, such as `offer` and `allowance`, are out of
+screens.
+
+A repository turns the gate on by naming the vocabulary file and the
+places each reader reads:
+
+```yaml
+words:
+  vocabulary: ../onboarding/vocabulary.yaml   # relative to the repository root, or absolute
+  model_facing: [prompts/tools/*.md]          # tool descriptions and other text a model reads
+  person_facing: [frontend/src/i18n/en.ts]    # the string files a person reads
+  spec_overview: true                         # each spec's title and Overview section
+```
+
+What each reader reads:
+
+- **`model_facing`**: every file a glob matches, and the file's name,
+  before a `-vN` suffix and the extension, as the name of the tool the
+  file describes: `prompts/tools/spawn-v1.md` is the tool `spawn`.
+- **`person_facing`**: every file a glob matches.
+- **`spec_overview`**: each spec in `spec.dir` apart from the files
+  `spec.exclude` names, for its frontmatter `title` and its `## Overview`
+  section up to the next heading of the same level or higher. The archive
+  is not read.
+
+In a source file (`.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`,
+`.json`) only the strings are read, not the code, the comments or an
+object's keys, so a message catalog's `'offer.ask'` key is not a hit and
+its value is. A placeholder such as `{name}`, an escape and a template
+literal's `${...}` are not read; nor, in any file, a template action,
+`{{...}}`, or, in a spec, a link's target.
+
+Each form is matched as whole words, case-insensitively. A word is a run
+of letters and digits, and a lowercase letter followed by an uppercase
+one starts a new word, so `spawn_agent` and `spawnAgent` hold `spawn` and
+`respawn` does not. A form of several words, such as `held call`, matches
+across spaces, hyphens and underscores, never across punctuation. There
+is no stemming: the list writes each inflection it bans.
+
+Each finding names the file and the line, or the file alone for a tool
+name, the word as written and the list's word, the reader, the reason and
+the words to write instead. Every hit of one word on one line is one
+finding:
+
+```
+  prompts/tools/spawn-v1.md: "spawn" in the tool name: Operating-system jargon for making a process. The tool that starts another agent is Agent, the name models know from Claude Code; prose says start. Prefer: Agent, start.
+  prompts/tools/edit-v2.md:13: "thread" 4 times in model-facing text: As a product noun, a thread is a process's unit of execution. ... Prefer: agent, conversation.
+  frontend/src/i18n/en.ts:912: "offered" (offer) in person-facing text: Narrates the agent's mechanism. Say what the person set up, and when. Prefer: suggest, you set this up.
+```
+
+Write down each word that stays, with why:
+
+```yaml
+words:
+  allow:
+    - text: thread.started
+      reason: the event type on the wire, which stored logs and clients read
+    - text: lease
+      path: specs/031-*.md
+      reason: the external harness's lease is the API's own name for it
+```
+
+A `text` that is a list word covers every form of it; a longer text
+covers only the hits written inside it, as whole words, so a wire name
+stays without the list losing the word. A `path` is a glob, matched
+against the path from the repository root, that limits the entry to
+those files. Every entry has a reason and a text, a path or both, and an
+entry no hit needs fails the gate. There is no line marker.
+
+The gate fails rather than passing over nothing: a missing vocabulary
+file (the failure names the path it looked at), a file with no
+`do_not_use` list, an item it cannot use (no word, no scope, a scope it
+does not read, no reason, nothing to prefer), a glob that matches no
+file, and `spec_overview` over a directory with no spec.
+
+The vocabulary lives in a private repository, and the gate neither embeds
+nor fetches it. On a laptop the workspace keeps the onboarding checkout
+beside the repository, where `../onboarding/vocabulary.yaml` finds it. A
+runner that checks out the repository alone has no vocabulary file, and
+the gate fails there with the missing-file message.
 
 ## `identity`: the family's identity shape
 
