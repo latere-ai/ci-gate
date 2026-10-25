@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **`words`: what a model or a person reads keeps to the do-not-use list.** In a repository that sets `words.vocabulary` to the organization's vocabulary file, each form on its `do_not_use` list fails the gate where its reader reads it: the files `words.model_facing` matches and their names, read as tool names; the string files `words.person_facing` matches; and, with `words.spec_overview`, each spec's frontmatter title and `## Overview` section. Matching is by whole word and case-insensitive, with identifiers split at `_`, `-` and a change of case. In a `.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` or `.json` file only the strings are read, not code, comments, an object's keys or a `{name}` placeholder. Each finding names the file, the line, the word, the reader, the reason and the words to write instead. `words.allow` takes a list word, a longer text such as a wire name, a path glob or a text and a path, each with its reason; an entry no hit needs fails the gate. A missing vocabulary file, one with no list, and a glob that matches nothing fail with what to do.
+
+### Upgrading
+
+- Nothing changes for a repository that does not set `words.vocabulary`: the gate is skipped with that reason. The vocabulary file lives in `latere-ai/onboarding`, which a CI runner does not check out, so on a runner the gate fails with the missing-file message until the file is reachable there.
+
 ## v0.56.0 - 2026-10-23
 
 ### Added
