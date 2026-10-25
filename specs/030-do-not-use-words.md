@@ -84,7 +84,14 @@ second definition would give one hit two reasons.
 
 - **Model-facing**: every file `model_facing` matches, and the file's
   name, before a `-vN` suffix and the extension, read as the name of the
-  tool the file describes.
+  tool the file describes. Of the versions of one tool in one directory
+  only the highest `-vN` is read. A released description is kept byte for
+  byte so a replay sends it again, and no model is offered it once the
+  next version ships, so a hit in it is no hit in what a model reads, and
+  an allowance per released file would grow with every release. A
+  repository that offers an older version beside the highest, as Topos
+  offers `read-v4` and, where PDFs parse, `read-v5`, names it in
+  `older_versions`; an entry that keeps no older version fails the gate.
 - **Person-facing**: every file `person_facing` matches.
 - **Spec overview**: each spec in `spec.dir` apart from `spec.exclude`,
   for its frontmatter `title` and its `## Overview` section, up to the
@@ -98,7 +105,10 @@ that is an object's key are not what anyone reads: a message catalog's
 that opens its line or follows a brace or a comma, so a ternary's first
 branch is still read. Inside a string an escape, a placeholder such as
 `{name}`, and a JavaScript template's `${...}` are blanked. In every file a
-template action, `{{...}}`, is blanked, and in a spec a link's target.
+template action, `{{...}}`, is blanked, and in a spec a link's target
+and a wikilink's file name: the part between the double brackets, up to
+a bar, names the file the link resolves, which a reader follows rather
+than reads, and only the text after a bar is read.
 
 ### How a form matches
 
@@ -174,8 +184,11 @@ does: with the release a repository pins.
   Overview is reported with the file, the line, the word as written and
   the list's word, the reader, the reason and the preferred words.
 - Catalog keys, comments, placeholders and template actions are not read,
-  and neither are a spec's other sections, its archive or an excluded
-  file.
+  and neither are a spec's other sections, its archive, an excluded file,
+  a link's target or a wikilink's file name.
+- Of a tool's description files only the highest `-vN` in a directory is
+  read, apart from those `older_versions` keeps; an `older_versions`
+  entry that keeps nothing fails.
 - Matching is whole-word and case-insensitive, splits identifiers at `_`,
   `-` and a change of case, and matches a phrase across spaces, hyphens
   and underscores only.
