@@ -549,15 +549,16 @@ type PlatformViaSDK struct {
 // Words configures the gate that holds what a model or a person reads to the
 // organization's do-not-use list.
 //
-// The list is the do_not_use section of the vocabulary file in
-// latere-ai/onboarding: each word, the readers it is banned for, the reason
-// and the words to write instead. What a model reads, what a person reads
-// and which specs are read are each repository's own, so they are named
-// here; the words are the organization's, so they are read from the list.
+// The list is lateregate's own, embedded from internal/words/do-not-use.yaml:
+// each word, the readers it is banned for, the reason and the words to write
+// instead. What a model reads, what a person reads and which specs are read
+// are each repository's own, so they are named here.
 type Words struct {
-	// Vocabulary is the vocabulary file, relative to the repository root or
-	// absolute. Empty means the gate does not apply: a repository opts in by
-	// naming the file. A missing file fails the gate rather than skipping it.
+	// Vocabulary is a file holding a do_not_use list of the repository's own,
+	// in the shape of the organization's, relative to the repository root or
+	// absolute. Its words are added to the organization's; a word that list
+	// already carries is an error. Empty means the organization's list alone.
+	// A missing file fails the gate rather than skipping it.
 	Vocabulary string `yaml:"vocabulary"`
 	// ModelFacing are globs, relative to the root, of the files a model
 	// reads: tool descriptions, prompts. A file's name is read too, before a
@@ -591,8 +592,11 @@ type WordsAllow struct {
 	Reason string `yaml:"reason"`
 }
 
-// Enabled reports whether the repository names a vocabulary file.
-func (w Words) Enabled() bool { return w.Vocabulary != "" }
+// Enabled reports whether the repository names anything for the gate to
+// read.
+func (w Words) Enabled() bool {
+	return len(w.ModelFacing) > 0 || len(w.PersonFacing) > 0 || w.SpecOverview
+}
 
 // Registers configures the user-surface register gate.
 //
@@ -1004,16 +1008,11 @@ func (c *Config) validate(path string) error {
 }
 
 // validate rejects a words block that would check less than it reads as
-// checking: a surface named with no list to read, a list with nowhere to
-// look, and an exception with no reason or no place.
+// checking: a list or an exception with nowhere to look, and an exception
+// with no reason or no place.
 func (w Words) validate(path string) error {
-	named := len(w.ModelFacing) > 0 || len(w.PersonFacing) > 0 || w.SpecOverview
-	switch {
-	case w.Vocabulary == "" && (named || len(w.Allow) > 0):
-		return fmt.Errorf("%s: words names what to read and words.vocabulary is empty, so the gate never runs\n"+
-			"name the vocabulary file whose do_not_use list the gate reads", path)
-	case w.Vocabulary != "" && !named:
-		return fmt.Errorf("%s: words.vocabulary is set and nothing is named to read, so the gate would pass vacuously\n"+
+	if !w.Enabled() && (w.Vocabulary != "" || len(w.Allow) > 0) {
+		return fmt.Errorf("%s: words names a list or an allowance and nothing to read, so the gate never runs\n"+
 			"name words.model_facing, words.person_facing or words.spec_overview", path)
 	}
 	for _, g := range append(slices.Clone(w.ModelFacing), w.PersonFacing...) {

@@ -4,9 +4,10 @@
 // Package words holds what a model or a person reads to the organization's
 // do-not-use list.
 //
-// The list is the do_not_use section of the vocabulary file in
-// latere-ai/onboarding. Each item names a word, the forms the gate matches,
-// the readers it is banned for (model-facing, person-facing, spec-overview),
+// The list is do-not-use.yaml in this package, embedded in the binary, so
+// the gate reads the same words everywhere it runs; a repository may add a
+// list of its own. Each item names a word, the forms the gate matches, the
+// readers it is banned for (model-facing, person-facing, spec-overview),
 // why, and the words to write instead. A repository names what each reader
 // reads: the files a model reads, such as tool descriptions, whose names are
 // read as the tools' names; the string files a person reads; and whether its
@@ -83,21 +84,33 @@ type read struct {
 	segs  []segment
 }
 
-// Run holds the files cfg names to the list in its vocabulary file. spec
-// says where the specs are. It does not read whether the gate applies: that
-// is the plan's question, and a gate run by name runs.
+// Run holds the files cfg names to the organization's list, and to the
+// repository's own list when cfg names one. spec says where the specs are.
+// It does not read whether the gate applies: that is the plan's question,
+// and a gate run by name runs.
 func Run(cfg config.Words, spec config.Spec, root string, out io.Writer) error {
-	if cfg.Vocabulary == "" {
-		return errors.New("words.vocabulary names no vocabulary file, so there is no list to read\n" +
-			"name the vocabulary.yaml of latere-ai/onboarding, relative to the repository root")
-	}
-	vocab := cfg.Vocabulary
-	if !filepath.IsAbs(vocab) {
-		vocab = filepath.Join(root, vocab)
-	}
-	list, err := Load(vocab)
+	base, err := Default()
 	if err != nil {
 		return err
+	}
+	return run(cfg, spec, root, out, base)
+}
+
+// run is Run over a given organization's list.
+func run(cfg config.Words, spec config.Spec, root string, out io.Writer, base []Banned) error {
+	list := base
+	source := fmt.Sprintf("the %d lateregate carries", len(base))
+	if cfg.Vocabulary != "" {
+		vocab := cfg.Vocabulary
+		if !filepath.IsAbs(vocab) {
+			vocab = filepath.Join(root, vocab)
+		}
+		extra, err := Extra(vocab, base)
+		if err != nil {
+			return err
+		}
+		list = append(slices.Clone(base), extra...)
+		source += fmt.Sprintf(" and the %d of %s", len(extra), cfg.Vocabulary)
 	}
 	reads, err := gather(cfg, spec, root)
 	if err != nil {
@@ -175,8 +188,8 @@ func Run(cfg config.Words, spec config.Spec, root string, out io.Writer) error {
 			parts = append(parts, fmt.Sprintf("%d %s", n, s))
 		}
 	}
-	_, _ = fmt.Fprintf(out, "no do-not-use word of the %d in %s, across %d file(s): %s",
-		len(list), cfg.Vocabulary, len(reads), strings.Join(parts, ", "))
+	_, _ = fmt.Fprintf(out, "no do-not-use word, of %s, across %d file(s): %s",
+		source, len(reads), strings.Join(parts, ", "))
 	if allowed > 0 {
 		_, _ = fmt.Fprintf(out, "; %d hit(s) allowed by words.allow", allowed)
 	}

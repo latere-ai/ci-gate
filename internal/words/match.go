@@ -58,11 +58,7 @@ func compile(list []Banned, scope string) []form {
 			continue
 		}
 		for _, f := range b.forms() {
-			var ws []string
-			for _, s := range split(f) {
-				ws = append(ws, f[s.start:s.end])
-			}
-			out = append(out, form{words: ws, item: b})
+			out = append(out, form{words: spelled(f), item: b})
 		}
 	}
 	return out

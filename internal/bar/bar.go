@@ -112,10 +112,10 @@ var Gates = []Gate{
 		},
 		Run: func(c Ctx) error { return platformsdk.Run(c.Cfg.PlatformViaSDK, c.Root, c.Out) }},
 	{Name: "words", Doc: "no do-not-use word in what a model or a person reads",
-		// Opt-in: the list is read from the vocabulary file a repository
-		// names, beside the places its models and people read.
+		// Opt-in: the list is lateregate's own, and what a model or a
+		// person reads is the repository's to name.
 		Applies: func(c Ctx) (bool, string, error) {
-			return c.Cfg.Words.Enabled(), "words.vocabulary names no vocabulary file", nil
+			return c.Cfg.Words.Enabled(), "words names nothing a model or a person reads", nil
 		},
 		Run: func(c Ctx) error { return words.Run(c.Cfg.Words, c.Cfg.Spec, c.Root, c.Out) }},
 	{Name: "identity", Doc: "the repository declares its identity role and holds that role's rules",

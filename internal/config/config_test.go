@@ -144,11 +144,13 @@ func TestTheWordsBlock(t *testing.T) {
 	if c, err := Load(t.TempDir()); err != nil || c.Words.Enabled() {
 		t.Errorf("no block is off: %+v %v", c.Words, err)
 	}
+	if c, err := Load(write(t, "words:\n  spec_overview: true\n")); err != nil || !c.Words.Enabled() || c.Words.Vocabulary != "" {
+		t.Errorf("a place to read turns the gate on, with lateregate's list alone: %+v %v", c.Words, err)
+	}
 
 	for _, tc := range []struct{ name, body, want string }{
-		{"places with no list", "words:\n  spec_overview: true\n", "words.vocabulary is empty, so the gate never runs"},
-		{"an allowance with no list", "words:\n  allow:\n    - {text: spawn, reason: r}\n", "words.vocabulary is empty"},
-		{"a list with no place", "words:\n  vocabulary: v.yaml\n", "nothing is named to read, so the gate would pass vacuously"},
+		{"an allowance with no place", "words:\n  allow:\n    - {text: spawn, reason: r}\n", "words names a list or an allowance and nothing to read, so the gate never runs"},
+		{"a list with no place", "words:\n  vocabulary: v.yaml\n", "words names a list or an allowance and nothing to read"},
 		{"a glob the gate cannot read", "words:\n  vocabulary: v.yaml\n  model_facing: ['prompts/[']\n", `words names "prompts/[", which is not a glob`},
 		{"an empty glob", "words:\n  vocabulary: v.yaml\n  person_facing: ['']\n", `words names "", which is not a glob`},
 		{"an allowance with no reason", "words:\n  vocabulary: v.yaml\n  spec_overview: true\n  allow:\n    - {text: spawn, path: specs/*.md}\n    - {text: lock, reason: ' '}\n",

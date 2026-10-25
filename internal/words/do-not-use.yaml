@@ -1,0 +1,159 @@
+# The do-not-use list: the words that what a model or a person reads does
+# not use, whatever concept they would name there. lateregate embeds this
+# file, so the words gate reads it on a laptop and on a runner alike, with no
+# other checkout. A repository adds words of its own through
+# words.vocabulary; this file is the organization's list.
+#
+# Names a model or a person reads avoid operating-system and process jargon,
+# and person-facing copy also avoids the words that name a screen's
+# mechanism. Model-facing tools reuse the names models know from Claude Code
+# where one exists: Agent, Bash, Read, Edit, Write, Grep, Glob, WebFetch,
+# WebSearch, TodoWrite, AskUserQuestion and SendMessage.
+#
+# Fields:
+#   word    the word, as the list names it; one item per word.
+#   forms   the written forms matched, each a whole word or a run of whole
+#           words, case-insensitively; empty means the word alone. There is
+#           no stemming, so each inflection is listed. A word banned in one
+#           sense lists the phrases that carry that sense, as look does for
+#           the noun. One form belongs to one word per scope.
+#   scopes  the readers the word is banned for: model-facing (tool names,
+#           tool descriptions and other text a model reads), person-facing
+#           (strings a person reads on a screen) and spec-overview (a spec's
+#           title and its Overview section).
+#   reason  one line: why the word is out, printed with every hit.
+#   prefer  the words to write instead.
+
+do_not_use:
+
+# Operating-system and process jargon, out of every name a model or a person
+# reads and of every spec's title and overview.
+
+- word: spawn
+  forms: [spawn, spawns, spawned, spawning]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Operating-system jargon for making a process. The tool that starts another agent is Agent, the name models know from Claude Code; prose says start."
+  prefer: [Agent, start]
+
+- word: fork
+  forms: [fork, forks, forked, forking]
+  scopes: [model-facing]
+  reason: "As a tool name, fork is the system call that copies a process. A model starts another agent with Agent, the name it knows from Claude Code."
+  prefer: [Agent]
+
+- word: thread
+  forms: [thread, threads]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "As a product noun, a thread is a process's unit of execution. Say the agent, or the conversation it holds; a wire name that must stay, such as the thread.started event, takes a words.allow entry with its reason."
+  prefer: [agent, conversation]
+
+- word: kill
+  forms: [kill, kills, killed, killing]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Signal jargon for ending a process, and harsh on a screen."
+  prefer: [stop, end, cancel]
+
+- word: reap
+  forms: [reap, reaps, reaped, reaping, reaper]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Jargon for collecting a process that has exited."
+  prefer: [clean up, remove]
+
+- word: daemon
+  forms: [daemon, daemons]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Jargon for a background process with no terminal."
+  prefer: [service, server]
+
+- word: lease
+  forms: [lease, leases, leased]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Jargon for a hold that runs out unless it is renewed. Say who holds what, and until when."
+  prefer: [hold, reserve]
+
+- word: lock
+  forms: [lock, locks, locked, locking]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Concurrency jargon for exclusive access. Say who holds what, or that one runs at a time."
+  prefer: [claim, hold, one at a time]
+
+- word: mutex
+  forms: [mutex, mutexes]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Concurrency jargon for a lock."
+  prefer: [one at a time]
+
+- word: inbox
+  forms: [inbox, inboxes]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Names the queue an agent's messages wait in, a mechanism. Say what arrives."
+  prefer: [messages]
+
+- word: writer
+  forms: [writer, writers]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Jargon for the one process or replica allowed to write."
+  prefer: [primary, author]
+
+- word: fold
+  forms: [fold, folds, folded, folding]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Programming jargon for combining a list into one value."
+  prefer: [combine, include, add up]
+
+- word: orchestrator
+  forms: [orchestrator, orchestrators, orchestrating]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Names a scheduler, not an agent a person or a model works with."
+  prefer: [lead agent]
+
+- word: one-shot
+  forms: [one-shot, oneshot]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Jargon for a program that runs once and exits."
+  prefer: [once, single run]
+
+- word: held call
+  forms: [held call, held calls]
+  scopes: [model-facing, person-facing, spec-overview]
+  reason: "Names the harness's state for a tool call that waits for a person's approval."
+  prefer: [call waiting for approval]
+
+# The mechanism words already out of screens: a screen says what happened,
+# when, and what it cost, in the reader's terms.
+
+- word: look
+  forms: [a look, the look, each look, every look, its look, one look, next look, last look, first look, oldest look]
+  scopes: [person-facing]
+  reason: "As a noun, a look names a scheduled check by its mechanism. Say what ran, when, and what it found."
+  prefer: [check, run]
+
+- word: offer
+  forms: [offer, offers, offered, offering]
+  scopes: [person-facing]
+  reason: "Narrates the agent's mechanism. Say what the person set up, and when."
+  prefer: [suggest, you set this up]
+
+- word: share
+  forms: [share of, "'s share"]
+  scopes: [person-facing]
+  reason: "Of credit, a share names how a budget is split. Say what it cost."
+  prefer: [cost, spent]
+
+- word: allowance
+  forms: [allowance, allowances]
+  scopes: [person-facing]
+  reason: "Names a budget mechanism. Say the limit, and what happens when it is reached."
+  prefer: [limit]
+
+- word: pace
+  forms: [pace, paced]
+  scopes: [person-facing]
+  reason: "Narrates a forecast. Say the amount so far, or a date."
+  prefer: [so far, about]
+
+- word: window
+  forms: [window]
+  scopes: [person-facing]
+  reason: "Names a time range by its mechanism. Say the dates."
+  prefer: [until, from, this week]

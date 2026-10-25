@@ -99,15 +99,15 @@ func TestPlanSkipsAGateWithNoSubject(t *testing.T) {
 	if e := entry(plan, "lean"); e.Status != Skip || !strings.Contains(e.Reason, "tracks no Lake project") {
 		t.Errorf("lean with no Lake project: %+v", e)
 	}
-	if e := entry(plan, "words"); e.Status != Skip || !strings.Contains(e.Reason, "words.vocabulary names no vocabulary file") {
-		t.Errorf("words is off until a repository names its vocabulary file: %+v", e)
+	if e := entry(plan, "words"); e.Status != Skip || !strings.Contains(e.Reason, "words names nothing a model or a person reads") {
+		t.Errorf("words is off until a repository names what its readers read: %+v", e)
 	}
 
 	c, _ = ctx(t, nil, withSpecs)
 	c.Cfg.Depcheck.Packages = map[string]config.Gated{"example.com/m": {Decision: "d"}}
 	c.Cfg.Registers.UserSurfaces = []string{"internal/api.WriteError"}
 	c.Cfg.PlatformViaSDK.Enabled = true
-	c.Cfg.Words = config.Words{Vocabulary: "../onboarding/vocabulary.yaml", SpecOverview: true}
+	c.Cfg.Words = config.Words{SpecOverview: true}
 	db := filepath.Join(c.Root, "internal", "testdb")
 	if err := os.MkdirAll(db, 0o755); err != nil {
 		t.Fatal(err)
