@@ -565,6 +565,14 @@ type Words struct {
 	// -vN suffix and the extension, because a tool description file is named
 	// for its tool, and that name is what the model calls.
 	ModelFacing []string `yaml:"model_facing"`
+	// OlderVersions are globs of model-facing files read although a higher
+	// version of their tool exists. By default only the highest -vN of each
+	// tool in a directory is read: a released description is kept byte for
+	// byte so a replay sends it again, and is not offered once the next
+	// version ships. A repository that still offers an older version, as a
+	// second description of one tool, names it here. A glob that keeps no
+	// file fails the gate.
+	OlderVersions []string `yaml:"older_versions"`
 	// PersonFacing are globs of the string files a person reads, such as a
 	// frontend's message catalog.
 	PersonFacing []string `yaml:"person_facing"`
@@ -1015,7 +1023,11 @@ func (w Words) validate(path string) error {
 		return fmt.Errorf("%s: words names a list or an allowance and nothing to read, so the gate never runs\n"+
 			"name words.model_facing, words.person_facing or words.spec_overview", path)
 	}
-	for _, g := range append(slices.Clone(w.ModelFacing), w.PersonFacing...) {
+	if len(w.OlderVersions) > 0 && len(w.ModelFacing) == 0 {
+		return fmt.Errorf("%s: words.older_versions is set and words.model_facing is empty, so no file is a version of anything\n"+
+			"name the model-facing files, or delete words.older_versions", path)
+	}
+	for _, g := range append(append(slices.Clone(w.ModelFacing), w.PersonFacing...), w.OlderVersions...) {
 		if _, err := filepath.Match(g, ""); err != nil || strings.TrimSpace(g) == "" {
 			return fmt.Errorf("%s: words names %q, which is not a glob the gate can read", path, g)
 		}

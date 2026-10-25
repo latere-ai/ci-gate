@@ -398,6 +398,37 @@ func TestAPlaceThatReadsNothingFails(t *testing.T) {
 	}
 }
 
+// Only the highest version of each tool's description is read, unless
+// words.older_versions keeps an older one a repository still offers; an
+// entry that keeps nothing fails. A wikilink names a file, not prose.
+func TestOnlyTheOfferedVersionsAreRead(t *testing.T) {
+	root := tree(t, map[string]string{
+		"repo/prompts/tools/bash-v1.md": "A command is killed... a lock.\n",
+		"repo/prompts/tools/bash-v2.md": "A lock.\n",
+		"repo/prompts/tools/bash-v3.md": "A command is stopped.\n",
+		"repo/prompts/tools/read-v4.md": "Reads in this thread.\n",
+		"repo/prompts/tools/read-v5.md": "Reads, PDFs too.\n",
+		"repo/prompts/notes.md":         "fine\n",
+		"repo/specs/001-a.md":           "---\ntitle: A\n---\n\n## Overview\n\nAs [[013-threads-and-subagents]] says.\n",
+	})
+	cfg := config.Words{ModelFacing: []string{"prompts/tools/*.md", "prompts/*.md"}, SpecOverview: true}
+	out, err := scan(t, cfg, root)
+	expect(t, out, err)
+	if !strings.Contains(out, "across 4 file(s): 3 model-facing, 1 spec-overview; 3 older tool description version(s) not read") {
+		t.Errorf("a pass counts the versions it left out:\n%s", out)
+	}
+
+	cfg.OlderVersions = []string{"prompts/tools/read-v4.md"}
+	out, err = scan(t, cfg, root)
+	expect(t, out, err, `prompts/tools/read-v4.md:1: "thread" in model-facing text`)
+
+	cfg.OlderVersions = []string{"prompts/tools/read-v4.md", "prompts/tools/bash-v3.md", "prompts/x-*.md"}
+	_, err = scan(t, cfg, root)
+	if err == nil || !strings.Contains(err.Error(), "words.older_versions names prompts/tools/bash-v3.md, prompts/x-*.md, which matches no older version") {
+		t.Fatalf("an older_versions entry that keeps nothing fails, naming it: %v", err)
+	}
+}
+
 // A file two globs of one reader match is read once, and a pass names what
 // was read.
 func TestAPassNamesWhatItRead(t *testing.T) {

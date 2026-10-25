@@ -4,9 +4,11 @@
 package words
 
 import (
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -34,8 +36,11 @@ var (
 	// target is a Markdown link's target, which a reader follows rather
 	// than reads.
 	target = regexp.MustCompile(`\]\([^)]*\)`)
+	// wikilink is a [[name]] link, or [[name|text]]: the name is a file's,
+	// which the link resolves, and only the text after a bar is read.
+	wikilink = regexp.MustCompile(`\[\[[^\]|]*\|?`)
 	// version is the -vN a versioned tool description file carries.
-	version = regexp.MustCompile(`-v[0-9]+$`)
+	version = regexp.MustCompile(`-v([0-9]+)$`)
 )
 
 // blank replaces each match of re with spaces, keeping every offset.
@@ -64,8 +69,44 @@ func body(name, src string) []segment {
 // toolName is the name of the tool a description file is for: its file
 // name before a -vN suffix and the extension.
 func toolName(name string) string {
+	tool, _, _ := versioned(name)
+	return tool
+}
+
+// versioned splits a description file's name into its tool's name and its
+// version, the N of a -vN suffix, and reports whether it has one.
+func versioned(name string) (string, int, bool) {
 	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
-	return version.ReplaceAllString(base, "")
+	m := version.FindStringSubmatchIndex(base)
+	if m == nil {
+		return base, 0, false
+	}
+	n, err := strconv.Atoi(base[m[2]:m[3]])
+	if err != nil {
+		return base, 0, false
+	}
+	return base[:m[0]], n, true
+}
+
+// older is the files of rels that a higher version of the same tool, in the
+// same directory, supersedes. A released description is kept byte for byte
+// so a replay sends it again, and no model is offered it after the next
+// version ships, so only the highest is what a model reads.
+func older(rels []string) map[string]bool {
+	highest := map[string]int{}
+	for _, rel := range rels {
+		if tool, n, ok := versioned(rel); ok {
+			key := path.Join(path.Dir(rel), tool)
+			highest[key] = max(highest[key], n)
+		}
+	}
+	out := map[string]bool{}
+	for _, rel := range rels {
+		if tool, n, ok := versioned(rel); ok && n < highest[path.Join(path.Dir(rel), tool)] {
+			out[rel] = true
+		}
+	}
+	return out
 }
 
 // overview is what is read of a spec: its frontmatter title and its
@@ -98,7 +139,7 @@ func overview(src string) []segment {
 			continue
 		}
 		if in {
-			out = append(out, segment{line: i + 1, where: "the spec overview", text: blank(l, target)})
+			out = append(out, segment{line: i + 1, where: "the spec overview", text: blank(blank(l, target), wikilink)})
 		}
 	}
 	return out

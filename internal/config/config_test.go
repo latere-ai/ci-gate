@@ -123,6 +123,7 @@ func TestTheWordsBlock(t *testing.T) {
 	c, err := Load(write(t, `words:
   vocabulary: ../onboarding/vocabulary.yaml
   model_facing: [prompts/tools/*.md]
+  older_versions: [prompts/tools/read-v4.md]
   person_facing: [frontend/src/i18n/en.ts]
   spec_overview: true
   allow:
@@ -138,6 +139,7 @@ func TestTheWordsBlock(t *testing.T) {
 	w := c.Words
 	if !w.Enabled() || w.Vocabulary != "../onboarding/vocabulary.yaml" || !w.SpecOverview ||
 		!slices.Equal(w.ModelFacing, []string{"prompts/tools/*.md"}) || !slices.Equal(w.PersonFacing, []string{"frontend/src/i18n/en.ts"}) ||
+		!slices.Equal(w.OlderVersions, []string{"prompts/tools/read-v4.md"}) ||
 		len(w.Allow) != 2 || w.Allow[1].Path != "prompts/tools/spawn-v1.md" || w.Allow[1].Text != "spawn" {
 		t.Errorf("the block reads as written: %+v", w)
 	}
@@ -156,6 +158,8 @@ func TestTheWordsBlock(t *testing.T) {
 		{"an allowance with no reason", "words:\n  vocabulary: v.yaml\n  spec_overview: true\n  allow:\n    - {text: spawn, path: specs/*.md}\n    - {text: lock, reason: ' '}\n",
 			"words allowance without a reason: allow[0] (spawn specs/*.md), allow[1] (lock)"},
 		{"an allowance with no place", "words:\n  vocabulary: v.yaml\n  spec_overview: true\n  allow:\n    - {reason: everything}\n", "names neither text nor path: allow[0]"},
+		{"older versions with no model-facing files", "words:\n  spec_overview: true\n  older_versions: [prompts/tools/read-v4.md]\n", "words.older_versions is set and words.model_facing is empty"},
+		{"an older version glob the gate cannot read", "words:\n  model_facing: [prompts/*.md]\n  older_versions: ['[']\n", `words names "[", which is not a glob`},
 		{"an allowance whose path cannot be read", "words:\n  vocabulary: v.yaml\n  spec_overview: true\n  allow:\n    - {path: '[', reason: r}\n", `path "[" is not a glob`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

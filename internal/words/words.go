@@ -112,7 +112,7 @@ func run(cfg config.Words, spec config.Spec, root string, out io.Writer, base []
 		list = append(slices.Clone(base), extra...)
 		source += fmt.Sprintf(" and the %d of %s", len(extra), cfg.Vocabulary)
 	}
-	reads, err := gather(cfg, spec, root)
+	reads, skipped, err := gather(cfg, spec, root)
 	if err != nil {
 		return err
 	}
@@ -193,6 +193,9 @@ func run(cfg config.Words, spec config.Spec, root string, out io.Writer, base []
 	if allowed > 0 {
 		_, _ = fmt.Fprintf(out, "; %d hit(s) allowed by words.allow", allowed)
 	}
+	if skipped > 0 {
+		_, _ = fmt.Fprintf(out, "; %d older tool description version(s) not read", skipped)
+	}
 	_, _ = fmt.Fprintln(out)
 	return nil
 }
@@ -224,12 +227,13 @@ func describe(a config.WordsAllow) string {
 	}
 }
 
-// gather reads every file cfg names, each as its reader reads it. A glob
-// that matches no file fails: it is a place the repository believes is
-// checked and is not.
-func gather(cfg config.Words, spec config.Spec, root string) ([]read, error) {
+// gather reads every file cfg names, each as its reader reads it, and
+// counts the older versions of model-facing files it left out. A glob that
+// matches no file fails: it is a place the repository believes is checked
+// and is not.
+func gather(cfg config.Words, spec config.Spec, root string) ([]read, int, error) {
 	var reads []read
-	seen := map[string]bool{}
+	skipped := 0
 	for _, src := range []struct {
 		key   string
 		globs []string
@@ -238,37 +242,46 @@ func gather(cfg config.Words, spec config.Spec, root string) ([]read, error) {
 		{"words.model_facing", cfg.ModelFacing, ModelFacing},
 		{"words.person_facing", cfg.PersonFacing, PersonFacing},
 	} {
+		var rels []string
 		for _, g := range src.globs {
-			rels, err := files(root, g)
+			matched, err := files(root, g)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
-			if len(rels) == 0 {
-				return nil, fmt.Errorf("%s names %s, which matches no file under %s; "+
+			if len(matched) == 0 {
+				return nil, 0, fmt.Errorf("%s names %s, which matches no file under %s; "+
 					"a glob that matches nothing checks nothing, so fix it or delete it", src.key, g, root)
 			}
-			for _, rel := range rels {
+			for _, rel := range matched {
 				// A file two globs of one reader match is read once.
-				if seen[src.scope+"\x00"+rel] {
-					continue
+				if !slices.Contains(rels, rel) {
+					rels = append(rels, rel)
 				}
-				seen[src.scope+"\x00"+rel] = true
-				data, err := os.ReadFile(filepath.Join(root, rel))
-				if err != nil {
-					return nil, err
-				}
-				segs := body(rel, string(data))
-				if src.scope == ModelFacing {
-					segs = append([]segment{{line: 0, where: "the tool name", text: toolName(rel)}}, segs...)
-				}
-				reads = append(reads, read{rel: rel, scope: src.scope, segs: segs})
 			}
+		}
+		if src.scope == ModelFacing {
+			kept, n, err := latest(rels, cfg.OlderVersions)
+			if err != nil {
+				return nil, 0, err
+			}
+			rels, skipped = kept, n
+		}
+		for _, rel := range rels {
+			data, err := os.ReadFile(filepath.Join(root, rel))
+			if err != nil {
+				return nil, 0, err
+			}
+			segs := body(rel, string(data))
+			if src.scope == ModelFacing {
+				segs = append([]segment{{line: 0, where: "the tool name", text: toolName(rel)}}, segs...)
+			}
+			reads = append(reads, read{rel: rel, scope: src.scope, segs: segs})
 		}
 	}
 	if cfg.SpecOverview {
 		rels, err := files(root, path.Join(spec.Dir, "*.md"))
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		n := 0
 		for _, rel := range rels {
@@ -277,16 +290,55 @@ func gather(cfg config.Words, spec config.Spec, root string) ([]read, error) {
 			}
 			data, err := os.ReadFile(filepath.Join(root, rel))
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			n++
 			reads = append(reads, read{rel: rel, scope: SpecOverview, segs: overview(string(data))})
 		}
 		if n == 0 {
-			return nil, fmt.Errorf("words.spec_overview is set and %s/ holds no spec, so there is no title or overview to read", spec.Dir)
+			return nil, 0, fmt.Errorf("words.spec_overview is set and %s/ holds no spec, so there is no title or overview to read", spec.Dir)
 		}
 	}
-	return reads, nil
+	return reads, skipped, nil
+}
+
+// latest drops the files a higher version of their tool supersedes, apart
+// from those the older-versions globs keep, and counts what it dropped. A
+// glob that keeps nothing fails, so the list holds only versions something
+// still offers.
+func latest(rels, keep []string) ([]string, int, error) {
+	old := older(rels)
+	used := make([]bool, len(keep))
+	var out []string
+	skipped := 0
+	for _, rel := range rels {
+		if !old[rel] {
+			out = append(out, rel)
+			continue
+		}
+		kept := false
+		for i, g := range keep {
+			if ok, err := path.Match(g, rel); err == nil && ok {
+				used[i], kept = true, true
+			}
+		}
+		if kept {
+			out = append(out, rel)
+			continue
+		}
+		skipped++
+	}
+	var unused []string
+	for i, g := range keep {
+		if !used[i] {
+			unused = append(unused, g)
+		}
+	}
+	if len(unused) > 0 {
+		return nil, 0, fmt.Errorf("words.older_versions names %s, which matches no older version of a model-facing file; "+
+			"the highest version of each tool is read already, so delete the entry", strings.Join(unused, ", "))
+	}
+	return out, skipped, nil
 }
 
 // files is every regular file the glob matches under root, as sorted

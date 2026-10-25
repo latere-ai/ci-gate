@@ -60,6 +60,35 @@ func TestASourceFileIsReadForItsStrings(t *testing.T) {
 	}
 }
 
+// Only the highest -vN of each tool in a directory is a version a model is
+// offered; a file with no version is always read.
+func TestOlderVersions(t *testing.T) {
+	got := older([]string{
+		"tools/bash-v1.md", "tools/bash-v2.md", "tools/bash-v10.md",
+		"tools/read-v4.md", "tools/read-v5.md",
+		"tools/notes.md", "tools/spawn-v1.md",
+		"other/bash-v2.md",
+	})
+	want := map[string]bool{"tools/bash-v1.md": true, "tools/bash-v2.md": true, "tools/read-v4.md": true}
+	if len(got) != len(want) {
+		t.Fatalf("older = %v, want %v", got, want)
+	}
+	for rel := range want {
+		if !got[rel] {
+			t.Errorf("%s is an older version", rel)
+		}
+	}
+	if tool, n, ok := versioned("tools/web_fetch-v12.md"); !ok || tool != "web_fetch" || n != 12 {
+		t.Errorf("versioned = %q %d %v", tool, n, ok)
+	}
+	if _, _, ok := versioned("tools/x-v.md"); ok {
+		t.Error("-v with no number is no version")
+	}
+	if _, _, ok := versioned("tools/x-v99999999999999999999.md"); ok {
+		t.Error("a version past an int is no version")
+	}
+}
+
 // A tool description file is named for its tool: the name before a -vN
 // suffix and the extension.
 func TestToolName(t *testing.T) {
@@ -77,10 +106,11 @@ func TestToolName(t *testing.T) {
 
 // A spec is read for its frontmatter title and its Overview section, to the
 // next heading of the same level or higher; a heading in a fenced block is
-// not one, and a link's target is not read.
+// not one, and neither a link's target nor a wikilink's file name is read,
+// though a wikilink's text after a bar is.
 func TestASpecIsReadForItsTitleAndOverview(t *testing.T) {
-	src := "---\ntitle: The title\nstatus: x\n---\n\n# Heading\n\n## Overview\n\nOne [link](specs/thread.md).\n\n```\n## not a heading\n```\n\n### Sub\n\nTwo\n\n## Design\n\nNot read\n"
-	want := []string{"2:title: The title", "10:One [link .", "13:## not a heading", "14:```", "12:```", "16:### Sub", "18:Two"}
+	src := "---\ntitle: The title\nstatus: x\n---\n\n# Heading\n\n## Overview\n\nOne [link](specs/thread.md).\n\n```\n## not a heading\n```\n\n### Sub\n\nTwo, as [[013-threads-and-subagents]] and [[033-x|the graph]] say.\n\n## Design\n\nNot read\n"
+	want := []string{"2:title: The title", "10:One [link .", "13:## not a heading", "14:```", "12:```", "16:### Sub", "18:Two, as ]] and the graph]] say."}
 	slices.Sort(want)
 	got := texts(overview(src))
 	slices.Sort(got)
