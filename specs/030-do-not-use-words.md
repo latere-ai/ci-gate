@@ -8,7 +8,7 @@ depends_on:
 affects:
   - internal/bar/
   - internal/config/
-  - internal/words/ (new)
+  - internal/words/ (new, with do-not-use.yaml)
   - README.md
   - docs/gates.md
   - docs/configuration.md
@@ -32,21 +32,19 @@ lease. Each word is accurate to the mechanism and opaque to the reader.
 Review catches some of them on the day they are written and misses the
 rest, because the word reads as correct to whoever wrote it.
 
-The organization decided the words once, in its vocabulary
-(`vocabulary.yaml` in `latere-ai/onboarding`): operating-system and
-process jargon stays out of tool names, tool descriptions, screens and
-spec overviews, and the words that name a screen's mechanism stay off
+The organization decided the words once: operating-system and process
+jargon stays out of tool names, tool descriptions, screens and spec
+overviews, and the words that name a screen's mechanism stay off
 screens. Model-facing tools reuse the names models know from Claude Code
 where one exists.
 
 ## The decision
 
 A gate, `words`, that a repository turns on in `.lateregate.yaml` by
-naming the vocabulary file and the places each reader reads:
+naming the places each reader reads:
 
 ```yaml
 words:
-  vocabulary: ../onboarding/vocabulary.yaml
   model_facing: [prompts/tools/*.md]
   person_facing: [frontend/src/i18n/en.ts]
   spec_overview: true
@@ -54,7 +52,10 @@ words:
 
 ### The list
 
-The vocabulary's `do_not_use` section is a list of items, each with:
+The list is `internal/words/do-not-use.yaml` in this repository,
+embedded in the binary. It is the one copy: the organization's
+vocabulary in `latere-ai/onboarding` points here rather than carrying the
+words itself. Its `do_not_use` key is a list of items, each with:
 
 - `word`, the word as the list names it;
 - `forms`, the written forms matched, each a whole word or a run of whole
@@ -66,12 +67,18 @@ The vocabulary's `do_not_use` section is a list of items, each with:
 - `reason`, one line printed with every hit;
 - `prefer`, the words to write instead.
 
-The gate decodes that key alone, loosely: the vocabulary's own validator
-holds the file to its schema, and a field it adds later is no reason for
-every repository's gate to fail. An item the gate cannot use fails it: no
-word, no scope, a scope it does not read, no reason, nothing to prefer,
-or a form with no letter in it. Each would otherwise be a word silently
-matched nowhere.
+A list is held to its rules when it is read, and this repository's tests
+hold the embedded one to them: every item names a word, its readers, a
+one-line reason and the words to write instead; no word is listed twice;
+a form holds a letter, is not padded and is not listed twice; and one
+written form belongs to one word per reader, so a hit has one reason.
+
+A repository may add words of its own with `words.vocabulary`, a file
+holding a `do_not_use` key in the same shape, relative to the repository
+root or absolute. Only that key is read, so a file with other sections
+can be named as it is. Its items are held to the same rules beside the
+embedded list: a word or a form the list already carries fails, since a
+second definition would give one hit two reasons.
 
 ### What is read
 
@@ -131,39 +138,37 @@ lives in `.lateregate.yaml` beside its reason, as everywhere else here.
 ### A gate that reads nothing fails
 
 A glob that matches no file, `spec_overview` over a directory with no
-spec, and a block that names a vocabulary and no place fail, per
-[[001-gate-principles]]. So does a missing vocabulary file: the failure
-names the path it looked at and says to check `latere-ai/onboarding` out
-there or point the key at the file.
+spec, and a block that names a list or an allowance and no place fail,
+per [[001-gate-principles]]. So does a `words.vocabulary` that names a
+missing file or a file with no `do_not_use` list: the failure names the
+path and says to fix it or delete the key.
 
-### Where the list comes from
+### Where the list lives
 
-The vocabulary lives in a private repository and this gate is public, so
-the gate neither embeds the file, which names internal hosts and
-repositories, nor fetches it, which would break the rule that every gate
-runs from the module cache with `GOPROXY=off`. The repository names the
-file instead. On a laptop the workspace keeps the onboarding checkout
-beside the repository, so `../onboarding/vocabulary.yaml` resolves. A
-runner that checks out the repository alone has no such file, and the
-gate fails there with the missing-file message; it is not skipped, since
-a skip would be a pass over nothing.
+The words are generic and not secret, so the public gate holds them. An
+embedded list runs on a laptop and on a runner that checks out nothing
+but the repository, with `GOPROXY=off`, per [[001-gate-principles]], and
+a change to it reaches a repository the way every other rule of the bar
+does: with the release a repository pins.
 
 ### Alternatives considered
 
-- **Embed the list in the gate.** It runs everywhere, and a list change
-  waits for a gate release, but it is a second copy of the vocabulary's
-  section in a public repository, and the copy drifts.
-- **Fetch the vocabulary at run time.** Needs the network and a
-  credential for a private repository on every run.
+- **Read the list from the vocabulary in `latere-ai/onboarding`.** The
+  first version did, through a path each repository named. That
+  repository is private, so a runner had no file and the gate failed on
+  every push of a repository that turned it on.
+- **Fetch the list at run time.** Needs the network, and a credential for
+  a private repository, on every run.
 - **A copy in each repository.** Twenty copies of one list.
 - **Inline markers.** No gate here has one, and the reason beside the
   exception is the part that matters.
 
 ## Acceptance criteria
 
-- `lateregate list` on a repository without `words.vocabulary` shows
-  `SKIP words words.vocabulary names no vocabulary file`; with it, the
-  gate runs.
+- `lateregate list` on a repository whose `words` names no place shows
+  `SKIP words words names nothing a model or a person reads`; with a
+  place, the gate runs, over the embedded list alone or with the
+  repository's own.
 - A banned form in a model-facing file's body or its name, in a
   person-facing catalog's string values, and in a spec's title or
   Overview is reported with the file, the line, the word as written and
@@ -177,20 +182,22 @@ a skip would be a pass over nothing.
 - An allowance by word covers every form, by text only the hits inside
   it, by path only those files; one with no reason or no place fails the
   load; one no hit needs fails the gate.
-- A missing vocabulary file, one with no list, an item the gate cannot
-  use, a glob that matches nothing and a spec directory with no spec each
-  fail with what to do.
+- The embedded list holds to the rules of a list. A repository's list
+  that is missing, holds no list, breaks a rule, or names a word or a
+  form the embedded list carries fails with what to do, as do a glob
+  that matches nothing and a spec directory with no spec.
 - `internal/words` clears the 90% floor.
 
 ## Outcome
 
-Shipped as written. `internal/words` carries the list loader, the
-readers and the matcher; `config.Words` the section and its load rules;
-the bar entry applies when `words.vocabulary` is set. Coverage of the new
-package is 96.5%.
+Shipped as written. `internal/words` carries the embedded list, its
+rules, the readers and the matcher; `config.Words` the section and its
+load rules; the bar entry applies when `words` names a place to read.
+Coverage of the new package is 96.2%.
 
 No repository turns it on yet. Run by name on 2026-10-25 against copies
-of each repository's main, without editing them:
+of each repository's main, without editing them, over the embedded list
+alone:
 
 | Repository | Read | Hits | Findings | Words |
 |---|---|---|---|---|
