@@ -758,7 +758,19 @@ What each reader reads:
 
 - **`model_facing`**: every file a glob matches, and the file's name,
   before a `-vN` suffix and the extension, as the name of the tool the
-  file describes: `prompts/tools/spawn-v1.md` is the tool `spawn`.
+  file describes: `prompts/tools/spawn-v1.md` is the tool `spawn`. Of the
+  versions of one tool in one directory only the highest `-vN` is read: a
+  released description is kept byte for byte so a replay sends it again,
+  and is not offered once the next version ships. A repository that still
+  offers an older version, as a second description of the same tool,
+  names it in `older_versions`, and an entry that keeps no older version
+  fails the gate:
+
+  ```yaml
+  words:
+    model_facing: [prompts/tools/*.md]
+    older_versions: [prompts/tools/read-v4.md]   # read is offered as v4, and as v5 where PDFs parse
+  ```
 - **`person_facing`**: every file a glob matches.
 - **`spec_overview`**: each spec in `spec.dir` apart from the files
   `spec.exclude` names, for its frontmatter `title` and its `## Overview`
@@ -770,7 +782,9 @@ In a source file (`.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`,
 object's keys, so a message catalog's `'offer.ask'` key is not a hit and
 its value is. A placeholder such as `{name}`, an escape and a template
 literal's `${...}` are not read; nor, in any file, a template action,
-`{{...}}`, or, in a spec, a link's target.
+`{{...}}`; nor, in a spec, a link's target or a wikilink's file name:
+`[[013-threads-and-subagents]]` names a file, and of `[[033-x|the
+graph]]` only `the graph` is read.
 
 Each form is matched as whole words, case-insensitively. A word is a run
 of letters and digits, and a lowercase letter followed by an uppercase

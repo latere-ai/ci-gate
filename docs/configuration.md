@@ -159,7 +159,8 @@ platform_via_sdk:          # applies when enabled is true
 
 words:                     # applies when model_facing, person_facing or spec_overview names a place
   vocabulary: ""           # a file with a do_not_use list of the repository's own, added to the one lateregate carries
-  model_facing: []         # globs of the files a model reads; a file's name is read as its tool's name
+  model_facing: []         # globs of the files a model reads; a file's name is read as its tool's name, and only the highest -vN of a tool
+  older_versions: []       # globs of model-facing files read although a higher version exists, because they are still offered
   person_facing: []        # globs of the string files a person reads
   spec_overview: false     # read each spec's title and Overview section in spec.dir
   allow: []                # entries: {text, path, reason}; a text, a path glob or both, and why the word stays
