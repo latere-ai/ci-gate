@@ -56,6 +56,7 @@ type Config struct {
 	Release    Release    `yaml:"release"`
 
 	PlatformViaSDK PlatformViaSDK `yaml:"platform_via_sdk"`
+	Words          Words          `yaml:"words"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
@@ -545,6 +546,54 @@ type PlatformViaSDK struct {
 	Skip []string `yaml:"skip"`
 }
 
+// Words configures the gate that holds what a model or a person reads to the
+// organization's do-not-use list.
+//
+// The list is the do_not_use section of the vocabulary file in
+// latere-ai/onboarding: each word, the readers it is banned for, the reason
+// and the words to write instead. What a model reads, what a person reads
+// and which specs are read are each repository's own, so they are named
+// here; the words are the organization's, so they are read from the list.
+type Words struct {
+	// Vocabulary is the vocabulary file, relative to the repository root or
+	// absolute. Empty means the gate does not apply: a repository opts in by
+	// naming the file. A missing file fails the gate rather than skipping it.
+	Vocabulary string `yaml:"vocabulary"`
+	// ModelFacing are globs, relative to the root, of the files a model
+	// reads: tool descriptions, prompts. A file's name is read too, before a
+	// -vN suffix and the extension, because a tool description file is named
+	// for its tool, and that name is what the model calls.
+	ModelFacing []string `yaml:"model_facing"`
+	// PersonFacing are globs of the string files a person reads, such as a
+	// frontend's message catalog.
+	PersonFacing []string `yaml:"person_facing"`
+	// SpecOverview reads each spec's frontmatter title and its Overview
+	// section, in spec.dir, apart from the files spec.exclude names.
+	SpecOverview bool `yaml:"spec_overview"`
+	// Allow lists the hits that stay, each with its reason. An entry no hit
+	// needs fails the gate, so the list holds only exceptions something
+	// still uses.
+	Allow []WordsAllow `yaml:"allow"`
+}
+
+// WordsAllow is one exception to the do-not-use list. Text, Path or both say
+// where it applies; Reason is mandatory.
+type WordsAllow struct {
+	// Text is a do-not-use word, which covers all of the word's forms, or a
+	// longer text written around a hit, such as the wire name
+	// thread.started, which covers only the hits inside it. Matched
+	// case-insensitively, as whole words. Empty covers every hit in Path.
+	Text string `yaml:"text"`
+	// Path is a glob of the files the entry covers, matched against the path
+	// relative to the root. Empty covers every file.
+	Path string `yaml:"path"`
+	// Reason is why the word stays here.
+	Reason string `yaml:"reason"`
+}
+
+// Enabled reports whether the repository names a vocabulary file.
+func (w Words) Enabled() bool { return w.Vocabulary != "" }
+
 // Registers configures the user-surface register gate.
 //
 // Every sentence a product emits is written for one reader, and the most
@@ -848,6 +897,9 @@ func (c *Config) validate(path string) error {
 			"write why this one is not a call to the platform, or delete the entry",
 			path, strings.Join(unexplained, ", "))
 	}
+	if err := c.Words.validate(path); err != nil {
+		return err
+	}
 	var unowned []string
 	for prefix, why := range c.TempDir.Allow {
 		if strings.TrimSpace(why) == "" {
@@ -947,6 +999,53 @@ func (c *Config) validate(path string) error {
 	}
 	if t := c.Cover.Threshold; t < 0 || t > 100 {
 		return fmt.Errorf("%s: cover.threshold %.1f is not a percentage", path, t)
+	}
+	return nil
+}
+
+// validate rejects a words block that would check less than it reads as
+// checking: a surface named with no list to read, a list with nowhere to
+// look, and an exception with no reason or no place.
+func (w Words) validate(path string) error {
+	named := len(w.ModelFacing) > 0 || len(w.PersonFacing) > 0 || w.SpecOverview
+	switch {
+	case w.Vocabulary == "" && (named || len(w.Allow) > 0):
+		return fmt.Errorf("%s: words names what to read and words.vocabulary is empty, so the gate never runs\n"+
+			"name the vocabulary file whose do_not_use list the gate reads", path)
+	case w.Vocabulary != "" && !named:
+		return fmt.Errorf("%s: words.vocabulary is set and nothing is named to read, so the gate would pass vacuously\n"+
+			"name words.model_facing, words.person_facing or words.spec_overview", path)
+	}
+	for _, g := range append(slices.Clone(w.ModelFacing), w.PersonFacing...) {
+		if _, err := filepath.Match(g, ""); err != nil || strings.TrimSpace(g) == "" {
+			return fmt.Errorf("%s: words names %q, which is not a glob the gate can read", path, g)
+		}
+	}
+	var noWhy, nowhere []string
+	for i, a := range w.Allow {
+		name := fmt.Sprintf("allow[%d]", i)
+		if a.Text != "" || a.Path != "" {
+			name += " (" + strings.TrimSpace(a.Text+" "+a.Path) + ")"
+		}
+		if strings.TrimSpace(a.Reason) == "" {
+			noWhy = append(noWhy, name)
+		}
+		if strings.TrimSpace(a.Text) == "" && strings.TrimSpace(a.Path) == "" {
+			nowhere = append(nowhere, name)
+		}
+		if _, err := filepath.Match(a.Path, ""); err != nil {
+			return fmt.Errorf("%s: words.%s: path %q is not a glob the gate can read", path, name, a.Path)
+		}
+	}
+	if len(noWhy) > 0 {
+		return fmt.Errorf("%s: words allowance without a reason: %s\n"+
+			"a do-not-use word that stays is a decision: write why it stays here, or delete the entry",
+			path, strings.Join(noWhy, ", "))
+	}
+	if len(nowhere) > 0 {
+		return fmt.Errorf("%s: words allowance that names neither text nor path: %s\n"+
+			"an entry that covers everything turns the gate off: name the word or text that stays, the files it stays in, or both",
+			path, strings.Join(nowhere, ", "))
 	}
 	return nil
 }

@@ -115,6 +115,56 @@ func TestAPlatformAllowanceWithoutAReasonIsRejected(t *testing.T) {
 	}
 }
 
+// The words block reads as written, and is off until it names a vocabulary
+// file. A block that would check less than it reads as checking does not
+// load: places with no list, a list with no place, and an allowance with no
+// reason, no place or a glob that cannot be read.
+func TestTheWordsBlock(t *testing.T) {
+	c, err := Load(write(t, `words:
+  vocabulary: ../onboarding/vocabulary.yaml
+  model_facing: [prompts/tools/*.md]
+  person_facing: [frontend/src/i18n/en.ts]
+  spec_overview: true
+  allow:
+    - text: thread.started
+      reason: the event type on the wire
+    - path: prompts/tools/spawn-v1.md
+      text: spawn
+      reason: the tool is renamed in its own change
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := c.Words
+	if !w.Enabled() || w.Vocabulary != "../onboarding/vocabulary.yaml" || !w.SpecOverview ||
+		!slices.Equal(w.ModelFacing, []string{"prompts/tools/*.md"}) || !slices.Equal(w.PersonFacing, []string{"frontend/src/i18n/en.ts"}) ||
+		len(w.Allow) != 2 || w.Allow[1].Path != "prompts/tools/spawn-v1.md" || w.Allow[1].Text != "spawn" {
+		t.Errorf("the block reads as written: %+v", w)
+	}
+	if c, err := Load(t.TempDir()); err != nil || c.Words.Enabled() {
+		t.Errorf("no block is off: %+v %v", c.Words, err)
+	}
+
+	for _, tc := range []struct{ name, body, want string }{
+		{"places with no list", "words:\n  spec_overview: true\n", "words.vocabulary is empty, so the gate never runs"},
+		{"an allowance with no list", "words:\n  allow:\n    - {text: spawn, reason: r}\n", "words.vocabulary is empty"},
+		{"a list with no place", "words:\n  vocabulary: v.yaml\n", "nothing is named to read, so the gate would pass vacuously"},
+		{"a glob the gate cannot read", "words:\n  vocabulary: v.yaml\n  model_facing: ['prompts/[']\n", `words names "prompts/[", which is not a glob`},
+		{"an empty glob", "words:\n  vocabulary: v.yaml\n  person_facing: ['']\n", `words names "", which is not a glob`},
+		{"an allowance with no reason", "words:\n  vocabulary: v.yaml\n  spec_overview: true\n  allow:\n    - {text: spawn, path: specs/*.md}\n    - {text: lock, reason: ' '}\n",
+			"words allowance without a reason: allow[0] (spawn specs/*.md), allow[1] (lock)"},
+		{"an allowance with no place", "words:\n  vocabulary: v.yaml\n  spec_overview: true\n  allow:\n    - {reason: everything}\n", "names neither text nor path: allow[0]"},
+		{"an allowance whose path cannot be read", "words:\n  vocabulary: v.yaml\n  spec_overview: true\n  allow:\n    - {path: '[', reason: r}\n", `path "[" is not a glob`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load(write(t, tc.body))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want an error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
 func TestAThresholdOutsideAPercentageIsRejected(t *testing.T) {
 	for _, v := range []string{"-1", "101"} {
 		if _, err := Load(write(t, "cover:\n  threshold: "+v+"\n")); err == nil {

@@ -33,6 +33,7 @@ import (
 	"latere.ai/x/ci-gate/internal/registers"
 	"latere.ai/x/ci-gate/internal/speclint"
 	"latere.ai/x/ci-gate/internal/tsenum"
+	"latere.ai/x/ci-gate/internal/words"
 )
 
 // Ctx is what a gate runs with.
@@ -110,6 +111,13 @@ var Gates = []Gate{
 			return c.Cfg.PlatformViaSDK.Enabled, "platform_via_sdk.enabled is not set", nil
 		},
 		Run: func(c Ctx) error { return platformsdk.Run(c.Cfg.PlatformViaSDK, c.Root, c.Out) }},
+	{Name: "words", Doc: "no do-not-use word in what a model or a person reads",
+		// Opt-in: the list is read from the vocabulary file a repository
+		// names, beside the places its models and people read.
+		Applies: func(c Ctx) (bool, string, error) {
+			return c.Cfg.Words.Enabled(), "words.vocabulary names no vocabulary file", nil
+		},
+		Run: func(c Ctx) error { return words.Run(c.Cfg.Words, c.Cfg.Spec, c.Root, c.Out) }},
 	{Name: "identity", Doc: "the repository declares its identity role and holds that role's rules",
 		// No Applies: a repository with no block is precisely the gap, so
 		// the absence fails inside the gate rather than skipping it.
