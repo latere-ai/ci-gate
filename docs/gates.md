@@ -20,7 +20,7 @@ another. `go tool lateregate <gate>` runs one.
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
 | `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
 | `platform-via-sdk` | no platform route outside the Go SDK, `latere.ai/x/sdk-go` | `platform_via_sdk.enabled` is true |
-| `words` | no word on the organization's do-not-use list in what a model or a person reads | `words.vocabulary` names the vocabulary file |
+| `words` | no word on the organization's do-not-use list in what a model or a person reads | `words` names a place a model or a person reads |
 | `identity` | the repository declares its identity role and holds that role's rules | always |
 | `postgres` | the repository's Postgres role holds | always |
 | `enum-go` | declared Go domains use named types, named members and exhaustive switches | `enums.go.types` names a domain |
@@ -731,24 +731,24 @@ finding needs fails the gate, so the list holds only the exceptions
 something still uses. There is no line marker: every exception lives in
 `.lateregate.yaml` with its reason.
 
-## `words`: what a model or a person reads keeps to the vocabulary
+## `words`: what a model or a person reads keeps to the do-not-use list
 
-The organization's vocabulary, `vocabulary.yaml` in
-`latere-ai/onboarding`, carries a `do_not_use` list: the words that what a
-model or a person reads does not use, each with the readers it is banned
-for (`model-facing`, `person-facing`, `spec-overview`), the forms
-matched, the reason and the words to write instead. Operating-system and
-process jargon such as `spawn`, `thread`, `kill` and `lease` is out of
-tool names, tool descriptions, screens and spec overviews; the words that
-name a screen's mechanism, such as `offer` and `allowance`, are out of
-screens.
+The binary carries the organization's do-not-use list,
+[`internal/words/do-not-use.yaml`](../internal/words/do-not-use.yaml):
+the words that what a model or a person reads does not use, each with the
+readers it is banned for (`model-facing`, `person-facing`,
+`spec-overview`), the forms matched, the reason and the words to write
+instead. Operating-system and process jargon such as `spawn`, `thread`,
+`kill` and `lease` is out of tool names, tool descriptions, screens and
+spec overviews; the words that name a screen's mechanism, such as `offer`
+and `allowance`, are out of screens. The list is embedded, so the gate
+reads the same words on a laptop and on a runner, and a repository takes
+a change to it by bumping its pin.
 
-A repository turns the gate on by naming the vocabulary file and the
-places each reader reads:
+A repository turns the gate on by naming the places each reader reads:
 
 ```yaml
 words:
-  vocabulary: ../onboarding/vocabulary.yaml   # relative to the repository root, or absolute
   model_facing: [prompts/tools/*.md]          # tool descriptions and other text a model reads
   person_facing: [frontend/src/i18n/en.ts]    # the string files a person reads
   spec_overview: true                         # each spec's title and Overview section
@@ -809,17 +809,24 @@ against the path from the repository root, that limits the entry to
 those files. Every entry has a reason and a text, a path or both, and an
 entry no hit needs fails the gate. There is no line marker.
 
-The gate fails rather than passing over nothing: a missing vocabulary
-file (the failure names the path it looked at), a file with no
-`do_not_use` list, an item it cannot use (no word, no scope, a scope it
-does not read, no reason, nothing to prefer), a glob that matches no
-file, and `spec_overview` over a directory with no spec.
+A repository with words of its own adds them in a file of the same
+shape, a `do_not_use` key, named relative to the repository root or
+absolutely:
 
-The vocabulary lives in a private repository, and the gate neither embeds
-nor fetches it. On a laptop the workspace keeps the onboarding checkout
-beside the repository, where `../onboarding/vocabulary.yaml` finds it. A
-runner that checks out the repository alone has no vocabulary file, and
-the gate fails there with the missing-file message.
+```yaml
+words:
+  vocabulary: docs/do-not-use.yaml
+```
+
+Its items are held to the rules the embedded list keeps: a word, its
+readers, a one-line reason and the words to write instead, no word twice,
+and one written form per word per reader. A word or a form the embedded
+list already carries fails, since one hit would then have two reasons.
+
+The gate fails rather than passing over nothing: a glob that matches no
+file, `spec_overview` over a directory with no spec, and a
+`words.vocabulary` that names a missing file or a file with no
+`do_not_use` list.
 
 ## `identity`: the family's identity shape
 

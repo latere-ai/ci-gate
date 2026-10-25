@@ -157,8 +157,8 @@ platform_via_sdk:          # applies when enabled is true
   allow: {}                # route prefix -> why it is not a call to the platform
   skip: []                 # directories the scan does not enter
 
-words:                     # applies when vocabulary is set
-  vocabulary: ""           # the vocabulary file whose do_not_use list the gate reads, e.g. ../onboarding/vocabulary.yaml
+words:                     # applies when model_facing, person_facing or spec_overview names a place
+  vocabulary: ""           # a file with a do_not_use list of the repository's own, added to the one lateregate carries
   model_facing: []         # globs of the files a model reads; a file's name is read as its tool's name
   person_facing: []        # globs of the string files a person reads
   spec_overview: false     # read each spec's title and Overview section in spec.dir
