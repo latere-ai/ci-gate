@@ -125,7 +125,7 @@ func goEnumSelector(s string, field bool) bool {
 func tsEnumSelector(s string, field bool) bool {
 	file, symbol, ok := strings.Cut(s, "#")
 	extension := filepath.Ext(file)
-	if !ok || !localEnumPath(file) || !slices.Contains([]string{".ts", ".tsx", ".vue"}, extension) {
+	if !ok || !localEnumPath(file) || !slices.Contains([]string{".ts", ".tsx"}, extension) {
 		return false
 	}
 	parts := strings.Split(symbol, ".")

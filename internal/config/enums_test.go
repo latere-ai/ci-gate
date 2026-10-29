@@ -65,12 +65,12 @@ func TestEnumSelectorGrammar(t *testing.T) {
 			t.Errorf("accepts %s", s)
 		}
 	}
-	for _, s := range []string{"src/s.ts#Status", "src/s.tsx#$Status", "src/S.vue#Status"} {
+	for _, s := range []string{"src/s.ts#Status", "src/s.tsx#$Status"} {
 		if !tsEnumSelector(s, false) {
 			t.Errorf("rejects %s", s)
 		}
 	}
-	for _, s := range []string{"s.ts", "../s.ts#Status", "s.js#Status", "s.ts#Status.field", "s.ts#", "s.ts#2Status", "s.ts#Status#Other"} {
+	for _, s := range []string{"s.ts", "../s.ts#Status", "s.js#Status", "src/S.vue#Status", "s.ts#Status.field", "s.ts#", "s.ts#2Status", "s.ts#Status#Other"} {
 		if tsEnumSelector(s, false) {
 			t.Errorf("accepts %s", s)
 		}
