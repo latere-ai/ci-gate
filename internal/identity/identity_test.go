@@ -692,9 +692,9 @@ func frontendTree() map[string]string {
 		"internal/api/h.go": verifying + "\nvar admin = \"platform_admin\"\n",
 
 		// The decisions. A page that branches on the retired flag, and the
-		// camel case the same field takes in a single-file component.
+		// camel case the same field takes in a component's props.
 		"web/src/Nav.tsx":   "export function Nav(p: Principal) {\n  if (p.is_superadmin) return admin;\n  return null;\n}\n",
-		"web/src/Menu.vue":  "<script setup lang=\"ts\">\nconst admin = props.isSuperadmin;\n</script>\n",
+		"web/src/Menu.tsx":  "export function Menu(props: Props) {\n  const admin = props.isSuperadmin;\n  return admin ? <AdminMenu /> : null;\n}\n",
 		"web/src/Badge.jsx": "export const Badge = (p) => (p.is_superadmin ? adminBadge : null);\n",
 		"web/src/gate.mjs":  "export const gate = (p) => p.isSuperadmin;\n",
 		"web/src/gate.cjs":  "module.exports = (p) => p.is_superadmin;\n",
@@ -742,7 +742,7 @@ func TestRolesReadsTheFrontend(t *testing.T) {
 		t.Fatalf("the roles rule reports the frontend, and no other rule fails here:\n%s", out)
 	}
 	for _, want := range []string{
-		"web/src/Nav.tsx:2:", "web/src/Menu.vue:2:", "web/src/keys.ts:1:",
+		"web/src/Nav.tsx:2:", "web/src/Menu.tsx:2:", "web/src/keys.ts:1:",
 		"web/src/Badge.jsx:1:", "web/src/gate.mjs:1:", "web/src/gate.cjs:1:",
 	} {
 		if !strings.Contains(out, want) {
@@ -782,28 +782,29 @@ func ignoring(paths ...string) gates.Exec {
 	}
 }
 
-// Build residue is not the repository. One frontend tree leaves a .vue.js
-// sidecar beside every component and ignores it; a file that is on a laptop
-// and not in a checkout would make the gate red locally and green on the
-// runner, which is the one direction a gate must never fail in.
+// Build residue is not the repository. A frontend tree compiled in place
+// leaves a .js file beside every .ts source and ignores it; a file that is on
+// a laptop and not in a checkout would make the gate red locally and green on
+// the runner, which is the one direction a gate must never fail in.
 func TestRolesReadsNoFileTheRepositoryIgnores(t *testing.T) {
 	files := frontendTree()
 	files["web/src/Nav.tsx"] = "export const Nav = (p: Principal) => p.roles[0];\n"
-	files["web/src/Menu.vue"] = "<script setup lang=\"ts\">\nconst admin = props.roles[0];\n</script>\n"
+	files["web/src/Menu.tsx"] = "export const Menu = (props: Props) => props.roles[0];\n"
 	files["web/src/keys.ts"] = "export const keys = [\"roles\"];\n"
 	files["web/src/Badge.jsx"] = "export const Badge = (p) => (p.roles[0] ? adminBadge : null);\n"
 	files["web/src/gate.mjs"] = "export const gate = (p) => p.roles.includes('platform_admin');\n"
 	files["web/src/gate.cjs"] = "module.exports = (p) => p.roles.includes('platform_admin');\n"
-	// The residue the toolchain wrote, holding what the source no longer does.
-	files["web/src/Menu.vue.js"] = "const admin = props.isSuperadmin;\n"
+	files["web/src/policy.ts"] = "export const isAdmin = (p: Principal) => p.roles.includes('platform_admin');\n"
+	// The residue the compiler wrote, holding what the source no longer does.
+	files["web/src/policy.js"] = "export const isAdmin = (p) => p.isSuperadmin;\n"
 	root := repo(t, files)
 
 	out, err := run(t, withRolesOnly(config.Identity{Role: config.RoleService, Audience: "drive"}), root, noHistory())
-	if err == nil || !strings.Contains(out, "web/src/Menu.vue.js:1:") {
+	if err == nil || !strings.Contains(out, "web/src/policy.js:1:") {
 		t.Fatalf("a tree that ignores nothing reads the file:\n%s", out)
 	}
 
-	out, err = run(t, withRolesOnly(config.Identity{Role: config.RoleService, Audience: "drive"}), root, ignoring("web/src/Menu.vue.js"))
+	out, err = run(t, withRolesOnly(config.Identity{Role: config.RoleService, Audience: "drive"}), root, ignoring("web/src/policy.js"))
 	if err != nil {
 		t.Fatalf("a file the repository ignores is not read:\n%s", out)
 	}
@@ -817,7 +818,7 @@ func TestRolesReadsNoFileTheRepositoryIgnores(t *testing.T) {
 func TestRolesPassesAFrontendThatReadsRoles(t *testing.T) {
 	files := frontendTree()
 	files["web/src/Nav.tsx"] = "export function Nav(p: Principal) {\n  if (p.roles.includes('platform_admin')) return admin;\n  return null;\n}\n"
-	files["web/src/Menu.vue"] = "<script setup lang=\"ts\">\nconst admin = props.roles.includes('platform_admin');\n</script>\n"
+	files["web/src/Menu.tsx"] = "export function Menu(props: Props) {\n  const admin = props.roles.includes('platform_admin');\n  return admin ? <AdminMenu /> : null;\n}\n"
 	files["web/src/keys.ts"] = "export const keys = [\"roles\"];\n"
 	files["web/src/Badge.jsx"] = "export const Badge = (p) => (p.roles[0] ? adminBadge : null);\n"
 	files["web/src/gate.mjs"] = "export const gate = (p) => p.roles.includes('platform_admin');\n"

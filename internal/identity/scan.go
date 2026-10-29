@@ -286,7 +286,7 @@ func yamlFile(name string) bool {
 // .mjs and .cjs are what .js is when a package pins the module system. An
 // extension left out is a file the rule passes over in silence, which is the
 // gap this rule was extended to close.
-var frontendExts = []string{".ts", ".tsx", ".jsx", ".vue", ".svelte", ".js", ".mjs", ".cjs"}
+var frontendExts = []string{".ts", ".tsx", ".jsx", ".svelte", ".js", ".mjs", ".cjs"}
 
 // frontendSkipDirs hold what no person in this repository wrote: a package
 // manager's tree, a bundler's output, a fixture. They are skipped here and not
@@ -345,13 +345,14 @@ func generated(text string) bool {
 
 // dropIgnoredFrontend removes the frontend sources the repository ignores.
 //
-// A frontend tree holds build residue beside its sources. One repository's
-// .gitignore names `frontend/src/**/*.js`, where the Vue toolchain leaves a
-// `.vue.js` sidecar next to every component; those files are on a laptop and
-// not in a checkout, so reading them makes the gate red locally and green on
-// the runner, which is the one thing a gate must never be. What git ignores is
-// not the repository, and the directory names this scan carries are that same
-// statement written a second time.
+// A frontend tree can hold build residue beside its sources: the TypeScript
+// compiler run without an output directory writes a `.js` file next to every
+// `.ts` one, and a repository that builds this way ignores them with a line
+// such as `src/**/*.js`. Those files are on a laptop and not in a checkout, so
+// reading them makes the gate red locally and green on the runner, which is
+// the one thing a gate must never be. What git ignores is not the repository,
+// and the directory names this scan carries are that same statement written a
+// second time.
 //
 // git deciding nothing, because there is no repository, no git, or nothing
 // ignored, leaves every file read. A scan that reads too much reports a
