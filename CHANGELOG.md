@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.58.0 - 2026-10-29
+
 ### Changed
 
 - **`platform-via-sdk` names the memory package's call for each memory
