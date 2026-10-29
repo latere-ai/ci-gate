@@ -10,6 +10,24 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- **`platform-via-sdk` names the memory package's call for each memory
+  route.** A client that writes a route under `/v1/account/memory` itself
+  is told which call of `latere.ai/x/sdk-go/memory` makes it, such as
+  `use UpdateSettings in latere.ai/x/sdk-go/memory` for
+  `/v1/account/memory/settings`, where the finding said to add the call
+  to the SDK. The table covers every memory route of the platform's
+  account document: the list, add and forget everything, the settings,
+  what was forgotten and its restore, export, import, and one memory of
+  You or of a project. The memory base followed by a path the source does
+  not fix names the package.
+
+### Upgrading
+
+- Nothing to change. A memory route a client writes was already a
+  finding; only what the finding says to use is new.
+
 ## v0.57.0 - 2026-10-29
 
 ### Added

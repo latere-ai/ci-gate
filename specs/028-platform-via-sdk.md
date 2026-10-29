@@ -14,7 +14,7 @@ affects:
   - CHANGELOG.md
 effort: medium
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-29
 author: changkun
 dispatched_task_id: null
 ---
@@ -197,3 +197,8 @@ the command line's and the Studio core's `/v1/environments`, which reach
 environments through the environments core's own client rather than the
 SDK. A client that turns the gate on writes that route in
 `platform_via_sdk.allow` with the reason, or the SDK gains the calls.
+
+On 2026-10-29 the table gained the routes under `/v1/account/memory`,
+each named with the call of the SDK's `memory` package that makes it, as
+the platform's account document lists them, and the memory base followed
+by a path the source does not fix, which names the package.
