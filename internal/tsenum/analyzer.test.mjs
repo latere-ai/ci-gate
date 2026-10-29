@@ -23,7 +23,7 @@ function fixture(t, files = {}, config = {}, dependencies = true) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   if (dependencies) fs.symlinkSync(path.resolve(directory, '../../node_modules'), path.join(root, 'node_modules'), 'dir');
   const entries = {
-    'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', skipLibCheck: true }, include: ['**/*.ts', '**/*.vue'], ...config }),
+    'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', skipLibCheck: true }, include: ['**/*.ts', '**/*.tsx'], ...config }),
     'domain.ts': domain,
     ...files,
   };
@@ -179,33 +179,27 @@ test('missing dependencies and invalid tsconfigs fail', t => {
   has(invalid.check(), /Argument for '--target'/);
 });
 
-test('Vue script and script setup retain imported enum identity and original lines', t => {
-  const f = fixture(t, { 'Page.vue': `<template><p>hello</p></template>\n<script setup lang="ts">\nimport { Phase } from './domain';\nconst state: Phase = 0;\nconst props = defineProps<{ phase: Phase }>();\n</script>`, 'main.ts': `import './Page.vue';` });
+test('TSX components retain imported enum identity and original lines', t => {
+  const options = { compilerOptions: { strict: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', skipLibCheck: true, jsx: 'preserve' } };
+  const f = fixture(t, {
+    'jsx.d.ts': 'declare namespace JSX { interface IntrinsicElements { p: { title?: string } } }',
+    'Page.tsx': `import { Phase, Status } from './domain';\nexport function Page(props: { phase: Phase }) {\n  const state: Phase = 0;\n  return <p title={Status.Running}>{props.phase}{state}</p>;\n}\n`,
+    'main.ts': `import { Page } from './Page'; console.log(Page);`,
+  }, options);
   const findings = f.check();
-  has(findings, /Page.vue:4:.*use named members/);
-  assert(!findings.some(finding => /Cannot find|not defined/.test(finding)), findings.join('\n'));
-  fs.writeFileSync(path.join(f.root, 'Page.vue'), `<script lang="ts">\nimport { Phase } from './domain';\nconst state: Phase = Phase.First;\nexport default {};\n</script>`);
+  has(findings, /Page.tsx:3:.*use named members/);
+  assert(!findings.some(finding => /Cannot find|TypeScript TS/.test(finding)), findings.join('\n'));
+  fs.writeFileSync(path.join(f.root, 'Page.tsx'), `import { Phase } from './domain';\nexport const Page = () => <p>{Phase.First}</p>;\n`);
   assert.deepEqual(f.check(), []);
 });
 
-test('Vue parse errors, unsupported external scripts and missing compiler fail', t => {
-  const f = fixture(t, { 'Page.vue': '<script lang="ts">const broken = 1;</script><script lang="ts">const other = 1;</script>' });
-  has(f.check(), /only one <script>/);
-  fs.writeFileSync(path.join(f.root, 'Page.vue'), '<script src="./domain.ts" lang="ts"></script>');
-  has(f.check(), /external Vue script src is unsupported/);
-  const missing = fixture(t, { 'Page.vue': '<script setup lang="ts">const a = 1;</script>' }, {}, false);
-  fs.mkdirSync(path.join(missing.root, 'node_modules'));
-  fs.symlinkSync(path.resolve(directory, '../../node_modules/typescript'), path.join(missing.root, 'node_modules/typescript'));
-  has(missing.check(), /cannot load @vue\/compiler-sfc/);
-});
-
-test('standalone and embedded entry points fail then pass with real TypeScript and Vue projects', t => {
-  const f = fixture(t, { 'Page.vue': '<script setup lang="ts">\nimport { Phase } from "./domain";\nconst phase: Phase = 0;\n</script>' });
+test('standalone and embedded entry points fail then pass with real TypeScript projects', t => {
+  const f = fixture(t, { 'main.ts': 'import { Phase } from "./domain";\nexport const phase: Phase = 0;\n' });
   const input = JSON.stringify({ root: f.root, projects: f.projects });
   const fail = spawnSync(process.execPath, [analyzer], { input, encoding: 'utf8' });
   assert.equal(fail.status, 1);
-  assert.match(fail.stderr, /Page.vue:3:.*use named members/);
-  fs.writeFileSync(path.join(f.root, 'Page.vue'), '<script setup lang="ts">import { Phase } from "./domain"; const phase: Phase = Phase.First;</script>');
+  assert.match(fail.stderr, /main.ts:2:.*use named members/);
+  fs.writeFileSync(path.join(f.root, 'main.ts'), 'import { Phase } from "./domain"; export const phase: Phase = Phase.First;');
   const pass = spawnSync(process.execPath, ['--input-type=module', '--eval', fs.readFileSync(analyzer, 'utf8'), '--', '--enum-input', input], { encoding: 'utf8' });
   assert.equal(pass.status, 0, pass.stderr);
   assert.equal(pass.stderr, '');
@@ -255,11 +249,11 @@ export function check(p: Phase) { switch(p) { case first: break; case Phase.Last
   assert.deepEqual(f.check(), []);
 });
 
-test('ambient declarations and imported Vue setup components remain available', t => {
+test('ambient declarations and imported modules remain available', t => {
   const f = fixture(t, {
     'globals.d.ts': 'declare const buildName: string;',
-    'Page.vue': '<template>😀 {{ phase }}</template>\n<script setup lang="ts">\nimport { Phase } from "./domain";\nconst phase: Phase = Phase.First;\n</script>',
-    'main.ts': 'import Page from "./Page.vue"; console.log(buildName, Page);',
+    'page.ts': 'import { Phase } from "./domain";\nexport const phase: Phase = Phase.First;\n',
+    'main.ts': 'import { phase } from "./page"; console.log(buildName, phase);',
   }, { compilerOptions: { strict: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', skipLibCheck: true, noUnusedLocals: true } });
   assert.deepEqual(f.check(), []);
 });

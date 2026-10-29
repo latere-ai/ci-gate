@@ -30,57 +30,12 @@ function projectProgram(root, project) {
   const ts = dependency(require, 'typescript');
   const config = ts.readConfigFile(configFile, ts.sys.readFile);
   if (config.error) throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, '\n'));
-  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, base, undefined, configFile, undefined,
-    [{ extension: '.vue', isMixedContent: true, scriptKind: ts.ScriptKind.Deferred }]);
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, base, undefined, configFile);
   if (parsed.errors.length) throw new Error(parsed.errors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('\n'));
-  const virtual = new Map();
-  const vueFiles = parsed.fileNames.filter(file => file.endsWith('.vue') && !excluded(file));
-  if (vueFiles.length) {
-    const sfc = dependency(require, '@vue/compiler-sfc');
-    for (const file of vueFiles) {
-      const text = fs.readFileSync(file, 'utf8');
-      const { descriptor, errors } = sfc.parse(text, { filename: file });
-      if (errors.length) throw new Error(`${path.relative(root, file)}: ${errors.map(String).join('\n')}`);
-      const blocks = [descriptor.script, descriptor.scriptSetup].filter(Boolean);
-      let script = text.replace(/[^\r\n]/g, ' ');
-      for (const block of blocks) {
-        if (block.src) throw new Error(`${path.relative(root, file)}: external Vue script src is unsupported; include its TypeScript file directly`);
-        const start = block.loc.start.offset;
-        script = script.slice(0, start) + block.content + script.slice(start + block.content.length);
-      }
-      // These are compiler macros in script setup. Importing only used macros
-      // gives their real Vue types without fabricating an ambient any boundary.
-      const macros = ['defineProps', 'defineEmits', 'defineExpose', 'defineOptions', 'defineSlots', 'defineModel', 'withDefaults'];
-      const used = macros.filter(name => new RegExp(`\\b${name}\\s*(?:<|\\()`).test(script));
-      if (used.length) script += `\nimport { ${used.join(', ')} } from 'vue';\n`;
-      // script setup becomes a component with a default export at compilation.
-      // Its template is outside this gate; preserve module imports here while
-      // vue-tsc continues to own template and component-prop checking.
-      const syntax = ts.createSourceFile(file, script, ts.ScriptTarget.Latest, true);
-      if (!syntax.statements.some(statement => ts.isExportAssignment(statement) && !statement.isExportEquals)) {
-        script += '\nexport default {};\n';
-      }
-      virtual.set(`${file}.ts`, script);
-    }
-  }
   const options = { ...parsed.options, noEmit: true };
-  const host = ts.createCompilerHost(options);
-  const originalRead = host.readFile;
-  const originalExists = host.fileExists;
-  host.readFile = file => virtual.get(file) ?? originalRead(file);
-  host.fileExists = file => virtual.has(file) || originalExists(file);
-  host.getSourceFile = (file, languageVersion) => {
-    const text = host.readFile(file);
-    return text === undefined ? undefined : ts.createSourceFile(file, text, languageVersion, true);
-  };
-  host.resolveModuleNames = (names, containingFile) => names.map(name => {
-    if (name.endsWith('.vue')) {
-      const resolved = path.resolve(path.dirname(containingFile), `${name}.ts`);
-      if (virtual.has(resolved)) return { resolvedFileName: resolved, extension: ts.Extension.Ts };
-    }
-    return ts.resolveModuleName(name, containingFile, options, host).resolvedModule;
-  });
-  const fileNames = parsed.fileNames.filter(file => !excluded(file) || /\.d\.[cm]?ts$/.test(file)).map(file => file.endsWith('.vue') ? `${file}.ts` : file);
+  // Parent links let a finding walk from a node to its enclosing function.
+  const host = ts.createCompilerHost(options, true);
+  const fileNames = parsed.fileNames.filter(file => !excluded(file) || /\.d\.[cm]?ts$/.test(file));
   const program = ts.createProgram(fileNames, options, host);
   return { ts, base, program };
 }
@@ -92,7 +47,7 @@ function inspectProject(root, project) {
   const location = node => {
     const source = node.getSourceFile();
     const point = source.getLineAndCharacterOfPosition(node.getStart());
-    return `${path.relative(root, source.fileName).replace(/\.vue\.ts$/, '.vue')}:${point.line + 1}:${point.character + 1}`;
+    return `${path.relative(root, source.fileName)}:${point.line + 1}:${point.character + 1}`;
   };
   const report = (node, message) => findings.add(`${location(node)}: ${message}`);
   const sourceFiles = program.getSourceFiles().filter(file => !file.isDeclarationFile && !excluded(file.fileName) && inside(root, file.fileName));
@@ -102,7 +57,7 @@ function inspectProject(root, project) {
     if (!match) throw new Error(`invalid selector ${selector}; expected file.ts#Symbol or file.ts#Interface.field`);
     const file = path.resolve(base, match[1]);
     if (!inside(root, file)) throw new Error(`selector must be inside repository: ${selector}`);
-    const source = sourceFiles.find(source => source.fileName === file || source.fileName === `${file}.ts`);
+    const source = sourceFiles.find(source => source.fileName === file);
     if (!source) throw new Error(`selector source is not a production file in the project: ${selector}`);
     const declarations = source.statements.flatMap(statement => ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : [statement]);
     const declaration = declarations.find(node => node.name && ts.isIdentifier(node.name) && node.name.text === match[2]);
@@ -233,13 +188,10 @@ function inspectProject(root, project) {
   for (const source of sourceFiles) inspect(source);
   for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
     if (diagnostic.file && excluded(diagnostic.file.fileName)) continue;
-    // Template references are not represented by the script projection. These
-    // diagnostics remain vue-tsc's responsibility, not evidence of a bad enum.
-    if (diagnostic.file?.fileName.endsWith('.vue.ts') && [6133, 6192, 6196, 6198, 6199].includes(diagnostic.code)) continue;
     const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
     if (diagnostic.file && diagnostic.start !== undefined) {
       const point = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
-      findings.add(`${path.relative(root, diagnostic.file.fileName).replace(/\.vue\.ts$/, '.vue')}:${point.line + 1}:${point.character + 1}: TypeScript TS${diagnostic.code}: ${message}`);
+      findings.add(`${path.relative(root, diagnostic.file.fileName)}:${point.line + 1}:${point.character + 1}: TypeScript TS${diagnostic.code}: ${message}`);
     } else findings.add(`TypeScript TS${diagnostic.code}: ${message}`);
   }
   return [...findings];
