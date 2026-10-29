@@ -348,3 +348,9 @@ as the gating variable throughout `frontend/src/views/Models.vue` and
 `frontend/src/lib/providerKeys.ts`, seven lines, with the value correctly
 derived from `platform_admin`. The name is the finding, and renaming it is
 that repository's.
+
+
+## Amendment, 2026-10-29: `.vue` leaves the scan target
+
+The roles rule no longer reads `.vue` files, because every Latere frontend
+is React and no active repository in the organization holds one.
