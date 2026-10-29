@@ -14,9 +14,15 @@ committed: the commit log already holds that.
 
 - **`words`: what a model or a person reads keeps to the do-not-use list.** The binary carries the organization's do-not-use list, `internal/words/do-not-use.yaml`: twenty-one words, each with the readers it is banned for (model-facing, person-facing, spec-overview), the forms matched, the reason and the words to write instead. In a repository that names a place to read, each form fails the gate where its reader reads it: the files `words.model_facing` matches and their names, read as tool names, with only the highest `-vN` of each tool's description read, since a released version is kept for replay and no longer offered (`words.older_versions` keeps an older one a repository still offers); the string files `words.person_facing` matches; and, with `words.spec_overview`, each spec's frontmatter title and `## Overview` section. Matching is by whole word and case-insensitive, with identifiers split at `_`, `-` and a change of case. In a `.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` or `.json` file only the strings are read, not code, comments, an object's keys or a `{name}` placeholder; in a spec, neither a link's target nor a `[[wikilink]]`'s file name is read. Each finding names the file, the line, the word, the reader, the reason and the words to write instead. `words.allow` takes a list word, a longer text such as a wire name, a path glob or a text and a path, each with its reason; an entry no hit needs fails the gate. `words.vocabulary` adds a list of the repository's own in the same shape; a word or a form the carried list already has fails. A glob that matches nothing, and a `words.vocabulary` file that is missing or holds no list, fail with what to do.
 
+### Changed
+
+- **`enum-typescript` reads TypeScript and TSX only.** It no longer reads Vue single-file components and needs no `@vue/compiler-sfc`: a project's installed `typescript` is all it loads. A selector under `enums.typescript` names a `.ts` or `.tsx` file; one that names a `.vue` file is refused when `.lateregate.yaml` is read.
+- **The `identity` gate's `roles` rule no longer reads `.vue` files.** It reads `.ts`, `.tsx`, `.jsx`, `.svelte`, `.js`, `.mjs` and `.cjs`.
+
 ### Upgrading
 
 - Nothing changes for a repository whose `.lateregate.yaml` has no `words` block: the gate is skipped with that reason. The list is in the binary, so the gate needs no other checkout on a runner.
+- Nothing changes for a repository that holds no `.vue` file. In one that does, `enum-typescript` and the `roles` rule no longer check those files, and an `enums.typescript` selector that names one is refused until it names a `.ts` or `.tsx` file.
 
 ## v0.56.0 - 2026-10-23
 
