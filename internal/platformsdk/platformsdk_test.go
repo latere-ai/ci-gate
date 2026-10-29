@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -564,6 +565,13 @@ func TestHintNamesTheCallOrTheSDK(t *testing.T) {
 		"/v1/apps/apps/{}/{}": "add it to latere.ai/x/sdk-go",
 		// Environments are reached through their own client, not the SDK.
 		"/v1/environments": "add it to latere.ai/x/sdk-go",
+		// Memory's routes sit under the account's and are the memory
+		// package's, its base followed by an unfixed path included.
+		"/v1/account/memory":                   "use ListMemories, AddMemory or ForgetEverything in latere.ai/x/sdk-go/memory",
+		"/v1/account/memory/you/{}":            "use GetMemory, UpdateMemory or DeleteMemory in latere.ai/x/sdk-go/memory",
+		"/v1/account/memory/{}/{}":             "use GetMemory, UpdateMemory or DeleteMemory in latere.ai/x/sdk-go/memory",
+		"/v1/account/memory/forgotten/restore": "use RestoreMemory in latere.ai/x/sdk-go/memory",
+		"/v1/account/memory{}":                 "use latere.ai/x/sdk-go/memory",
 	} {
 		if got := hint(route); got != want {
 			t.Errorf("hint(%q) = %q, want %q", route, got, want)
@@ -582,4 +590,72 @@ func TestTheCallTableIsWrittenAsFindingsAre(t *testing.T) {
 			t.Errorf("%s names no package", route)
 		}
 	}
+}
+
+// memoryRoutes are the memory routes of the platform's account document,
+// docs/account/openapi.yaml, with each method it serves on them and the
+// SDK call that makes it, written as the document writes the paths.
+var memoryRoutes = []struct{ path, method, call string }{
+	{"/v1/account/memory", "GET", "ListMemories"},
+	{"/v1/account/memory", "POST", "AddMemory"},
+	{"/v1/account/memory", "DELETE", "ForgetEverything"},
+	{"/v1/account/memory/settings", "PATCH", "UpdateSettings"},
+	{"/v1/account/memory/forgotten", "GET", "ListForgotten"},
+	{"/v1/account/memory/forgotten/restore", "POST", "RestoreMemory"},
+	{"/v1/account/memory/export", "GET", "ExportMemory"},
+	{"/v1/account/memory/import", "POST", "ImportMemory"},
+	{"/v1/account/memory/you/{id}", "GET", "GetMemory"},
+	{"/v1/account/memory/you/{id}", "PATCH", "UpdateMemory"},
+	{"/v1/account/memory/you/{id}", "DELETE", "DeleteMemory"},
+	{"/v1/account/memory/projects/{project}/{id}", "GET", "GetMemory"},
+	{"/v1/account/memory/projects/{project}/{id}", "PATCH", "UpdateMemory"},
+	{"/v1/account/memory/projects/{project}/{id}", "DELETE", "DeleteMemory"},
+}
+
+// Every memory route and method of the account document is in the call
+// table under the memory package, with the call that makes it, so a
+// finding on one names that call rather than asking for one in the SDK.
+func TestTheCallTableNamesEveryMemoryRoute(t *testing.T) {
+	for _, r := range memoryRoutes {
+		route := normalize(r.path)
+		c, ok := calls[route]
+		if !ok {
+			t.Errorf("%s %s (%s) is not in the call table", r.method, r.path, route)
+			continue
+		}
+		if c.pkg != "memory" || !slices.Contains(c.names, r.call) {
+			t.Errorf("%s %s names %s %v, want %s in memory", r.method, r.path, c.pkg, c.names, r.call)
+		}
+	}
+}
+
+// A client that writes memory's routes itself is a finding at each, named
+// with the memory package's call: its own base constant, a request on a
+// base the scan cannot know, which is one finding rather than one for the
+// string and one for the request, a route built on the constant, and the
+// constant with a path a caller passes.
+func TestAMemoryRouteNamesTheMemoryPackage(t *testing.T) {
+	root := module(t, map[string]string{"c.go": `package client
+
+import (
+	"context"
+	"net/http"
+)
+
+const memoryBase = "/v1/account/memory"
+
+func settings(ctx context.Context, base string) (*http.Request, error) {
+	return http.NewRequestWithContext(ctx, http.MethodPatch, base+memoryBase+"/settings", nil)
+}
+
+func one(project, id string) string { return memoryBase + "/projects/" + project + "/" + id }
+
+func any(p string) string { return memoryBase + p }
+`})
+	out, err := run(t, config.PlatformViaSDK{}, root)
+	expect(t, out, err,
+		"c.go:8: platform route /v1/account/memory in a string; use ListMemories, AddMemory or ForgetEverything in latere.ai/x/sdk-go/memory",
+		"c.go:11: http.NewRequestWithContext to platform route /v1/account/memory/settings; use UpdateSettings in latere.ai/x/sdk-go/memory",
+		"c.go:14: platform route /v1/account/memory/projects/{}/{} in a string; use GetMemory, UpdateMemory or DeleteMemory in latere.ai/x/sdk-go/memory",
+		"c.go:16: platform route /v1/account/memory{} in a string; use latere.ai/x/sdk-go/memory")
 }

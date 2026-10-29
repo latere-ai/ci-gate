@@ -36,12 +36,12 @@ type sdkCall struct {
 }
 
 // calls maps a route, as normalize writes it, to the SDK calls that make it,
-// as the SDK's v0.7.0 surface has them: the iterator and the Page form of a
-// list alike. A route whose parameter is a kind, such as an evals
-// definition's, names the calls of every kind it can be. It names a call
-// only where the SDK has one; every other route is a call the SDK does not
-// make, and the finding says to add it there. Refresh it from the SDK when
-// a release adds calls.
+// as the SDK's v0.7.0 surface has them, with its memory package beside
+// them: the iterator and the Page form of a list alike. A route whose
+// parameter is a kind, such as an evals definition's, names the calls of
+// every kind it can be. It names a call only where the SDK has one; every
+// other route is a call the SDK does not make, and the finding says to add
+// it there. Refresh it from the SDK when a release adds calls.
 var calls = map[string]sdkCall{
 	"/v1/agents":                       {pkg: "agents"},
 	"/v1/agents/sessions":              {"agents", []string{"ListSessions", "ListSessionsPage", "CreateSession"}},
@@ -99,6 +99,25 @@ var calls = map[string]sdkCall{
 	"/v1/account/apps/{}/access/invites":  {"apps", []string{"Invite"}},
 	"/v1/account/apps/{}/access/password": {"apps", []string{"SetPassword", "RemovePassword"}},
 	"/v1/account/apps/{}/access/{}":       {"apps", []string{"RevokeAccess"}},
+
+	// What Latere remembers about a person, under the account's routes and
+	// made by the SDK's memory package, as the platform's account document
+	// lists them.
+	"/v1/account/memory":                   {"memory", []string{"ListMemories", "AddMemory", "ForgetEverything"}},
+	"/v1/account/memory/settings":          {"memory", []string{"UpdateSettings"}},
+	"/v1/account/memory/forgotten":         {"memory", []string{"ListForgotten"}},
+	"/v1/account/memory/forgotten/restore": {"memory", []string{"RestoreMemory"}},
+	"/v1/account/memory/export":            {"memory", []string{"ExportMemory"}},
+	"/v1/account/memory/import":            {"memory", []string{"ImportMemory"}},
+	"/v1/account/memory/you/{}":            {"memory", []string{"GetMemory", "UpdateMemory", "DeleteMemory"}},
+	"/v1/account/memory/projects/{}/{}":    {"memory", []string{"GetMemory", "UpdateMemory", "DeleteMemory"}},
+	// One memory by a scope the source does not fix: you, or a project's.
+	"/v1/account/memory/{}/{}": {"memory", []string{"GetMemory", "UpdateMemory", "DeleteMemory"}},
+	// The memory package's base path followed by a part the source does not
+	// fix. The base is a route with calls of its own, so hint's rule for a
+	// capability's bare base does not reach it, and every call under it is
+	// still the package's.
+	"/v1/account/memory{}": {pkg: "memory"},
 
 	"/v1/apps":                              {pkg: "apps"},
 	"/v1/apps/apps":                         {"apps", []string{"ListApps", "ListAppsPage", "CreateApp"}},
