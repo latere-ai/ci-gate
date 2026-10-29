@@ -873,7 +873,7 @@ directory, and a spec whose status the tree's `spec.settled` list calls
 finished, because a record may name the mechanism it retired. Nothing here
 runs a service.
 
-The `roles` rule also reads the frontend: `.ts`, `.tsx`, `.jsx`, `.vue`,
+The `roles` rule also reads the frontend: `.ts`, `.tsx`, `.jsx`,
 `.svelte`, `.js`, `.mjs` and `.cjs` files, because a page decides access
 as surely as a handler does. What no person in the repository wrote is not
 read: `node_modules/`, `testdata/`, a bundler's output (`dist/`, `build/`,
@@ -1223,16 +1223,12 @@ invoke `enum-typescript` directly; that command does not need a consumer
 Go repository.
 
 The TypeScript gate needs Node and the project's installed `typescript`.
-Vue script blocks additionally need `@vue/compiler-sfc`; script-setup
-macros use the project's Vue types. Use the tsconfig that includes
-application source, rather than a solution tsconfig containing only
-project references. The gate reads TypeScript, TSX and Vue scripts,
-including imported domains; Vue templates and component props remain the
-responsibility of `vue-tsc`. External Vue `script src` blocks fail with a
-diagnostic: include the source as a TypeScript file instead. Test files
-and declaration files are not implementation surfaces; ambient
-declarations still participate in typing. Compiler and configuration
-errors fail the gate.
+Use the tsconfig that includes application source, rather than a solution
+tsconfig containing only project references. The gate reads TypeScript
+and TSX files, including imported domains, and a selector names a `.ts`
+or `.tsx` file. Test files and declaration files are not implementation
+surfaces; ambient declarations still participate in typing. Compiler and
+configuration errors fail the gate.
 
 `enum-typescript-prepare` finds each project's nearest npm or Bun lockfile
 inside the repository, verifies the lockfile and `package.json` are
