@@ -50,24 +50,27 @@ The change is every path that differs from the merge base of `HEAD` and
 `origin/HEAD` (or `origin/main`, where the clone never recorded
 `origin/HEAD`), committed or not, and every untracked path git does not
 ignore. Each path belongs to the package whose directory is its nearest,
-so a file a package embeds and the testdata its tests read count as that
-package's change. A path under no package, such as a frontend or the
-changelog, belongs to none.
+so the testdata a package's tests read counts as that package's change,
+and to every package that embeds it, which can be a package above it. A
+path under no package, such as a frontend or the changelog, belongs to
+none.
 
 Four gates narrow; the rest read the whole tree, since each is seconds:
 
 | Gate | What it reads on a laptop |
 | --- | --- |
 | `suite` | the changed packages and every package whose build or tests import one; the profile measures the changed packages, and the floor applies to them. Skipped when no package changed |
-| `lint` | the changed packages. Skipped when none changed |
-| `vuln` | skipped; CI scans on every push, and a dependency change checks the whole tree |
+| `lint` | the same packages as the suite, since a changed signature leaves its findings in the callers. Skipped when no package changed |
+| `vuln` | the whole module, as on a runner, when a Go package changed: new code can call a vulnerable function nothing called before. Skipped when none changed |
 | `lean` | skipped unless a changed path is in a Lake project |
 
 The whole tree is checked, with the reason on the first line, when
 `go.mod`, `go.sum`, `go.work`, `go.work.sum`, `.lateregate.yaml` or a
-repository-owned `.golangci.yml` changed, when a package was removed or
-moved, or when the change cannot be measured: no default branch, no merge
-base, or a module `go list` cannot list. `-all` checks the whole tree on
+repository-owned `.golangci.yml` changed, when anything under `vendor/`
+changed, when a directory holds changed Go files but no package `go list`
+reports (a package removed or moved, or one a build constraint excludes
+on this machine), or when the change cannot be measured: no default
+branch, no merge base, or a module `go list` cannot list. `-all` checks the whole tree on
 request. A runner (`CI` set), `release`, a gate run by name and `list`
 always read the whole tree.
 
@@ -76,16 +79,26 @@ The run opens with what it read and ends its verdict on it:
 ```
 checking what changed since origin/main (78d4428effa9): 2 files, 1 Go package, 5 packages with what imports them; -all checks the whole tree
 ...
-PASS lint         over the 1 package the change touches
-SKIP vuln         no dependency changed since origin/main (78d4428effa9)
+PASS lint         over the 5 packages the change reaches
+PASS vuln
 PASS suite        over the 5 packages the change reaches; the floor on the 1 package it changes
-10 gates passed on what changed since origin/main (78d4428effa9)
+11 gates passed on what changed since origin/main (78d4428effa9)
 ```
 
-A test that reads a file outside its package's directory by a relative
-path, such as `../docs`, depends on it in a way the import graph does not
-record, so a change to that file alone can pass on a laptop and fail in
-CI. Run `-all` before a push that changes such a file.
+A changed package with no statements, or one the floor exempts, gives
+the floor nothing to measure; when every changed package is such a one,
+the floor passes and says `the floor measures nothing here`.
+
+Two failures a laptop check cannot see, and CI, which reads the whole
+tree, catches after the push:
+
+- A test that reads a file outside its package's directory by a relative
+  path, such as `../docs`, depends on it in a way the import graph does
+  not record, so a change to that file alone can pass on a laptop. Run
+  `-all` before a push that changes such a file.
+- The floor applies to the changed packages only. A package the change
+  did not touch can still lose coverage, when a test in a changed package
+  that exercised it is removed or rewritten.
 
 ## The plan: `list`
 

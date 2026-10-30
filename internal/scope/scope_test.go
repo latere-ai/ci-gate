@@ -20,10 +20,13 @@ const base = "1111111111111111111111111111111111111111"
 
 // pkg is one package go list reports, as the fake toolchain prints it.
 type pkg struct {
-	ImportPath   string
-	Deps         []string `json:",omitempty"`
-	TestImports  []string `json:",omitempty"`
-	XTestImports []string `json:",omitempty"`
+	ImportPath      string
+	Deps            []string `json:",omitempty"`
+	TestImports     []string `json:",omitempty"`
+	XTestImports    []string `json:",omitempty"`
+	EmbedFiles      []string `json:",omitempty"`
+	TestEmbedFiles  []string `json:",omitempty"`
+	XTestEmbedFiles []string `json:",omitempty"`
 }
 
 // module is the fixture graph: b imports a, c's tests import b, d stands
@@ -63,13 +66,13 @@ func (r *repo) exec(_ []string, _ bool, name string, args ...string) ([]byte, er
 		return []byte(base + "\n"), r.verify
 	case strings.HasPrefix(cmd, "git merge-base HEAD "):
 		return []byte(base + "\n"), r.mergeBase
-	case cmd == "git diff --name-only --no-renames -z "+base:
+	case cmd == "git diff --name-only --no-renames --relative -z "+base:
 		return []byte(strings.Join(r.changed, "\x00")), r.diff
 	case cmd == "git ls-files --others --exclude-standard -z":
 		return []byte(strings.Join(r.others, "\x00")), r.untracked
 	case cmd == "go list -m":
 		return []byte(r.modulePath + "\n"), r.mod
-	case cmd == "go list -e -json=ImportPath,Deps,TestImports,XTestImports ./...":
+	case cmd == "go list -e -json=ImportPath,Deps,TestImports,XTestImports,EmbedFiles,TestEmbedFiles,XTestEmbedFiles ./...":
 		if r.listOut != "" {
 			return []byte(r.listOut), r.list
 		}
@@ -216,19 +219,52 @@ func TestADeletedFileChangesItsPackage(t *testing.T) {
 }
 
 // A package removed or moved leaves whatever imported it outside the graph,
-// so nothing the graph says can be trusted.
-func TestARemovedPackageChecksTheWholeTree(t *testing.T) {
-	r := newRepo("gone/gone.go", "a/a.go")
-	s := Resolve(tree(t, "a/a.go"), "go", r.exec)
-	if s.Narrows() || !strings.Contains(s.Whole, "the package in gone was removed or moved") {
-		t.Errorf("whole = %q", s.Whole)
+// so nothing the graph says can be trusted. So does a package whose every
+// file a build constraint now excludes here: its files are still on disk,
+// and go list no longer reports it.
+func TestAGoDirectoryWithNoListedPackageChecksTheWholeTree(t *testing.T) {
+	for _, files := range [][]string{
+		{"gone/gone.go", "a/a.go"},     // removed: neither file on disk
+		{"linuxonly/sys.go", "a/a.go"}, // excluded: on disk, not listed
+	} {
+		s := Resolve(tree(t, files...), "go", newRepo(files...).exec)
+		dir, _, _ := strings.Cut(files[0], "/")
+		if s.Narrows() || !strings.HasPrefix(s.Whole, dir+" holds Go files but no package go list reports") {
+			t.Errorf("%v: whole = %q", files, s.Whole)
+		}
+	}
+	// A Go file go itself leaves out of ./... is no package's.
+	for _, f := range []string{"a/testdata/gen.go", "_examples/x/main.go", ".tools/x.go"} {
+		if s := Resolve(tree(t, f), "go", newRepo(f).exec); !s.Narrows() {
+			t.Errorf("%s: whole = %q", f, s.Whole)
+		}
+	}
+}
+
+// An embed pattern reads only below a package's directory, and that can be
+// another package's: a file a package embeds through a sub-package's
+// directory is both packages' change.
+func TestAnEmbeddingPackageOwnsWhatItEmbeds(t *testing.T) {
+	files := []string{"a/inner/data.txt"}
+	r := newRepo(files...)
+	r.pkgs = slices.Clone(module)
+	r.pkgs[0].EmbedFiles = []string{"inner/data.txt"}
+	s := Resolve(tree(t, files...), "go", r.exec)
+	if got := paths(s.Changed); !slices.Equal(got, []string{"example.com/m/a", "example.com/m/a/inner"}) {
+		t.Errorf("changed %v", got)
+	}
+	// Embedded by a test, the same.
+	r.pkgs[0].EmbedFiles, r.pkgs[0].XTestEmbedFiles = nil, []string{"inner/data.txt"}
+	s = Resolve(tree(t, files...), "go", r.exec)
+	if got := paths(s.Changed); !slices.Equal(got, []string{"example.com/m/a", "example.com/m/a/inner"}) {
+		t.Errorf("changed %v", got)
 	}
 }
 
 // What the whole tree depends on, the module's dependencies and the bar's
 // own configuration, sends the check back to the whole tree.
 func TestADependencyOrTheBarsConfigChecksTheWholeTree(t *testing.T) {
-	for _, f := range []string{"go.mod", "go.sum", "go.work", ".lateregate.yaml", ".golangci.yml"} {
+	for _, f := range []string{"go.mod", "go.sum", "go.work", ".lateregate.yaml", ".golangci.yml", "vendor/modules.txt", "vendor/github.com/x/y/y.go"} {
 		s := Resolve(tree(t, f), "go", newRepo(f, "a/a.go").exec)
 		if s.Narrows() || s.Whole != f+" changed since origin/main (111111111111)" {
 			t.Errorf("%s: whole = %q", f, s.Whole)

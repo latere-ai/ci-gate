@@ -36,15 +36,23 @@ func scoped(c Ctx, name string) (skip, note string, err error) {
 		}
 		return "", note, nil
 	case "lint":
+		// A change can move a finding into a package it did not touch: a
+		// function that now returns an error leaves an unchecked call in
+		// its caller, and a deprecation marks every use. So the linter reads
+		// what the change reaches, as the suite does.
 		if len(s.Changed) == 0 {
 			return none, "", nil
 		}
-		return "", "over the " + count(len(s.Changed), "package") + " the change touches", nil
+		return "", "over the " + count(len(s.Reached), "package") + " the change reaches", nil
 	case "vuln":
-		// A dependency change checks the whole tree, so a scope that holds
-		// has none; the advisories that move with no commit are CI's, which
-		// scans on every push.
-		return "no dependency changed since " + s.Since(), "", nil
+		// govulncheck fails on a vulnerability the code calls, so a Go
+		// change can fail it with no dependency moving: a new call to a
+		// vulnerable function of a module already required. It reads the
+		// whole module, since reachability is a property of the program.
+		if len(s.Changed) == 0 {
+			return none, "", nil
+		}
+		return "", "", nil
 	case "lean":
 		dirs, err := gates.LakeProjects(c.Exec)
 		if err != nil {

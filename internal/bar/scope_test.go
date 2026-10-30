@@ -53,7 +53,7 @@ func TestAChangeWithNoGoPackageSkipsTheLongGates(t *testing.T) {
 	for name, want := range map[string]string{
 		"suite": "no Go package changed since origin/main (222222222222)",
 		"lint":  "no Go package changed since origin/main (222222222222)",
-		"vuln":  "no dependency changed since origin/main (222222222222)",
+		"vuln":  "no Go package changed since origin/main (222222222222)",
 	} {
 		if e := entry(plan, name); e.Status != Skip || e.Reason != want {
 			t.Errorf("%s: %s %q, want skip %q", name, e.Status, e.Reason, want)
@@ -99,7 +99,7 @@ func TestLeanRunsOnlyForAChangedProject(t *testing.T) {
 
 // A Go change runs the suite over what it reaches and lint over what it
 // touches, and the plan says so.
-func TestAGoChangeNarrowsTheSuiteAndLint(t *testing.T) {
+func TestAGoChangeNarrowsTheSuiteAndLintAndScans(t *testing.T) {
 	cfg, err := config.Load(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -116,10 +116,14 @@ func TestAGoChangeNarrowsTheSuiteAndLint(t *testing.T) {
 		!strings.HasPrefix(e.Reason, "without -race") {
 		t.Errorf("suite: %s %q", e.Status, e.Reason)
 	}
-	if e := entry(plan, "lint"); e.Status != Run || e.Reason != "over the 1 package the change touches" {
+	// The linter reads what the change reaches: a changed signature leaves
+	// its findings in the callers.
+	if e := entry(plan, "lint"); e.Status != Run || e.Reason != "over the 3 packages the change reaches" {
 		t.Errorf("lint: %s %q", e.Status, e.Reason)
 	}
-	if e := entry(plan, "vuln"); e.Status != Skip {
+	// A Go change can call a vulnerable function no code called before,
+	// so the scan runs, over the whole module.
+	if e := entry(plan, "vuln"); e.Status != Run || e.Reason != "" {
 		t.Errorf("vuln: %s %q", e.Status, e.Reason)
 	}
 
@@ -216,8 +220,8 @@ func TestCheckSaysWhatItRead(t *testing.T) {
 }
 
 // Scoped, the lint gate runs the linter over the packages the change
-// touches, as directory patterns.
-func TestLintReadsThePackagesTheChangeTouches(t *testing.T) {
+// reaches, as directory patterns.
+func TestLintReadsThePackagesTheChangeReaches(t *testing.T) {
 	var ran []string
 	c, _ := ctx(t, nil, func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
 		ran = append(ran, name+" "+strings.Join(args, " "))
@@ -231,7 +235,7 @@ func TestLintReadsThePackagesTheChangeTouches(t *testing.T) {
 	if err := g.Run(c); err != nil {
 		t.Fatal(err)
 	}
-	if len(ran) != 1 || !strings.HasSuffix(ran[0], " run --allow-parallel-runners ./store") {
+	if len(ran) != 1 || !strings.HasSuffix(ran[0], " run --allow-parallel-runners ./api ./store .") {
 		t.Errorf("ran %v", ran)
 	}
 	ran = nil
@@ -253,5 +257,66 @@ func TestCountReadsAsWords(t *testing.T) {
 	}
 	if got := patterns([]scope.Package{{Dir: "."}, {Dir: "a/b"}}); !slices.Equal(got, []string{".", "./a/b"}) {
 		t.Errorf("patterns %v", got)
+	}
+}
+
+// A change confined to packages the floor cannot measure, ones with no
+// statements or exempt ones, passes the floor and says why; one that
+// changes a measurable package is held to it.
+func TestTheFloorMeasuresOnlyWhatTheChangeCanBeMeasuredOn(t *testing.T) {
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Cover.Exempt = map[string]string{"m/conformance": "run against a live server"}
+	c, sb := ctx(t, cfg, noSpecs)
+	for name, body := range map[string]string{
+		"go.mod":                     "module example.com/m\n\ngo 1.24\n",
+		"types/types.go":             "package types\n\ntype T int\n",
+		"conformance/conformance.go": "package conformance\n\nfunc Run() int { return 1 }\n",
+		"store/store.go":             "package store\n\nfunc Save() int { return 1 }\n",
+	} {
+		full := filepath.Join(c.Root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	profile := filepath.Join(c.Root, "coverage.out")
+	if err := os.WriteFile(profile, []byte("mode: atomic\nexample.com/m/store/store.go:3.19,3.29 1 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pkg := func(name string) scope.Package {
+		return scope.Package{ImportPath: "example.com/m/" + name, Dir: name}
+	}
+
+	s := change("types/types.go", "conformance/conformance.go")
+	s.Changed = []scope.Package{pkg("conformance"), pkg("types")}
+	s.Reached = s.Changed
+	c.Scope = s
+	run, _ := suiteRun(c)
+	if err := run.Floor(profile); err != nil {
+		t.Fatalf("nothing measurable changed, so the floor has nothing to fail: %v", err)
+	}
+	if !strings.Contains(sb.String(), "the floor measures nothing here") {
+		t.Errorf("the floor must say it measured nothing:\n%s", sb.String())
+	}
+
+	s = change("store/store.go")
+	s.Changed = []scope.Package{pkg("store")}
+	s.Reached = s.Changed
+	c.Scope = s
+	run, _ = suiteRun(c)
+	if err := run.Floor(profile); err == nil || !strings.Contains(err.Error(), "store 0.0%") {
+		t.Errorf("a changed package under the floor must fail it: %v", err)
+	}
+
+	c.Scope = &scope.Scope{Ref: "origin/main", Base: base, Changed: []scope.Package{pkg("store")}}
+	c.GoBin = filepath.Join(t.TempDir(), "no-go")
+	run, _ = suiteRun(c)
+	if err := run.Floor(profile); err == nil {
+		t.Error("a package list that fails must fail the floor")
 	}
 }

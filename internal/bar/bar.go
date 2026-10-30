@@ -170,7 +170,7 @@ var Gates = []Gate{
 	{Name: "lint", Doc: "golangci-lint " + golangci.Version + " against the shared config",
 		Run: func(c Ctx) error {
 			if c.Scope.Narrows() {
-				return golangci.LintPackages(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec, patterns(c.Scope.Changed))
+				return golangci.LintPackages(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec, patterns(c.Scope.Reached))
 			}
 			return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec)
 		}},
@@ -228,6 +228,9 @@ func suiteRun(c Ctx) (gates.SuiteRun, []string) {
 		Profile:    cover.Profile,
 	}
 	list := cover.GoLister(c.GoBin, c.Root)
+	run.Floor = func(profile string) error {
+		return cover.Run(c.Cfg.Cover, append([]string{profile}, c.Profiles...), c.Out, list)
+	}
 	if c.Scope.Narrows() {
 		// The run reads the packages the change reaches and measures the
 		// ones it changes. Every test that can reach a changed package
@@ -236,9 +239,21 @@ func suiteRun(c Ctx) (gates.SuiteRun, []string) {
 		run.Packages = importPaths(c.Scope.Reached)
 		run.CoverPkg = importPaths(c.Scope.Changed)
 		list = cover.Only(list, run.CoverPkg)
-	}
-	run.Floor = func(profile string) error {
-		return cover.Run(c.Cfg.Cover, append([]string{profile}, c.Profiles...), c.Out, list)
+		whole := run.Floor
+		run.Floor = func(profile string) error {
+			// A change confined to packages with no statements, or to
+			// exempt ones, gives the floor nothing to measure. The whole
+			// run still measures the rest; this run was asked about these.
+			pkgs, err := list()
+			if err != nil {
+				return err
+			}
+			if !slices.ContainsFunc(pkgs, func(p string) bool { _, exempt := c.Cfg.Cover.ExemptFor(p); return !exempt }) {
+				_, _ = fmt.Fprintln(c.Out, "the floor measures nothing here: every package the change touches holds no statements or is exempt")
+				return nil
+			}
+			return whole(profile)
+		}
 	}
 	var notes []string
 	for _, n := range []struct {

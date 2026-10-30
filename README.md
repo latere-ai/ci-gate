@@ -63,9 +63,9 @@ lists them.
 stop at the first failure, and puts the summary last.
 
 On a laptop it checks what changed since the default branch, which CI has
-already held to the whole bar: the test suite reads the changed packages
-and the packages that import them, lint reads the changed packages, and
-the vulnerability scan waits for CI. A change to a frontend or a document
+already held to the whole bar: the test suite and lint read the changed
+packages and the packages that import them, and the vulnerability scan
+runs only when a Go package changed. A change to a frontend or a document
 checks in seconds. A dependency or configuration change, a removed
 package, or `-all` checks the whole tree, and CI and `release` always do;
 [`docs/commands.md`](docs/commands.md#what-a-check-reads) has the rule.

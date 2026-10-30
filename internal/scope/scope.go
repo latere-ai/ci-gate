@@ -96,6 +96,12 @@ var wholeTreeFiles = []string{
 	config.Name, ".golangci.yml", ".golangci.yaml",
 }
 
+// wholeTree reports whether a change to f can move any package's verdict:
+// one of wholeTreeFiles, or a vendored dependency.
+func wholeTree(f string) bool {
+	return slices.Contains(wholeTreeFiles, f) || strings.HasPrefix(f, "vendor/")
+}
+
 // Resolve measures the change the checkout at root carries.
 //
 // It never narrows on a guess: when the base cannot be found, the module
@@ -119,7 +125,7 @@ func Resolve(root, goBin string, run gates.Exec) *Scope {
 	}
 	s.Files = files
 	for _, f := range files {
-		if slices.Contains(wholeTreeFiles, f) {
+		if wholeTree(f) {
 			s.Whole = f + " changed since " + s.Since()
 			return s
 		}
@@ -157,9 +163,11 @@ func defaultBranch(run gates.Exec) (string, error) {
 // changedFiles lists every path that differs from base in the working tree,
 // staged or not, and every untracked path git does not ignore. A rename is
 // listed as the path it left and the path it took, since both directories
-// changed.
+// changed. Paths are relative to the root, which is the module's directory
+// and need not be the repository's top level: --relative keeps the diff to
+// it, as ls-files already does.
 func changedFiles(run gates.Exec, base string) ([]string, error) {
-	diff, err := run(nil, false, "git", "diff", "--name-only", "--no-renames", "-z", base)
+	diff, err := run(nil, false, "git", "diff", "--name-only", "--no-renames", "--relative", "-z", base)
 	if err != nil {
 		return nil, fmt.Errorf("git cannot list what changed since %s: %w", short(base), err)
 	}
@@ -185,7 +193,26 @@ type listed struct {
 	Deps         []string
 	TestImports  []string
 	XTestImports []string
-	dir          string
+	// The files the package and its tests embed, relative to its
+	// directory. go:embed reads only below the package's directory, but
+	// that can be another package's directory too.
+	EmbedFiles      []string
+	TestEmbedFiles  []string
+	XTestEmbedFiles []string
+	dir             string
+}
+
+// embeds reports whether the package or its tests embed f, a slash path
+// relative to the root.
+func (p listed) embeds(f string) bool {
+	for _, files := range [][]string{p.EmbedFiles, p.TestEmbedFiles, p.XTestEmbedFiles} {
+		for _, e := range files {
+			if path.Join(p.dir, e) == f {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // list asks the toolchain for every package of the module, with what each
@@ -202,7 +229,7 @@ func list(root, goBin string, run gates.Exec) ([]listed, error) {
 	if prefix == "" || prefix == "command-line-arguments" || strings.Contains(prefix, "\n") {
 		return nil, fmt.Errorf("%s is not one Go module, so its packages cannot be scoped", root)
 	}
-	out, err := run(nil, false, goBin, "list", "-e", "-json=ImportPath,Deps,TestImports,XTestImports", "./...")
+	out, err := run(nil, false, goBin, "list", "-e", "-json=ImportPath,Deps,TestImports,XTestImports,EmbedFiles,TestEmbedFiles,XTestEmbedFiles", "./...")
 	if err != nil {
 		return nil, fmt.Errorf("go list cannot list the module's packages: %w", err)
 	}
@@ -234,20 +261,34 @@ func list(root, goBin string, run gates.Exec) ([]listed, error) {
 	return pkgs, nil
 }
 
-// owners names the package each changed file belongs to: the package whose
-// directory is the file's nearest. A file in a package's directory or below
-// it is an input of that package, whether it is Go source, a file the
-// package embeds, or testdata its tests read. A file under no package, such
-// as a frontend or the changelog, is an input of none.
+// owners names the packages each changed file belongs to: the package whose
+// directory is the file's nearest, and every package that embeds it. A file
+// in a package's directory or below it is an input of that package, whether
+// it is Go source, a file the package embeds, or testdata its tests read; a
+// package above it that embeds it, through a directory that is a package of
+// its own, reads it too. A file under no package, such as a frontend or the
+// changelog, is an input of none.
 //
-// A Go file that is gone, from a directory that no longer holds a package,
-// is a package removed or moved, and whatever imported it is not in the
-// graph any more, so the reason to check the whole tree is returned.
+// A Go file in a directory go list does not report as a package is a
+// package removed or moved, or one whose every file a build constraint
+// excludes on this machine. Whatever imported it is outside the graph the
+// scope reads, so the reason to check the whole tree is returned.
 func owners(root string, files []string, pkgs []listed) ([]Package, string) {
 	var changed []Package
+	add := func(p listed) {
+		pkg := Package{ImportPath: p.ImportPath, Dir: p.dir}
+		if !slices.Contains(changed, pkg) {
+			changed = append(changed, pkg)
+		}
+	}
 	for _, f := range files {
-		if nested(root, path.Dir(f)) {
+		dir := path.Dir(f)
+		if nested(root, dir) {
 			continue
+		}
+		if strings.HasSuffix(f, ".go") && !ignored(dir) && !slices.ContainsFunc(pkgs, func(p listed) bool { return p.dir == dir }) {
+			return nil, fmt.Sprintf("%s holds Go files but no package go list reports: a package removed or moved, "+
+				"or one build constraints exclude here, so what imports it is outside the graph", dir)
 		}
 		owner := -1
 		for i, p := range pkgs {
@@ -255,15 +296,13 @@ func owners(root string, files []string, pkgs []listed) ([]Package, string) {
 				owner = i
 			}
 		}
-		if strings.HasSuffix(f, ".go") && removed(root, f) && (owner < 0 || pkgs[owner].dir != path.Dir(f)) && !ignored(path.Dir(f)) {
-			return nil, fmt.Sprintf("the package in %s was removed or moved, so what imported it is not in the graph", path.Dir(f))
+		if owner >= 0 {
+			add(pkgs[owner])
 		}
-		if owner < 0 {
-			continue
-		}
-		p := Package{ImportPath: pkgs[owner].ImportPath, Dir: pkgs[owner].dir}
-		if !slices.Contains(changed, p) {
-			changed = append(changed, p)
+		for _, p := range pkgs {
+			if p.embeds(f) {
+				add(p)
+			}
 		}
 	}
 	slices.SortFunc(changed, func(a, b Package) int { return strings.Compare(a.ImportPath, b.ImportPath) })
@@ -310,12 +349,6 @@ func depth(dir string) int {
 // within reports whether the slash path f is dir or sits below it.
 func within(f, dir string) bool {
 	return dir == "." || f == dir || strings.HasPrefix(f, dir+"/")
-}
-
-// removed reports whether the file is gone from the working tree.
-func removed(root, f string) bool {
-	_, err := os.Stat(filepath.Join(root, filepath.FromSlash(f)))
-	return errors.Is(err, os.ErrNotExist)
 }
 
 // ignored reports whether the go command leaves dir out of ./...: a

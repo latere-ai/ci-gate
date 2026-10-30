@@ -10,6 +10,34 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- **A laptop check now catches what a change breaks in its callers.**
+  Lint reads the changed packages and every package that imports them,
+  as the test suite does, so a changed signature or a removed export
+  fails before the push instead of in CI.
+- **The vulnerability scan runs on a laptop when a Go package changed.**
+  New code can call a vulnerable function nothing called before; the scan
+  reads the whole module, as on a runner. A change to no Go package
+  still skips it.
+- **A file a package embeds from a sub-package's directory is that
+  package's change too**, so its tests run when the file changes.
+- **A directory with changed Go files but no package `go list` reports
+  checks the whole tree**, which covers a package a build constraint
+  excludes on this machine as well as a removed one. So does any change
+  under `vendor/`.
+- **A change confined to packages with no statements, or ones the floor
+  exempts, passes the floor** and says `the floor measures nothing here`,
+  instead of failing for measuring nothing.
+- **A module below its repository's top level reads its own change.**
+  Changed paths were relative to the repository rather than the module,
+  so no package matched them and the check narrowed to nothing.
+- The coverage floor applies to the changed packages only, so a package
+  the change did not touch can still drop under it when a changed
+  package's tests that covered it are removed; CI, which reads the whole
+  tree, catches that. `docs/commands.md` lists it with the other case a
+  laptop check cannot see.
+
 ## v0.59.0 - 2026-10-30
 
 ### Changed
