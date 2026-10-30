@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.59.0 - 2026-10-30
+
 ### Changed
 
 - **On a laptop, `lateregate` checks what changed since the default
