@@ -37,7 +37,9 @@ func module(t *testing.T) string {
 }
 
 // The render happens before the linter, every time: golangci-lint with no
-// config lints its own defaults, and a stale file lints last month's.
+// config lints its own defaults, and a stale file lints last month's. The
+// whole-module run takes no machine-wide lock, so a lint in another checkout
+// neither holds it up nor fails it.
 func TestLintRendersThenRunsThePinnedLinter(t *testing.T) {
 	dir := module(t)
 	var calls []call
@@ -55,12 +57,34 @@ func TestLintRendersThenRunsThePinnedLinter(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("ran %v", calls)
 	}
-	want := "go run " + Module + "@" + Version + " run ./..."
+	want := "go run " + Module + "@" + Version + " run --allow-parallel-runners ./..."
 	if got := calls[0].name + " " + strings.Join(calls[0].args, " "); got != want {
 		t.Errorf("ran %q, want %q", got, want)
 	}
 	if !strings.Contains(sb.String(), "wrote") || !strings.Contains(sb.String(), Version) {
 		t.Errorf("report:\n%s", sb.String())
+	}
+}
+
+// A run scoped to a change lints the packages it names, with the same
+// rendered config and the same pinned linter.
+func TestLintPackagesLintsWhatItIsGiven(t *testing.T) {
+	dir := module(t)
+	var calls []call
+	var sb strings.Builder
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := LintPackages(dir, cfg, "go", &sb, record(&calls, nil), []string{".", "./internal/a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, Name)); err != nil {
+		t.Fatalf("%s must be rendered before the linter runs: %v", Name, err)
+	}
+	want := "go run " + Module + "@" + Version + " run --allow-parallel-runners . ./internal/a"
+	if len(calls) != 1 || calls[0].name+" "+strings.Join(calls[0].args, " ") != want {
+		t.Errorf("ran %v, want %q", calls, want)
 	}
 }
 

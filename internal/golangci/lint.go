@@ -29,13 +29,25 @@ const Module = "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
 // A repository that keeps its own config is left to it, with the reason
 // printed so the exception stays visible.
 func Lint(root string, cfg *config.Config, goBin string, out io.Writer, run gates.Exec) error {
-	return lint(root, cfg, goBin, out, run, nil, []string{"./..."})
+	return lint(root, cfg, goBin, out, run, []string{"./..."})
+}
+
+// LintPackages is Lint over the packages a change touches, given as
+// directory patterns such as ./internal/store.
+func LintPackages(root string, cfg *config.Config, goBin string, out io.Writer, run gates.Exec, patterns []string) error {
+	return lint(root, cfg, goBin, out, run, patterns)
 }
 
 // lint renders the shared configuration and runs the linter over patterns.
-// Lint passes the whole module; Prepush passes the packages a push changes,
-// and flags of its own.
-func lint(root string, cfg *config.Config, goBin string, out io.Writer, run gates.Exec, flags, patterns []string) error {
+//
+// Every run opts out of the linter's machine-wide lock. Without
+// --allow-parallel-runners a second golangci-lint on the machine waits for
+// the first and then fails with "parallel golangci-lint is running", so two
+// checkouts gated at once, two sessions or a session and a hook, queue on
+// each other or fail for no finding. The lock guards nothing the run needs:
+// the linter's cache is content-addressed, as the go command's is, and
+// concurrent runs read and write it safely.
+func lint(root string, cfg *config.Config, goBin string, out io.Writer, run gates.Exec, patterns []string) error {
 	reason, err := Own(root, cfg)
 	if err != nil {
 		return err
@@ -49,8 +61,7 @@ func lint(root string, cfg *config.Config, goBin string, out io.Writer, run gate
 		}
 		_, _ = fmt.Fprintln(out, "wrote "+path)
 	}
-	args := append([]string{"run", Module + "@" + Version, "run"}, flags...)
-	args = append(args, patterns...)
+	args := append([]string{"run", Module + "@" + Version, "run", "--allow-parallel-runners"}, patterns...)
 	if _, err := run(nil, true, goBin, args...); err != nil {
 		return fmt.Errorf("golangci-lint %s reported findings: %w", Version, err)
 	}

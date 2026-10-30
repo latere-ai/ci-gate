@@ -10,6 +10,13 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- **No lint run waits for another.** The full `lint` gate no longer takes
+  golangci-lint's machine-wide lock, as the pre-push lint already did, so
+  two checkouts gated at once run side by side instead of one failing
+  with "parallel golangci-lint is running".
+
 ## v0.58.0 - 2026-10-29
 
 ### Changed
