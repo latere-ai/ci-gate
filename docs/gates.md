@@ -55,6 +55,14 @@ separately compiles and runs the suite six times to learn the same six
 facts; `-race` already forces atomic coverage, and a sandbox, a stripped
 PATH or a run label wraps whatever runs inside it.
 
+A check on a laptop runs the suite over what changed since the default
+branch: vet and `go test` read the changed packages and every package
+whose build or tests import one, `-coverpkg` names the changed packages,
+and the floor applies to those. Every test that can reach a changed
+package is in the run, so each changed package gets the figure the whole
+suite would give it. [`commands.md`](commands.md#what-a-check-reads) has
+the rule.
+
 The first line of a failure names the property: `the suite is not
 race-clean`, `the suite reached for docker, which is not on the stripped
 PATH`, `the suite left 2 entries under TMPDIR`, `the suite left 3
@@ -467,6 +475,11 @@ where editors look for it. It is not committed: regenerating on every run
 makes drift impossible, where a committed copy only makes drift
 detectable. Gitignore it; the gate refuses to write over a tracked file.
 `lateregate golangci` renders it without linting.
+
+The linter runs with `--allow-parallel-runners`, so a lint in another
+checkout neither waits for this one nor fails it. A check on a laptop
+lints the packages the change touches, and skips the gate when it touches
+none.
 
 Beyond the standard linters the shared set turns on the ones that catch
 bugs rather than style: `bodyclose`, `errorlint`, `nilerr`,
@@ -1245,7 +1258,9 @@ Bun.
 `fmt-check` fails on any tracked Go file `gofmt` would change. `vuln` runs
 govulncheck at the version pinned in this repository and fails on a
 vulnerability reachable from the module's code. `vuln` needs the network
-and can change verdict with no commit, which is why neither hook runs it.
+and can change verdict with no commit, which is why neither hook runs it,
+and why a check on a laptop, which checks the whole tree whenever a
+dependency changes, skips it: CI scans on every push.
 
 ## `lean`: the proofs still check
 

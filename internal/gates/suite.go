@@ -44,6 +44,21 @@ type SuiteRun struct {
 	Profile string
 	// Floor applies the coverage floor to Profile. Nil applies none.
 	Floor func(profile string) error
+	// Packages are the packages vet and go test read. Empty reads ./..., the
+	// whole module; a run scoped to a change names the packages it reaches.
+	Packages []string
+	// CoverPkg are the packages the profile measures. Empty measures ./...;
+	// a scoped run measures the packages it changes, which every test that
+	// can reach them is in the run to exercise.
+	CoverPkg []string
+}
+
+// patterns is what vet and go test read: Packages, or the whole module.
+func (opt SuiteRun) patterns() []string {
+	if len(opt.Packages) == 0 {
+		return []string{"./..."}
+	}
+	return opt.Packages
 }
 
 // Suite runs go vet, then the suite once with every property in opt on, and
@@ -59,7 +74,7 @@ type SuiteRun struct {
 // Every flag is one the go command's test cache accepts, so a package whose
 // inputs did not change replays its result instead of running again.
 func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
-	if _, err := run(nil, true, goBin, "vet", "./..."); err != nil {
+	if _, err := run(nil, true, goBin, append([]string{"vet"}, opt.patterns()...)...); err != nil {
 		return fmt.Errorf("go vet failed: %w", err)
 	}
 
@@ -73,9 +88,13 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 		args = append(args, "-timeout", t)
 	}
 	if opt.Profile != "" {
-		args = append(args, "-covermode=atomic", "-coverpkg=./...", "-coverprofile="+opt.Profile)
+		coverpkg := "./..."
+		if len(opt.CoverPkg) > 0 {
+			coverpkg = strings.Join(opt.CoverPkg, ",")
+		}
+		args = append(args, "-covermode=atomic", "-coverpkg="+coverpkg, "-coverprofile="+opt.Profile)
 	}
-	args = append(args, "./...")
+	args = append(args, opt.patterns()...)
 
 	if opt.Hermetic {
 		path, note, err := suitePath(opt, goBin, run)

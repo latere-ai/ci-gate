@@ -42,6 +42,26 @@ func TestNoCommandRunsCheck(t *testing.T) {
 	}
 }
 
+// -all is check's flag: the whole tree, as CI reads it, rather than what
+// changed since the default branch.
+func TestCheckTakesAll(t *testing.T) {
+	dir := t.TempDir()
+	body := "waive:\n  test-race:\n    reason: r\n    until: 2026-12-01\n"
+	if err := os.WriteFile(filepath.Join(dir, ".lateregate.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, argv := range [][]string{{"-all", "-C", dir}, {"check", "-all", "-C", dir}} {
+		if _, err := out(t, argv...); err == nil || !strings.Contains(err.Error(), "is not a gate") {
+			t.Errorf("%v: -all must parse and reach the plan: %v", argv, err)
+		}
+	}
+	// On a runner the check reads the whole tree without being asked.
+	t.Setenv("CI", "true")
+	if _, err := out(t, "-C", dir); err == nil || !strings.Contains(err.Error(), "is not a gate") {
+		t.Errorf("CI: %v", err)
+	}
+}
+
 func TestHelpSucceeds(t *testing.T) {
 	for _, arg := range []string{"help", "-h", "--help"} {
 		s, err := out(t, arg)

@@ -6,7 +6,7 @@ is the one `go.mod` names.
 
 | Command | What it does |
 | --- | --- |
-| `lateregate`, `lateregate check` | runs every gate that applies, reports all of them, and exits non-zero if any failed |
+| `lateregate [-all]`, `lateregate check [-all]` | runs every gate that applies, reports all of them, and exits non-zero if any failed; on a laptop the four slow gates read only [what changed since the default branch](#what-a-check-reads), and `-all` reads the whole tree |
 | `lateregate list [-json]` | prints the plan: each gate with `RUN`, `SKIP`, `WAIV` or `FOLD` and why |
 | `lateregate <gate>` | runs one gate; [`gates.md`](gates.md) lists them |
 | `lateregate contract` | reports every way the repository's wiring drifted from the shared shape |
@@ -28,6 +28,7 @@ Flags every command accepts:
 | `-json` | `list` only: print the plan as JSON |
 | `-profile FILE` | `cover` only: read this profile instead of collecting one; repeat it per test tier |
 | `-w` | `license` only: write the declared notice on every file that has none |
+| `-all` | `check` only: read the whole tree rather than what changed since the default branch |
 | `-force-red` | `release` only: cut over a red CI, printing every finding it overrides |
 
 `tempdir` takes the command to watch after `--`:
@@ -37,6 +38,54 @@ go tool lateregate cover -profile=out/unit.out -profile=out/integration.out
 go tool lateregate tempdir -- go test -tags corpus ./...
 go tool lateregate license -w
 ```
+
+## What a check reads
+
+On a laptop, `lateregate` checks what changed since the default branch.
+The default branch already passed the whole bar in CI, which runs every
+gate on every push, so what a push can break is what it changes and what
+depends on that.
+
+The change is every path that differs from the merge base of `HEAD` and
+`origin/HEAD` (or `origin/main`, where the clone never recorded
+`origin/HEAD`), committed or not, and every untracked path git does not
+ignore. Each path belongs to the package whose directory is its nearest,
+so a file a package embeds and the testdata its tests read count as that
+package's change. A path under no package, such as a frontend or the
+changelog, belongs to none.
+
+Four gates narrow; the rest read the whole tree, since each is seconds:
+
+| Gate | What it reads on a laptop |
+| --- | --- |
+| `suite` | the changed packages and every package whose build or tests import one; the profile measures the changed packages, and the floor applies to them. Skipped when no package changed |
+| `lint` | the changed packages. Skipped when none changed |
+| `vuln` | skipped; CI scans on every push, and a dependency change checks the whole tree |
+| `lean` | skipped unless a changed path is in a Lake project |
+
+The whole tree is checked, with the reason on the first line, when
+`go.mod`, `go.sum`, `go.work`, `go.work.sum`, `.lateregate.yaml` or a
+repository-owned `.golangci.yml` changed, when a package was removed or
+moved, or when the change cannot be measured: no default branch, no merge
+base, or a module `go list` cannot list. `-all` checks the whole tree on
+request. A runner (`CI` set), `release`, a gate run by name and `list`
+always read the whole tree.
+
+The run opens with what it read and ends its verdict on it:
+
+```
+checking what changed since origin/main (78d4428effa9): 2 files, 1 Go package, 5 packages with what imports them; -all checks the whole tree
+...
+PASS lint         over the 1 package the change touches
+SKIP vuln         no dependency changed since origin/main (78d4428effa9)
+PASS suite        over the 5 packages the change reaches; the floor on the 1 package it changes
+10 gates passed on what changed since origin/main (78d4428effa9)
+```
+
+A test that reads a file outside its package's directory by a relative
+path, such as `../docs`, depends on it in a way the import graph does not
+record, so a change to that file alone can pass on a laptop and fail in
+CI. Run `-all` before a push that changes such a file.
 
 ## The plan: `list`
 
@@ -152,9 +201,9 @@ remote ref decides, not the local ref's name, so `git push origin HEAD:main`
 from a worktree is linted as `git push origin main` is. A tag push and a
 branch deletion lint nothing.
 
-The linter takes a machine-wide lock by default; this run opts out of it
-with `--allow-parallel-runners`, so a lint in another checkout neither
-blocks a push nor aborts it. Linting runs here and not in the pre-commit
+golangci-lint takes a machine-wide lock by default; every lint run opts
+out of it with `--allow-parallel-runners`, this one and the full gate's,
+so a lint in another checkout neither blocks a push nor aborts it. Linting runs here and not in the pre-commit
 because a push is rare and already waits on the network, and a hook that
 adds a minute to every commit is one people bypass. A dated `waive: lint`
 covers the hook as it covers the full gate: until the day it names, the

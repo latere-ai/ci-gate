@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -71,6 +72,25 @@ func GoLister(goBin, dir string) Lister {
 		}
 		sort.Strings(pkgs)
 		return pkgs, nil
+	}
+}
+
+// Only narrows a Lister to the packages named, for a floor over the packages
+// a change touches: the rest were not measured by the run, and reporting
+// them as unmeasured would fail it for what it was asked to leave out.
+func Only(list Lister, pkgs []string) Lister {
+	return func() ([]string, error) {
+		all, err := list()
+		if err != nil {
+			return nil, err
+		}
+		var kept []string
+		for _, p := range all {
+			if slices.Contains(pkgs, p) {
+				kept = append(kept, p)
+			}
+		}
+		return kept, nil
 	}
 }
 

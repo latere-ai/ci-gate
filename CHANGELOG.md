@@ -12,6 +12,23 @@ committed: the commit log already holds that.
 
 ### Changed
 
+- **On a laptop, `lateregate` checks what changed since the default
+  branch.** The test suite runs over the packages the change touches and
+  every package that imports them, with the coverage floor on the changed
+  packages; lint reads the changed packages; the vulnerability scan is
+  left to CI, which runs on every push; and the Lean gate runs only when a
+  Lake project changed. Every other gate still reads the whole tree. A
+  change to a frontend, a document or the changelog checks in seconds
+  instead of running the whole suite, and a change to one Go package in
+  minutes. The first line says what the run read, and the verdict ends
+  `on what changed since origin/main (...)`. A change to `go.mod`,
+  `go.sum`, `.lateregate.yaml` or an owned `.golangci.yml`, a removed
+  package, or a change that cannot be measured checks the whole tree and
+  says why. `lateregate -all` checks the whole tree on request; CI (`CI`
+  set), `lateregate release`, a gate run by name and `list` always do. A
+  test that reads files outside its package by a relative path, such as
+  `../docs`, can pass on a laptop and fail in CI when only those files
+  changed: run `-all` before such a push.
 - **No lint run waits for another.** The full `lint` gate no longer takes
   golangci-lint's machine-wide lock, as the pre-push lint already did, so
   two checkouts gated at once run side by side instead of one failing

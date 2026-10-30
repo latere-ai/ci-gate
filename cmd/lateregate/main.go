@@ -32,13 +32,16 @@ import (
 	"latere.ai/x/ci-gate/internal/greencut"
 	"latere.ai/x/ci-gate/internal/identity"
 	"latere.ai/x/ci-gate/internal/license"
+	"latere.ai/x/ci-gate/internal/scope"
 )
 
 const usage = `lateregate is the shared per-push quality bar for a Go repository.
 
 Usage:
-	lateregate                 run every gate that applies, report all, fail on any
-	lateregate check           the same, by name
+	lateregate [-all]          run every gate that applies, report all, fail on any; on a
+	                           laptop suite, lint, vuln and lean read only what changed
+	                           since the default branch, and -all reads the whole tree
+	lateregate check [-all]    the same, by name
 	lateregate list [-json]    print each gate with run / skip / waived and why
 	lateregate <gate>          run one gate
 	lateregate contract        report every way the wiring drifted from the shared shape
@@ -116,6 +119,8 @@ func run(argv []string, out io.Writer) error {
 	goBin := fs.String("go", "go", "Go toolchain to run")
 	asJSON := fs.Bool("json", false, "print the plan as JSON (list)")
 	write := fs.Bool("w", false, "write the declared notice on every file that has none (license)")
+	all := fs.Bool("all", false,
+		"check the whole tree rather than what changed since the default branch (check); CI always does")
 	forceRed := fs.Bool("force-red", false,
 		"cut over a red CI, printing what it overrides (release); the maintainer's escape hatch, and in no pipeline")
 	var profiles profileList
@@ -146,6 +151,12 @@ func run(argv []string, out io.Writer) error {
 			return license.Write(cfg.License, *root, out, time.Now())
 		}
 	case "check":
+		// CI checks every push against the whole tree, and that is what
+		// lets a laptop check only the change: the default branch it is
+		// measured from already passed it all.
+		if !*all && os.Getenv("CI") == "" {
+			ctx.Scope = scope.Resolve(*root, *goBin, ctx.Exec)
+		}
 		return bar.Check(ctx)
 	case "list":
 		return bar.List(ctx, *asJSON)

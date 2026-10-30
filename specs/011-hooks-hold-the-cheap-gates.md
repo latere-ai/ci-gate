@@ -12,7 +12,7 @@ affects:
   - README.md
 effort: medium
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-10-30
 author: changkun
 dispatched_task_id: null
 ---
@@ -71,7 +71,8 @@ passes `--allow-parallel-runners`: golangci-lint's machine-wide lock exists
 so two full runs do not fight over one cache, and the first end-to-end run
 of this hook was aborted by a lint in another checkout. A subset run in a
 session that is already waiting opts out of the lock; the full gate keeps
-it. The full `lint` gate in CI is
+it. ([[031-a-laptop-checks-the-change]] later took the full gate off the
+lock as well, so two checkouts gate side by side.) The full `lint` gate in CI is
 unchanged and remains the authority; the hook is the same linter on a
 subset, so a package it passes is a package CI passes.
 

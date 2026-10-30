@@ -31,6 +31,7 @@ import (
 	"latere.ai/x/ci-gate/internal/platformsdk"
 	"latere.ai/x/ci-gate/internal/postgres"
 	"latere.ai/x/ci-gate/internal/registers"
+	"latere.ai/x/ci-gate/internal/scope"
 	"latere.ai/x/ci-gate/internal/speclint"
 	"latere.ai/x/ci-gate/internal/tsenum"
 	"latere.ai/x/ci-gate/internal/words"
@@ -50,6 +51,10 @@ type Ctx struct {
 	// watch.
 	Args []string
 	Now  time.Time
+	// Scope is the change a check reads, measured against the default
+	// branch. Nil reads the whole tree, as CI, a release and a gate run by
+	// name always do.
+	Scope *scope.Scope
 }
 
 // Gate is one check in the set.
@@ -163,7 +168,12 @@ var Gates = []Gate{
 			})
 		}},
 	{Name: "lint", Doc: "golangci-lint " + golangci.Version + " against the shared config",
-		Run: func(c Ctx) error { return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec) }},
+		Run: func(c Ctx) error {
+			if c.Scope.Narrows() {
+				return golangci.LintPackages(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec, patterns(c.Scope.Changed))
+			}
+			return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec)
+		}},
 	{Name: "vuln", Doc: "govulncheck " + gates.VulnVersion + " finds no reachable vulnerability",
 		Run: func(c Ctx) error { return gates.Vuln(c.GoBin, c.Out, c.Exec) }},
 	{Name: "suite", Doc: "go vet, then one run of the suite that is race-clean, over the coverage floor, leaves nothing under TMPDIR and no container behind, and needs only the toolchain on PATH",
@@ -217,8 +227,18 @@ func suiteRun(c Ctx) (gates.SuiteRun, []string) {
 		Containers: true,
 		Profile:    cover.Profile,
 	}
+	list := cover.GoLister(c.GoBin, c.Root)
+	if c.Scope.Narrows() {
+		// The run reads the packages the change reaches and measures the
+		// ones it changes. Every test that can reach a changed package
+		// imports it, so it is in the run, and the figure for a changed
+		// package is the one the whole suite would give it.
+		run.Packages = importPaths(c.Scope.Reached)
+		run.CoverPkg = importPaths(c.Scope.Changed)
+		list = cover.Only(list, run.CoverPkg)
+	}
 	run.Floor = func(profile string) error {
-		return cover.Run(c.Cfg.Cover, append([]string{profile}, c.Profiles...), c.Out, cover.GoLister(c.GoBin, c.Root))
+		return cover.Run(c.Cfg.Cover, append([]string{profile}, c.Profiles...), c.Out, list)
 	}
 	var notes []string
 	for _, n := range []struct {
@@ -424,6 +444,20 @@ func Plan(c Ctx) ([]Entry, error) {
 				e.Reason = expired
 			}
 		}
+		if e.Status == Run {
+			skip, note, err := scoped(c, g.Name)
+			if err != nil {
+				return nil, err
+			}
+			switch {
+			case skip != "":
+				e.Status, e.Reason = Skip, skip
+			case note != "" && e.Reason != "":
+				e.Reason += "; " + note
+			case note != "":
+				e.Reason = note
+			}
+		}
 		plan = append(plan, e)
 	}
 	return plan, nil
@@ -453,6 +487,9 @@ func Check(c Ctx) error {
 	plan, err := Plan(c)
 	if err != nil {
 		return err
+	}
+	if h := header(c.Scope); h != "" {
+		_, _ = fmt.Fprintln(c.Out, h)
 	}
 	verdict := map[string]string{}
 	var failed []string
@@ -491,10 +528,14 @@ func Check(c Ctx) error {
 			_, _ = fmt.Fprintln(c.Out, line(e, "", ""))
 		}
 	}
-	if len(failed) > 0 {
-		return fmt.Errorf("%d of %d gates failed: %s", len(failed), ran, strings.Join(failed, ", "))
+	on := ""
+	if c.Scope.Narrows() {
+		on = " on what changed since " + c.Scope.Since()
 	}
-	_, _ = fmt.Fprintf(c.Out, "%d gates passed\n", ran)
+	if len(failed) > 0 {
+		return fmt.Errorf("%d of %d gates failed%s: %s", len(failed), ran, on, strings.Join(failed, ", "))
+	}
+	_, _ = fmt.Fprintf(c.Out, "%d gates passed%s\n", ran, on)
 	return nil
 }
 

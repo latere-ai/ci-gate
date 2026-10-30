@@ -81,3 +81,22 @@ func TestGoListerFailsOnUnparseableSource(t *testing.T) {
 		t.Fatal("source the gate cannot parse must fail rather than count as no statements")
 	}
 }
+
+// Narrowed, the list keeps the named packages it holds and drops the rest,
+// and a list that fails still fails.
+func TestOnlyKeepsTheNamedPackages(t *testing.T) {
+	all := func() ([]string, error) {
+		return []string{"example.com/m/a", "example.com/m/b", "example.com/m/c"}, nil
+	}
+	got, err := Only(all, []string{"example.com/m/c", "example.com/m/a", "example.com/m/gone"})()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []string{"example.com/m/a", "example.com/m/c"}) {
+		t.Errorf("kept %v", got)
+	}
+	broken := func() ([]string, error) { return nil, os.ErrPermission }
+	if _, err := Only(broken, []string{"example.com/m/a"})(); err == nil {
+		t.Error("a list that fails must fail narrowed")
+	}
+}

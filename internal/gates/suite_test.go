@@ -496,3 +496,28 @@ func TestSuiteRefusesAnUnusedSandbox(t *testing.T) {
 		t.Fatalf("want the unused-sandbox refusal, got %v", err)
 	}
 }
+
+// A run scoped to a change vets and tests the packages it reaches and
+// measures the ones it changes, with every property still on.
+func TestSuiteReadsThePackagesItIsGiven(t *testing.T) {
+	root := isolated(t)
+	fakeTools(t, "as", "ld", "git")
+	var floor []string
+	s := &suiteRun{do: cleanSuite(t)}
+	opt := every(&floor)
+	opt.Packages = []string{"example.com/m/api", "example.com/m/store"}
+	opt.CoverPkg = []string{"example.com/m/store", "example.com/m/util"}
+	if err := Suite(opt, root, suiteGo, &strings.Builder{}, s.exec); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(s.calls[0].args, " "); got != "vet example.com/m/api example.com/m/store" {
+		t.Errorf("go %s", got)
+	}
+	want := "test -race -covermode=atomic -coverpkg=example.com/m/store,example.com/m/util -coverprofile=coverage.out example.com/m/api example.com/m/store"
+	if got := strings.Join(s.testCall(t).args, " "); got != want {
+		t.Errorf("go %s\nwant %s", got, want)
+	}
+	if len(floor) != 1 {
+		t.Errorf("the floor read %v", floor)
+	}
+}
