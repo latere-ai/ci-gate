@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.59.1 - 2026-10-31
+
 ### Fixed
 
 - **A laptop check now catches what a change breaks in its callers.**
