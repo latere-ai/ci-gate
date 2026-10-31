@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.60.0 - 2026-10-31
+
 ### Changed
 
 - **A laptop check holds the packages a change reaches without touching
