@@ -30,16 +30,51 @@ go tool lateregate release v1.4.0
 In order, it:
 
 1. reads CI through the GitHub API and refuses while it is red (below);
-2. runs the whole bar on the tree about to be tagged;
-3. refuses a version that is not `vMAJOR.MINOR.PATCH` (with an optional
-   prerelease or build suffix), a dirty working tree, a tag that already
-   exists, and an empty `## Unreleased`;
-4. writes `## v1.4.0 - <today>` under a fresh `## Unreleased`, and
+2. checks that the release can land as one fast-forward of origin's
+   default branch (below), and refuses a version that is not
+   `vMAJOR.MINOR.PATCH` (with an optional prerelease or build suffix), a
+   dirty working tree, and an empty `## Unreleased`;
+3. runs the whole bar on the tree about to be tagged;
+4. checks step 2 again, because the bar takes minutes and another
+   checkout can push in that time;
+5. writes `## v1.4.0 - <today>` under a fresh `## Unreleased`, and
    rewrites each `release.stamp` file's version marker to `v1.4.0`;
-5. commits `changelog: v1.4.0`, creates an annotated tag, and pushes
-   `HEAD` and the tag in one push, so the release workflow runs once. The
+6. commits `changelog: v1.4.0`, creates an annotated tag, and pushes the
+   commit to the default branch and the tag in one atomic push, so the
+   release workflow runs once and either both land or neither does. The
    pre-push checks the tag's section and lints what the push sends to the
    branch, as it does for any push.
+
+### The default branch is the lock
+
+Two releases cut from the same commit cannot both land. Before the bar
+and again before it writes, the cut fetches origin's default branch
+(`origin/HEAD`, or `main` when the clone never recorded one) and refuses
+unless:
+
+- the checkout is on that branch;
+- `HEAD` is exactly origin's tip of it. Behind, the refusal says how many
+  commits to pull with `git pull --ff-only`. Ahead, it says to push them
+  and let CI verify them first, because a tag ships only commits CI has
+  seen;
+- origin has no tag for the version and no release tag that is equal or
+  newer by semver. The tags are read from origin, not from the checkout,
+  so a tag another session pushed a minute ago counts, and the refusal
+  names origin's newest;
+- the checkout has no tag of that name either.
+
+The push is `git push --atomic origin HEAD:refs/heads/<branch>
+refs/tags/<version>`. When another release lands between the check and
+the push, the branch update is not a fast-forward, and the remote takes
+neither ref, so no tag points at a commit off the branch. The cut then
+deletes its tag, resets to the commit it started from, and says so:
+
+```
+lateregate: git push: exit status 1; nothing was pushed, and the checkout is back at 5d8f01c2a1b3; main moved since the check, so run `git pull --ff-only` and run again, and if `## Unreleased` is then empty, another release already shipped these changes
+```
+
+When the branch has not moved, the push failed for the reason git printed
+above the error, and the cut says that instead.
 
 A `Makefile` target is a convenience:
 

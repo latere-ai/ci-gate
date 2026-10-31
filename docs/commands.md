@@ -17,7 +17,7 @@ is the one `go.mod` names.
 | `lateregate enum-typescript-prepare` | installs the configured frontend projects' dependencies from their tracked lockfiles |
 | `lateregate identity family -repos DIR [-expect FILE]` | checks the identity blocks of every checkout under `DIR` against each other and the issuer's client registry |
 | `lateregate release-notes TAG [REF]` | prints the `CHANGELOG.md` section for `TAG`, or fails |
-| `lateregate release [-force-red] vX.Y.Z` | refuses while CI is red, runs the bar, moves the notes into the tag's section, commits, tags and pushes; see [`releasing.md`](releasing.md) |
+| `lateregate release [-force-red] vX.Y.Z` | refuses while CI is red or the checkout is not origin's default branch at its tip, runs the bar, moves the notes into the tag's section, commits, tags and pushes both in one atomic push; see [`releasing.md`](releasing.md) |
 
 Flags every command accepts:
 
