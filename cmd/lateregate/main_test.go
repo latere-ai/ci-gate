@@ -228,30 +228,83 @@ func TestReleaseNotesPrintsTheSection(t *testing.T) {
 	}
 }
 
-// A release runs the whole bar and refuses to cut when it cannot pass: the
-// temp directory is not a checkout, so the bar stops before any gate, and the
-// error names the refusal and the version before anything is tagged.
+// A release runs the whole bar and refuses to cut when it cannot pass. The
+// checkout is origin's tip, so the cut's own check lets it through, and the
+// bar stops before any gate on a waiver that names no gate. The error names
+// the refusal and the version, and nothing is tagged.
 //
 // require_green is off here so the bar is what refuses. The guard in front of
 // it has its own tests.
 func TestReleaseRefusesToCutOnARedBar(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".lateregate.yaml"), []byte("release:\n  require_green: false\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "CHANGELOG.md"), []byte("## Unreleased\n\n- a note\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	dir := published(t, "release:\n  require_green: false\nwaive:\n  nosuch:\n    reason: r\n    until: 2099-01-01\n")
 	_, err := out(t, "release", "-C", dir, "v1.0.0")
 	if err == nil {
 		t.Fatal("a red bar released")
 	}
-	if !strings.Contains(err.Error(), "not releasing v1.0.0") {
-		t.Errorf("error %q does not name the refusal", err)
+	if !strings.Contains(err.Error(), "not releasing v1.0.0") || !strings.Contains(err.Error(), "nosuch, which is not a gate") {
+		t.Errorf("error %q is not the bar's refusal", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(dir, ".git")); statErr == nil {
-		t.Error("the refusal must not create a repository or a tag")
+	if tags := gitIn(t, dir, "ls-remote", "--tags", "origin") + gitIn(t, dir, "tag"); tags != "" {
+		t.Errorf("the refusal must tag nothing, got %q", tags)
 	}
+}
+
+// A checkout that is not origin's tip is refused before the bar, so a stale
+// clone costs a fetch rather than the suite: another clone landed a commit on
+// main, and the refusal says to pull. The waiver that fails the bar above is
+// here too, and it is not what refuses, because no gate has started.
+func TestReleaseRefusesAStaleCheckoutBeforeTheBar(t *testing.T) {
+	dir := published(t, "release:\n  require_green: false\nwaive:\n  nosuch:\n    reason: r\n    until: 2099-01-01\n")
+	other := filepath.Join(t.TempDir(), "other")
+	gitIn(t, dir, "clone", "-q", "-b", "main", gitIn(t, dir, "remote", "get-url", "origin"), other)
+	gitIn(t, other, "commit", "-q", "--allow-empty", "-m", "theirs")
+	gitIn(t, other, "push", "-q", "origin", "main")
+
+	s, err := out(t, "release", "-C", dir, "v1.0.0")
+	want := "not releasing v1.0.0: main has 1 commit this checkout lacks; run `git pull --ff-only` and run again"
+	if err == nil || err.Error() != want {
+		t.Fatalf("error:\n%v\nwant:\n%s", err, want)
+	}
+	if strings.Contains(s, "== ") {
+		t.Errorf("a gate ran before the refusal:\n%s", s)
+	}
+}
+
+// published is a clone on main of a bare origin, both holding one commit with
+// a note under Unreleased and the given .lateregate.yaml. Global and system
+// git config are kept out, so a hook or a rewrite on the machine running the
+// suite changes nothing here.
+func published(t *testing.T, config string) string {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	base := t.TempDir()
+	origin := filepath.Join(base, "origin.git")
+	dir := filepath.Join(base, "work")
+	gitIn(t, base, "init", "-q", "--bare", "-b", "main", origin)
+	gitIn(t, base, "clone", "-q", origin, dir)
+	gitIn(t, dir, "checkout", "-q", "-b", "main")
+	for name, body := range map[string]string{"CHANGELOG.md": "## Unreleased\n\n- a note\n", ".lateregate.yaml": config} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitIn(t, dir, "add", "CHANGELOG.md", ".lateregate.yaml")
+	gitIn(t, dir, "commit", "-q", "-m", "seed")
+	gitIn(t, dir, "push", "-q", "origin", "main")
+	return dir
+}
+
+// gitIn runs git in dir as a fixed author and returns its trimmed output.
+func gitIn(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...)
+	cmd.Dir = dir
+	b, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, b)
+	}
+	return strings.TrimSpace(string(b))
 }
 
 // The guard runs before the bar, so a red CI costs no gate time: the fake API
@@ -299,11 +352,13 @@ func TestReleaseRefusesBeforeTheBarWhenCIIsRed(t *testing.T) {
 }
 
 // --force-red is the maintainer's escape hatch: it reads CI all the same and
-// prints what it is cutting over. The bar refuses afterwards, which is what
-// proves the guard let it through.
+// prints what it is cutting over. The cut's own check refuses afterwards,
+// which is what proves the guard let it through. The checkout is on a side
+// branch, which that check sees without reading origin.
 func TestForceRedOverridesAndSaysSo(t *testing.T) {
 	dir := checkout(t)
 	seed(t, dir)
+	gitIn(t, dir, "checkout", "-q", "-b", "side")
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -316,17 +371,12 @@ func TestForceRedOverridesAndSaysSo(t *testing.T) {
 	defer api.Close()
 	t.Setenv("GITHUB_API_URL", api.URL)
 	t.Setenv("GH_TOKEN", "t")
-	// The bar runs tempdir, which keeps its lock beside the sandbox under
-	// TMPDIR; a directory of the test's own keeps it out of the TMPDIR this
-	// suite itself runs in.
-	t.Setenv("TMPDIR", t.TempDir())
-
 	s, err := out(t, "release", "-C", dir, "-force-red", "v1.0.0")
 	if !strings.Contains(s, "--force-red: overriding no completed run on main") {
 		t.Errorf("the override must print what it overrides, got %q", s)
 	}
-	if err == nil || strings.Contains(err.Error(), "ci is red") {
-		t.Errorf("the bar refuses after the override, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "not releasing v1.0.0: the checkout is on side, and a release moves main") {
+		t.Errorf("the cut's check refuses after the override, got %v", err)
 	}
 }
 

@@ -56,7 +56,7 @@ Usage:
 	lateregate release-notes TAG [REF]
 	                           print the CHANGELOG.md section for TAG, read at REF (default: the working tree), or fail
 	lateregate release [-force-red] VERSION
-	                           refuse while CI is red, then move the notes under "## Unreleased" into a section for VERSION, commit, tag, push
+	                           refuse while CI is red or HEAD is not origin's default branch, then move the notes under "## Unreleased" into a section for VERSION, commit, tag, push both atomically
 
 Gates, in the order check runs them:
 GATES
@@ -235,6 +235,14 @@ func run(argv []string, out io.Writer) error {
 			if err := guard.Check(); err != nil {
 				return fmt.Errorf("not releasing %s: %w", fs.Args()[0], err)
 			}
+		}
+		// A release lands as one fast-forward of the release branch, so a
+		// checkout that is not origin's tip of it, a version origin already
+		// has or has passed, and an empty Unreleased are refused here, in
+		// seconds, rather than by the cut after the whole bar. The cut asks
+		// again before it writes, because the bar takes minutes.
+		if err := changelog.Ready(*root, fs.Args()[0], ctx.Exec); err != nil {
+			return fmt.Errorf("not releasing %s: %w", fs.Args()[0], err)
 		}
 		// A release is the one push that must never go out red: the whole
 		// bar runs on the tree about to be tagged, and a failure stops the
