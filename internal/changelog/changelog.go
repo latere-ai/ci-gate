@@ -24,6 +24,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/mod/semver"
+
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
 )
@@ -166,40 +168,24 @@ func Prepush(root string, in io.Reader, out io.Writer, run gates.Exec) error {
 }
 
 // Cut turns what sits under Unreleased into the section for version, then
-// commits, tags, and pushes HEAD and the tag in one push, so the pre-push
-// sees both and the release workflow runs once.
+// commits, tags, and pushes the commit to the release branch and the tag in
+// one atomic push, so the pre-push sees both, the release workflow runs once,
+// and either both land or neither does.
 //
-// It refuses a version that is not a release tag, a dirty tree, an existing
-// tag, and an empty Unreleased, and writes nothing in any of those cases: a
-// tag is a release, and a release has notes.
+// It refuses everything Ready refuses, and asks again right before it writes:
+// the bar runs for minutes between the two, and another checkout can push to
+// the release branch or tag in that time. A refusal writes nothing. A push
+// the remote rejects is undone locally, tag and commit, so the checkout is
+// back where it started and the next run starts from a pull.
 func Cut(root, version string, now time.Time, out io.Writer, run gates.Exec, stamps []config.Stamp) error {
-	if !IsReleaseTag(version) {
-		return fmt.Errorf("usage: lateregate release vX.Y.Z (got %q)", version)
-	}
-	status, err := run(nil, false, "git", "status", "--porcelain")
+	rel, err := ready(root, version, run)
 	if err != nil {
-		return fmt.Errorf("git status: %w", err)
+		return err
 	}
-	if strings.TrimSpace(string(status)) != "" {
-		return errors.New("the working tree is not clean; commit or stash first, so the tag holds only the changelog commit")
-	}
-	if _, err := run(nil, false, "git", "rev-parse", "-q", "--verify", "refs/tags/"+version); err == nil {
-		return fmt.Errorf("%s already exists", version)
-	}
-	path := filepath.Join(root, Name)
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("no %s in the working tree; run `lateregate init` to write one", Name)
-	}
-	body := string(b)
-	if _, err := Section(body, Unreleased); err != nil {
-		return fmt.Errorf("nothing under `## %s` in %s; a release has notes", Unreleased, Name)
-	}
-
 	heading := fmt.Sprintf("## %s - %s", version, now.Format(time.DateOnly))
 	var sb strings.Builder
 	moved := false
-	for line := range strings.SplitSeq(body, "\n") {
+	for line := range strings.SplitSeq(rel.body, "\n") {
 		sb.WriteString(line)
 		sb.WriteByte('\n')
 		if !moved && strings.TrimSpace(line) == "## "+Unreleased {
@@ -220,13 +206,32 @@ func Cut(root, version string, now time.Time, out io.Writer, run gates.Exec, sta
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(rewritten), 0o644); err != nil {
-		return err
+
+	// From the first write on, a failure puts the checkout back at the base
+	// commit: ready found the tree clean there, so a hard reset drops exactly
+	// what this cut wrote and committed, and nothing of anyone else's.
+	tagged := false
+	fail := func(err error, next string) error {
+		if undo := rel.undo(version, tagged, run); undo != nil {
+			by := "`git reset --hard " + rel.base + "`"
+			if tagged {
+				by = "`git tag -d " + version + "` and " + by
+			}
+			return fmt.Errorf("%w; undoing the cut failed too: %w; run %s before trying again", err, undo, by)
+		}
+		msg := fmt.Sprintf("nothing was pushed, and the checkout is back at %s", short(rel.base))
+		if next != "" {
+			msg += "; " + next
+		}
+		return fmt.Errorf("%w; %s", err, msg)
+	}
+	if err := os.WriteFile(filepath.Join(root, Name), []byte(rewritten), 0o644); err != nil {
+		return fail(err, "")
 	}
 	_, _ = fmt.Fprintf(out, "%s: moved %s under %q\n", Name, Unreleased, heading)
 	for _, p := range plans {
 		if err := os.WriteFile(filepath.Join(root, p.file), p.content, 0o644); err != nil {
-			return err
+			return fail(err, "")
 		}
 		_, _ = fmt.Fprintf(out, "%s: stamped %s\n", p.file, version)
 	}
@@ -238,15 +243,241 @@ func Cut(root, version string, now time.Time, out io.Writer, run gates.Exec, sta
 	steps = append(steps,
 		[]string{"commit", "-m", "changelog: " + version},
 		[]string{"tag", "-a", version, "-m", version},
-		[]string{"push", "origin", "HEAD", version},
 	)
 	for _, args := range steps {
 		if _, err := run(nil, true, "git", args...); err != nil {
-			return fmt.Errorf("git %s: %w", args[0], err)
+			return fail(fmt.Errorf("git %s: %w", args[0], err), "")
+		}
+		tagged = tagged || args[0] == "tag"
+	}
+	// The branch is named on the remote side, so the push can move the
+	// release branch and nothing else, never a branch named after the
+	// checkout's, and the tag is named as a ref, so the pre-push reads its
+	// line as a tag push. --atomic is the lock: when
+	// the branch update is not a fast-forward because another release
+	// landed first, the remote takes neither ref, and no tag points at a
+	// commit off the branch.
+	push := []string{"push", "--atomic", "origin", "HEAD:refs/heads/" + rel.branch, "refs/tags/" + version}
+	if _, err := run(nil, true, "git", push...); err != nil {
+		return fail(fmt.Errorf("git push: %w", err), rel.rejected(run))
+	}
+	_, _ = fmt.Fprintf(out, "%s: committed, tagged, pushed to %s\n", version, rel.branch)
+	return nil
+}
+
+// Ready refuses a release that could not land as one fast-forward of the
+// release branch, and writes nothing.
+//
+// The release command calls it before the bar runs, so a checkout that is
+// behind, ahead of, or beside the release branch is refused in seconds
+// rather than after the whole suite, and Cut calls it again before it
+// writes. Its refusals are the cut's: a version that is not a release tag,
+// a dirty tree, a checkout off the release branch or not at origin's tip
+// of it, a version origin already has or a newer one, a tag left in this
+// checkout, and an empty Unreleased.
+func Ready(root, version string, run gates.Exec) error {
+	_, err := ready(root, version, run)
+	return err
+}
+
+// release is what a cut goes on top of, as ready found it.
+type release struct {
+	// branch is origin's default branch, the one the push moves.
+	branch string
+	// base is the commit HEAD and origin's branch both named when ready
+	// looked, and the commit a failed cut resets to.
+	base string
+	// body is CHANGELOG.md as it stands at base.
+	body string
+}
+
+func ready(root, version string, run gates.Exec) (release, error) {
+	if !IsReleaseTag(version) {
+		return release{}, fmt.Errorf("usage: lateregate release vX.Y.Z (got %q)", version)
+	}
+	status, err := run(nil, false, "git", "status", "--porcelain")
+	if err != nil {
+		return release{}, fmt.Errorf("git status: %w", err)
+	}
+	if strings.TrimSpace(string(status)) != "" {
+		return release{}, errors.New("the working tree is not clean; commit or stash first, so the tag holds only the changelog commit")
+	}
+	rel := release{branch: releaseBranch(run)}
+	if err := rel.synced(run); err != nil {
+		return release{}, err
+	}
+	head, err := run(nil, false, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return release{}, fmt.Errorf("git rev-parse HEAD: %w", err)
+	}
+	rel.base = strings.TrimSpace(string(head))
+	if err := newest(version, run); err != nil {
+		return release{}, err
+	}
+	// Origin does not have it, so a tag here is one a cut created and never
+	// pushed, or one made by hand; either way the cut's own tag would fail
+	// on it after the commit is made.
+	if _, err := run(nil, false, "git", "rev-parse", "-q", "--verify", "refs/tags/"+version); err == nil {
+		return release{}, fmt.Errorf("%s already exists in this checkout, though not on origin; delete it with `git tag -d %s` and run again", version, version)
+	}
+	b, err := os.ReadFile(filepath.Join(root, Name))
+	if err != nil {
+		return release{}, fmt.Errorf("no %s in the working tree; run `lateregate init` to write one", Name)
+	}
+	rel.body = string(b)
+	if _, err := Section(rel.body, Unreleased); err != nil {
+		return release{}, fmt.Errorf("nothing under `## %s` in %s; a release has notes", Unreleased, Name)
+	}
+	return rel, nil
+}
+
+// releaseBranch is origin's default branch, read from origin/HEAD, and main
+// when the clone never recorded one.
+func releaseBranch(run gates.Exec) string {
+	out, err := run(nil, false, "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	if err != nil {
+		return "main"
+	}
+	if branch, ok := strings.CutPrefix(strings.TrimSpace(string(out)), "origin/"); ok && branch != "" {
+		return branch
+	}
+	return "main"
+}
+
+// synced refuses unless the checkout is on the release branch and HEAD is
+// exactly origin's tip of it, read fresh. A release is the commit CI
+// verified plus the changelog commit: behind, the bar tests a tree that is
+// not the branch and the push is rejected after the gates; ahead, the tag
+// ships commits CI has not seen.
+func (r release) synced(run gates.Exec) error {
+	out, err := run(nil, false, "git", "symbolic-ref", "--short", "-q", "HEAD")
+	if err != nil {
+		return fmt.Errorf("HEAD is detached; a release moves %s, so cut it from a checkout of %s", r.branch, r.branch)
+	}
+	if current := strings.TrimSpace(string(out)); current != r.branch {
+		return fmt.Errorf("the checkout is on %s, and a release moves %s; cut it from a checkout of %s", current, r.branch, r.branch)
+	}
+	if err := r.fetch(run); err != nil {
+		return err
+	}
+	counts, err := run(nil, false, "git", "rev-list", "--left-right", "--count", r.tracking()+"...HEAD")
+	if err != nil {
+		return fmt.Errorf("git rev-list %s...HEAD: %w", r.tracking(), err)
+	}
+	var behind, ahead int
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(counts)), "%d %d", &behind, &ahead); err != nil {
+		return fmt.Errorf("git rev-list %s...HEAD printed %q: %w", r.tracking(), counts, err)
+	}
+	switch {
+	case behind > 0 && ahead > 0:
+		return fmt.Errorf("this checkout and %s have diverged: %s has %s this checkout lacks, and this checkout has %s it lacks; "+
+			"rebase onto %s, push and let CI verify the result, then run again",
+			r.tracking(), r.branch, commits(behind), commits(ahead), r.tracking())
+	case behind > 0:
+		return fmt.Errorf("%s has %s this checkout lacks; run `git pull --ff-only` and run again", r.branch, commits(behind))
+	case ahead > 0:
+		return fmt.Errorf("this checkout has %s %s lacks; push them and let CI verify them first, then run again", commits(ahead), r.branch)
+	}
+	return nil
+}
+
+// tracking is the remote-tracking ref of the release branch.
+func (r release) tracking() string { return "origin/" + r.branch }
+
+// fetch brings origin's tip of the release branch into the remote-tracking
+// ref. The refspec is explicit, so a clone whose fetch config does not cover
+// the branch still compares against the tip and not against a stale ref.
+// Tags are read from origin directly, so none are fetched here.
+func (r release) fetch(run gates.Exec) error {
+	refspec := "+refs/heads/" + r.branch + ":refs/remotes/" + r.tracking()
+	if _, err := run(nil, true, "git", "fetch", "--quiet", "--no-tags", "origin", refspec); err != nil {
+		return fmt.Errorf("git fetch origin %s: %w", r.branch, err)
+	}
+	return nil
+}
+
+// newest refuses a version origin already has, or one that is not newer by
+// semver than every release tag origin holds, and names origin's newest. The
+// read goes to origin, not to the local tags: a tag another checkout pushed
+// is invisible here until a fetch brings it.
+func newest(version string, run gates.Exec) error {
+	out, err := run(nil, false, "git", "ls-remote", "--tags", "--refs", "origin", "refs/tags/v*")
+	if err != nil {
+		return fmt.Errorf("reading the tags on origin: git ls-remote: %w", err)
+	}
+	highest, taken := "", false
+	for line := range strings.SplitSeq(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		tag, ok := strings.CutPrefix(fields[1], "refs/tags/")
+		if !ok || !IsReleaseTag(tag) {
+			continue
+		}
+		taken = taken || tag == version
+		if highest == "" || semver.Compare(tag, highest) > 0 {
+			highest = tag
 		}
 	}
-	_, _ = fmt.Fprintf(out, "%s: committed, tagged, pushed\n", version)
+	switch {
+	case taken:
+		return fmt.Errorf("%s already exists on origin, and the newest release there is %s; pick a version above it", version, highest)
+	case highest != "" && semver.Compare(highest, version) >= 0:
+		return fmt.Errorf("origin already has %s, which is not older than %s; pick a version above %s", highest, version, highest)
+	}
 	return nil
+}
+
+// undo puts the checkout back at the base commit after a failed cut: the tag
+// first, if the cut made it, then a hard reset that drops the changelog
+// commit and the written files with it.
+func (r release) undo(version string, tagged bool, run gates.Exec) error {
+	if tagged {
+		if _, err := run(nil, false, "git", "tag", "-d", version); err != nil {
+			return fmt.Errorf("git tag -d %s: %w", version, err)
+		}
+	}
+	if _, err := run(nil, false, "git", "reset", "--hard", "-q", r.base); err != nil {
+		return fmt.Errorf("git reset --hard %s: %w", short(r.base), err)
+	}
+	return nil
+}
+
+// rejected says what to do after a failed push, reading origin once more to
+// tell a release branch that moved, which is the race the push is atomic
+// for, from a push that failed for its own reason, which git has already
+// printed above.
+func (r release) rejected(run gates.Exec) string {
+	moved := fmt.Sprintf("%s moved since the check, so run `git pull --ff-only` and run again, "+
+		"and if `## %s` is then empty, another release already shipped these changes", r.branch, Unreleased)
+	if err := r.fetch(run); err != nil {
+		return fmt.Sprintf("origin could not be read again to tell why (%v): if %s", err, moved)
+	}
+	tip, err := run(nil, false, "git", "rev-parse", r.tracking())
+	if err != nil {
+		return fmt.Sprintf("%s could not be read to tell why (%v): if %s", r.tracking(), err, moved)
+	}
+	if strings.TrimSpace(string(tip)) != r.base {
+		return moved
+	}
+	return r.branch + " has not moved, so the reason is in git's output above: fix it and run again"
+}
+
+// commits counts commits in words.
+func commits(n int) string {
+	if n == 1 {
+		return "1 commit"
+	}
+	return fmt.Sprintf("%d commits", n)
+}
+
+// short is a commit's abbreviated name, for messages.
+func short(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
 }
 
 // versionInText finds a vX.Y.Z inside a stamp's matched span, unanchored,
