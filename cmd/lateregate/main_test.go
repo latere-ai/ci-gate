@@ -353,12 +353,14 @@ func TestReleaseRefusesBeforeTheBarWhenCIIsRed(t *testing.T) {
 
 // --force-red is the maintainer's escape hatch: it reads CI all the same and
 // prints what it is cutting over. The cut's own check refuses afterwards,
-// which is what proves the guard let it through. The checkout is on a side
-// branch, which that check sees without reading origin.
+// which is what proves the guard let it through. The tree holds a file
+// nobody committed, which that check sees without reading origin.
 func TestForceRedOverridesAndSaysSo(t *testing.T) {
 	dir := checkout(t)
 	seed(t, dir)
-	gitIn(t, dir, "checkout", "-q", "-b", "side")
+	if err := os.WriteFile(filepath.Join(dir, "stray.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -375,7 +377,7 @@ func TestForceRedOverridesAndSaysSo(t *testing.T) {
 	if !strings.Contains(s, "--force-red: overriding no completed run on main") {
 		t.Errorf("the override must print what it overrides, got %q", s)
 	}
-	if err == nil || !strings.Contains(err.Error(), "not releasing v1.0.0: the checkout is on side, and a release moves main") {
+	if err == nil || !strings.Contains(err.Error(), "not releasing v1.0.0: the working tree is not clean") {
 		t.Errorf("the cut's check refuses after the override, got %v", err)
 	}
 }

@@ -14,18 +14,19 @@ committed: the commit log already holds that.
 
 - **Two releases cut at once can no longer both push a tag.**
   `lateregate release` now fetches origin's default branch before the bar
-  and again before it writes, and refuses unless the checkout is on that
-  branch at origin's tip. A checkout behind is told how many commits to
-  pull; one ahead is told to push and let CI verify first. It reads tags
-  from origin rather than the checkout, and refuses a version origin
-  already has or one that is not newer than origin's newest release tag.
-  The commit and the tag go out in one atomic push to the default branch
-  by name, so a release that lost the race pushes nothing, not a tag on a
-  commit off main, and a release cut from a side branch no longer creates
-  a stray remote branch. A rejected push deletes the local tag and resets
-  to the commit the cut started from; run `git pull --ff-only` and cut
-  again, and if `## Unreleased` is then empty, the other release already
-  shipped those notes.
+  and again before it writes, and refuses unless `HEAD` is origin's tip of
+  that branch. Any checkout at that tip can cut it, a worktree on a branch
+  of its own or a detached `HEAD` included. A checkout behind is told how
+  many commits to pull; one ahead is told to push and let CI verify first.
+  It reads tags from origin rather than the checkout, and refuses a
+  version origin already has or one that is not newer than origin's newest
+  release tag. The commit and the tag go out in one atomic push to the
+  default branch by name, so a release that lost the race pushes nothing,
+  not a tag on a commit off main, and a release cut from a worktree's own
+  branch no longer creates a stray remote branch. A rejected push deletes
+  the local tag and resets to the commit the cut started from; run
+  `git pull --ff-only` and cut again, and if `## Unreleased` is then
+  empty, the other release already shipped those notes.
 
 ## v0.60.0 - 2026-10-31
 

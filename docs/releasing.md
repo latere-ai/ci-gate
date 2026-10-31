@@ -52,7 +52,6 @@ and again before it writes, the cut fetches origin's default branch
 (`origin/HEAD`, or `main` when the clone never recorded one) and refuses
 unless:
 
-- the checkout is on that branch;
 - `HEAD` is exactly origin's tip of it. Behind, the refusal says how many
   commits to pull with `git pull --ff-only`. Ahead, it says to push them
   and let CI verify them first, because a tag ships only commits CI has
@@ -62,6 +61,12 @@ unless:
   so a tag another session pushed a minute ago counts, and the refusal
   names origin's newest;
 - the checkout has no tag of that name either.
+
+The branch the checkout is on does not matter. A worktree on a branch of
+its own, beside the checkout that holds the default branch, or a detached
+`HEAD`, releases the default branch as long as `HEAD` is origin's tip: the
+push names the branch on the remote side, so it creates no remote branch
+named after the checkout's.
 
 The push is `git push --atomic origin HEAD:refs/heads/<branch>
 refs/tags/<version>`. When another release lands between the check and

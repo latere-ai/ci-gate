@@ -600,7 +600,6 @@ type answer struct {
 func synced() *fakeGit {
 	return &fakeGit{answers: map[string]answer{
 		"symbolic-ref --short refs/remotes/origin/HEAD":    {out: "origin/main\n"},
-		"symbolic-ref --short -q HEAD":                     {out: "main\n"},
 		"rev-list --left-right --count origin/main...HEAD": {out: "0\t0\n"},
 		"rev-parse HEAD":                              {out: base + "\n"},
 		"rev-parse origin/main":                       {out: base + "\n"},
@@ -664,7 +663,6 @@ func TestCutPushesTheBranchAndTheTagAtomically(t *testing.T) {
 func TestCutSyncsWithOriginsDefaultBranchFirst(t *testing.T) {
 	f := synced()
 	f.answers["symbolic-ref --short refs/remotes/origin/HEAD"] = answer{out: "origin/trunk\n"}
-	f.answers["symbolic-ref --short -q HEAD"] = answer{out: "trunk\n"}
 	f.answers["rev-list --left-right --count origin/trunk...HEAD"] = answer{out: "0\t0\n"}
 	var sb strings.Builder
 	if err := Cut(notes(t), "v0.1.0", time.Now(), &sb, f.run, nil); err != nil {
@@ -673,7 +671,6 @@ func TestCutSyncsWithOriginsDefaultBranchFirst(t *testing.T) {
 	want := []string{
 		"git status --porcelain",
 		"git symbolic-ref --short refs/remotes/origin/HEAD",
-		"git symbolic-ref --short -q HEAD",
 		"git fetch --quiet --no-tags origin +refs/heads/trunk:refs/remotes/origin/trunk",
 		"git rev-list --left-right --count origin/trunk...HEAD",
 		"git rev-parse HEAD",
@@ -711,10 +708,6 @@ func TestCutRefusesACheckoutThatIsNotOriginsTip(t *testing.T) {
 			"this checkout has 2 commits main lacks; push them and let CI verify them first, then run again"},
 		{"diverged", map[string]answer{"rev-list --left-right --count origin/main...HEAD": {out: "1\t2\n"}},
 			"this checkout and origin/main have diverged: main has 1 commit this checkout lacks, and this checkout has 2 commits it lacks"},
-		{"another branch", map[string]answer{"symbolic-ref --short -q HEAD": {out: "agents/fix\n"}},
-			"the checkout is on agents/fix, and a release moves main; cut it from a checkout of main"},
-		{"detached", map[string]answer{"symbolic-ref --short -q HEAD": {err: errors.New("exit 1")}},
-			"HEAD is detached; a release moves main"},
 		{"fetch fails", map[string]answer{"fetch --quiet --no-tags origin +refs/heads/main:refs/remotes/origin/main": {err: errors.New("exit 128")}},
 			"git fetch origin main: exit 128"},
 		{"tag on origin", map[string]answer{"ls-remote --tags --refs origin refs/tags/v*": {out: sha1 + "\trefs/tags/v0.1.0\n" + sha2 + "\trefs/tags/v0.0.9\n"}},
@@ -854,9 +847,8 @@ func TestCutReportsAFailingGitStep(t *testing.T) {
 }
 
 // The same refusals over real clones of one bare origin: another session
-// pushed to main, this checkout has a commit nobody pushed, it sits on a
-// side branch, and the tag or a newer one is already on origin though not
-// here.
+// pushed to main, this checkout has a commit nobody pushed, and the tag or
+// a newer one is already on origin though not here.
 func TestCutRefusesAStaleCheckoutOverRealGit(t *testing.T) {
 	t.Run("behind", func(t *testing.T) {
 		dir := clone(t)
@@ -880,17 +872,6 @@ func TestCutRefusesAStaleCheckoutOverRealGit(t *testing.T) {
 		err := Cut(dir, "v0.1.0", time.Now(), io.Discard, realExec(t, dir), nil)
 		if err == nil || !strings.Contains(err.Error(), "this checkout has 1 commit main lacks; push them and let CI verify them first") {
 			t.Fatalf("got %v", err)
-		}
-	})
-	t.Run("another branch", func(t *testing.T) {
-		dir := clone(t)
-		git(t, dir, "checkout", "-q", "-b", "side")
-		err := Cut(dir, "v0.1.0", time.Now(), io.Discard, realExec(t, dir), nil)
-		if err == nil || !strings.Contains(err.Error(), "the checkout is on side, and a release moves main") {
-			t.Fatalf("got %v", err)
-		}
-		if remote := git(t, dir, "ls-remote", "origin"); strings.Contains(remote, "refs/heads/side") || strings.Contains(remote, "v0.1.0") {
-			t.Errorf("a refused cut pushes nothing:\n%s", remote)
 		}
 	})
 	t.Run("tag on origin", func(t *testing.T) {
@@ -935,6 +916,37 @@ func TestTwoReleasesFromOneCommitLandOnce(t *testing.T) {
 	err = Cut(second, "v0.2.0", time.Now(), io.Discard, realExec(t, second), nil)
 	if err == nil || !strings.Contains(err.Error(), "nothing under `## Unreleased`") {
 		t.Errorf("after the pull the notes are already released, got %v", err)
+	}
+}
+
+// A release is cut from wherever HEAD is origin's tip: a worktree on a
+// branch of its own, beside the checkout that holds main, or a detached
+// HEAD. The push moves main and the tag, and leaves on origin no branch
+// named after the checkout's.
+func TestCutReleasesMainFromAWorktreeOffMain(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		at   []string
+	}{
+		{"own branch", []string{"-b", "release-v0.1.0"}},
+		{"detached", []string{"--detach"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := clone(t)
+			tree := filepath.Join(t.TempDir(), "tree")
+			git(t, dir, append(append([]string{"worktree", "add", "-q"}, c.at...), tree, "main")...)
+			if err := Cut(tree, "v0.1.0", time.Now(), io.Discard, realExec(t, tree), nil); err != nil {
+				t.Fatal(err)
+			}
+			head := strings.TrimSpace(git(t, tree, "rev-parse", "HEAD"))
+			remote := git(t, dir, "ls-remote", "origin")
+			if !strings.Contains(remote, head+"\trefs/heads/main") {
+				t.Errorf("origin's main is the changelog commit %s:\n%s", head, remote)
+			}
+			if !strings.Contains(remote, "refs/tags/v0.1.0") || strings.Contains(remote, "refs/heads/release-v0.1.0") {
+				t.Errorf("the push sends main and the tag, and nothing else:\n%s", remote)
+			}
+		})
 	}
 }
 

@@ -272,9 +272,9 @@ func Cut(root, version string, now time.Time, out io.Writer, run gates.Exec, sta
 // behind, ahead of, or beside the release branch is refused in seconds
 // rather than after the whole suite, and Cut calls it again before it
 // writes. Its refusals are the cut's: a version that is not a release tag,
-// a dirty tree, a checkout off the release branch or not at origin's tip
-// of it, a version origin already has or a newer one, a tag left in this
-// checkout, and an empty Unreleased.
+// a dirty tree, a HEAD that is not origin's tip of the release branch, a
+// version origin already has or a newer one, a tag left in this checkout,
+// and an empty Unreleased.
 func Ready(root, version string, run gates.Exec) error {
 	_, err := ready(root, version, run)
 	return err
@@ -344,19 +344,14 @@ func releaseBranch(run gates.Exec) string {
 	return "main"
 }
 
-// synced refuses unless the checkout is on the release branch and HEAD is
-// exactly origin's tip of it, read fresh. A release is the commit CI
-// verified plus the changelog commit: behind, the bar tests a tree that is
-// not the branch and the push is rejected after the gates; ahead, the tag
-// ships commits CI has not seen.
+// synced refuses unless HEAD is exactly origin's tip of the release branch,
+// read fresh. A release is the commit CI verified plus the changelog commit:
+// behind, the bar tests a tree that is not the branch and the push is
+// rejected after the gates; ahead, the tag ships commits CI has not seen.
+// The branch the checkout is on does not matter: the push names the release
+// branch on the remote side, so a worktree on a branch of its own, or a
+// detached HEAD, releases the default branch and creates no other.
 func (r release) synced(run gates.Exec) error {
-	out, err := run(nil, false, "git", "symbolic-ref", "--short", "-q", "HEAD")
-	if err != nil {
-		return fmt.Errorf("HEAD is detached; a release moves %s, so cut it from a checkout of %s", r.branch, r.branch)
-	}
-	if current := strings.TrimSpace(string(out)); current != r.branch {
-		return fmt.Errorf("the checkout is on %s, and a release moves %s; cut it from a checkout of %s", current, r.branch, r.branch)
-	}
 	if err := r.fetch(run); err != nil {
 		return err
 	}
