@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.61.0 - 2026-10-31
+
 ### Fixed
 
 - **Two releases cut at once can no longer both push a tag.**
