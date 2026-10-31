@@ -59,7 +59,7 @@ Four gates narrow; the rest read the whole tree, since each is seconds:
 
 | Gate | What it reads on a laptop |
 | --- | --- |
-| `suite` | the changed packages and every package whose build or tests import one; the profile measures the changed packages, and the floor applies to them. Skipped when no package changed |
+| `suite` | the changed packages and every package whose build or tests import one. The floor applies to the changed packages, and holds each package the change reaches without touching to the coverage it had at the base ([below](#untouched-packages)). Skipped when no package changed |
 | `lint` | the same packages as the suite, since a changed signature leaves its findings in the callers. Skipped when no package changed |
 | `vuln` | the whole module, as on a runner, when a Go package changed: new code can call a vulnerable function nothing called before. Skipped when none changed |
 | `lean` | skipped unless a changed path is in a Lake project |
@@ -70,18 +70,20 @@ repository-owned `.golangci.yml` changed, when anything under `vendor/`
 changed, when a directory holds changed Go files but no package `go list`
 reports (a package removed or moved, or one a build constraint excludes
 on this machine), or when the change cannot be measured: no default
-branch, no merge base, or a module `go list` cannot list. `-all` checks the whole tree on
-request. A runner (`CI` set), `release`, a gate run by name and `list`
-always read the whole tree.
+branch, no merge base, or a module `go list` cannot list. `-all` checks
+the whole tree on request. A runner (`CI` set), `release`, a gate run by
+name and `list` always read the whole tree.
 
 The run opens with what it read and ends its verdict on it:
 
 ```
 checking what changed since origin/main (78d4428effa9): 2 files, 1 Go package, 5 packages with what imports them; -all checks the whole tree
 ...
+14 packages the change reaches without touching kept the coverage the same tests gave them at origin/main (78d4428effa9)
+...
 PASS lint         over the 5 packages the change reaches
 PASS vuln
-PASS suite        over the 5 packages the change reaches; the floor on the 1 package it changes
+PASS suite        over the 5 packages the change reaches; the floor on the 1 package it changes and on any it reaches that loses coverage
 11 gates passed on what changed since origin/main (78d4428effa9)
 ```
 
@@ -89,16 +91,35 @@ A changed package with no statements, or one the floor exempts, gives
 the floor nothing to measure; when every changed package is such a one,
 the floor passes and says `the floor measures nothing here`.
 
-Two failures a laptop check cannot see, and CI, which reads the whole
-tree, catches after the push:
+### Untouched packages
 
-- A test that reads a file outside its package's directory by a relative
-  path, such as `../docs`, depends on it in a way the import graph does
-  not record, so a change to that file alone can pass on a laptop. Run
-  `-all` before a push that changes such a file.
-- The floor applies to the changed packages only. A package the change
-  did not touch can still lose coverage, when a test in a changed package
-  that exercised it is removed or rewritten.
+A package's figure is every block any test covered, so a change can
+lower the figure of a package it did not touch: package `a`'s tests may
+be what cover package `b`, and a change to `a` that stops reaching part
+of `b` takes `b` under the floor with no line of `b` changed.
+
+Only the tests the run holds can do that. Every other test links no
+changed package and holds no changed file, so it covers what it covered
+at the base. The floor therefore runs the same tests again over the base,
+rebuilt in place with `go test -overlay`, and compares, block by block,
+every package the change reaches without touching:
+
+- A package that kept every block the base's run covered keeps the
+  figure CI measured on the base, and the floor says how many did.
+- A package that lost one is measured over every test that reaches it
+  and held to the floor, and the floor names it.
+- When a changed file is one a package's tests read at run time, such as
+  testdata, the overlay cannot replay that package's tests at the base,
+  so what they reach is measured in full. So is every untouched package
+  when the base's tests fail on this machine.
+
+The base's run takes as long as the run itself the first time, and
+replays from the test cache after that, while the base does not move.
+
+A test that reads a file outside its package's directory by a relative
+path, such as `../docs`, depends on it in a way the import graph does not
+record, so a change to that file alone can pass on a laptop and fail in
+CI. Run `-all` before a push that changes such a file.
 
 ## The plan: `list`
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -72,7 +73,7 @@ func envValue(env []string, key string) (string, bool) {
 func every(floor *[]string) SuiteRun {
 	return SuiteRun{
 		Race: true, Hermetic: true, Sandbox: true, Profile: "coverage.out",
-		Floor: func(p string) error {
+		Floor: func(p string, _ Tester) error {
 			*floor = append(*floor, p)
 			return nil
 		},
@@ -165,7 +166,7 @@ func TestSuiteNamesEachBrokenProperty(t *testing.T) {
 			}
 			opt := every(&[]string{})
 			if tc.floor != nil {
-				opt.Floor = func(string) error { return tc.floor }
+				opt.Floor = func(string, Tester) error { return tc.floor }
 			}
 			var sb strings.Builder
 			err := Suite(opt, root, suiteGo, &sb, s.exec)
@@ -506,18 +507,62 @@ func TestSuiteReadsThePackagesItIsGiven(t *testing.T) {
 	s := &suiteRun{do: cleanSuite(t)}
 	opt := every(&floor)
 	opt.Packages = []string{"example.com/m/api", "example.com/m/store"}
-	opt.CoverPkg = []string{"example.com/m/store", "example.com/m/util"}
 	if err := Suite(opt, root, suiteGo, &strings.Builder{}, s.exec); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(s.calls[0].args, " "); got != "vet example.com/m/api example.com/m/store" {
 		t.Errorf("go %s", got)
 	}
-	want := "test -race -covermode=atomic -coverpkg=example.com/m/store,example.com/m/util -coverprofile=coverage.out example.com/m/api example.com/m/store"
+	want := "test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out example.com/m/api example.com/m/store"
 	if got := strings.Join(s.testCall(t).args, " "); got != want {
 		t.Errorf("go %s\nwant %s", got, want)
 	}
 	if len(floor) != 1 {
 		t.Errorf("the floor read %v", floor)
+	}
+}
+
+// A floor that runs go test again runs it as the suite ran: the same
+// flags ahead of its own, the same environment, and inside the same
+// checks, so what that run leaves under TMPDIR fails the suite.
+func TestAFloorsOwnRunIsTheSuitesToo(t *testing.T) {
+	root := isolated(t)
+	fakeTools(t, "as", "ld", "git")
+	s := &suiteRun{do: cleanSuite(t)}
+	opt := every(&[]string{})
+	opt.Timeout = "20m"
+	var again []byte
+	opt.Floor = func(_ string, test Tester) error {
+		s.do = func(env []string) {
+			dir, _ := envValue(env, "TMPDIR")
+			leak(t, dir, "base-cache", 1024)
+		}
+		var err error
+		again, err = test(false, "-overlay=o.json", "./a")
+		return err
+	}
+	s.output = "ok"
+	var sb strings.Builder
+	err := Suite(opt, root, suiteGo, &sb, s.exec)
+	if err == nil || !strings.HasPrefix(err.Error(), "the suite left 1 entry under TMPDIR") {
+		t.Fatalf("what the floor's run leaves fails the suite: %v", err)
+	}
+	if string(again) != "ok" {
+		t.Errorf("the floor's run returns its output: %q", again)
+	}
+	var tests []call
+	for _, c := range s.calls {
+		if len(c.args) > 0 && c.args[0] == "test" {
+			tests = append(tests, c)
+		}
+	}
+	if len(tests) != 2 {
+		t.Fatalf("go test ran %d times, want the suite and the floor's run", len(tests))
+	}
+	if got := strings.Join(tests[1].args, " "); got != "test -race -timeout 20m -overlay=o.json ./a" {
+		t.Errorf("go %s", got)
+	}
+	if tests[1].stream || !slices.Equal(tests[1].env, tests[0].env) {
+		t.Errorf("the floor's run takes the suite's environment and streams only when asked: stream %v", tests[1].stream)
 	}
 }

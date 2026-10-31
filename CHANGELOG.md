@@ -10,6 +10,22 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- **A laptop check holds the packages a change reaches without touching
+  to the coverage they had at the base.** A change to one package can
+  lower another's coverage when the first package's tests were what
+  covered it. The floor now runs the same tests again over the base,
+  rebuilt in place with `go test -overlay`, and compares every untouched
+  package their test binaries link, block by block. A package that kept
+  every block keeps the figure CI measured; one that lost a block is
+  measured over every test that reaches it and held to the floor. When a
+  changed file is read by tests at run time, such as testdata, or the
+  base's tests fail here, the packages those tests reach are measured in
+  full. The base's run costs about as long as the run itself the first
+  time and replays from the test cache after; on this repository a
+  four-package change checks in 15 seconds warm, against 10 before.
+
 ## v0.59.1 - 2026-10-31
 
 ### Fixed

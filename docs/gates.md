@@ -57,12 +57,13 @@ PATH or a run label wraps whatever runs inside it.
 
 A check on a laptop runs the suite over what changed since the default
 branch: vet and `go test` read the changed packages and every package
-whose build or tests import one, `-coverpkg` names the changed packages,
-and the floor applies to those. Every test that can reach a changed
-package is in the run, so each changed package gets the figure the whole
-suite would give it. An unchanged package's figure is not measured,
-though a change to another package's tests can lower it; CI holds that. [`commands.md`](commands.md#what-a-check-reads) has
-the rule.
+whose build or tests import one, and the floor applies to the changed
+packages. Every test that can reach a changed package is in the run, so
+each changed package gets the figure the whole suite would give it. A
+package the change reaches without touching is held to the coverage it
+had at the base: the floor runs the same tests over the base, rebuilt
+with `go test -overlay`, and measures in full any package that lost a
+block. [`commands.md`](commands.md#untouched-packages) has the rule.
 
 The first line of a failure names the property: `the suite is not
 race-clean`, `the suite reached for docker, which is not on the stripped

@@ -228,32 +228,16 @@ func suiteRun(c Ctx) (gates.SuiteRun, []string) {
 		Profile:    cover.Profile,
 	}
 	list := cover.GoLister(c.GoBin, c.Root)
-	run.Floor = func(profile string) error {
+	run.Floor = func(profile string, _ gates.Tester) error {
 		return cover.Run(c.Cfg.Cover, append([]string{profile}, c.Profiles...), c.Out, list)
 	}
 	if c.Scope.Narrows() {
-		// The run reads the packages the change reaches and measures the
-		// ones it changes. Every test that can reach a changed package
-		// imports it, so it is in the run, and the figure for a changed
-		// package is the one the whole suite would give it.
+		// The run reads the packages the change reaches, and its profile
+		// measures every package their test binaries link: the ones the
+		// change touched, and the ones whose coverage only its tests can
+		// have moved.
 		run.Packages = importPaths(c.Scope.Reached)
-		run.CoverPkg = importPaths(c.Scope.Changed)
-		list = cover.Only(list, run.CoverPkg)
-		whole := run.Floor
-		run.Floor = func(profile string) error {
-			// A change confined to packages with no statements, or to
-			// exempt ones, gives the floor nothing to measure. The whole
-			// run still measures the rest; this run was asked about these.
-			pkgs, err := list()
-			if err != nil {
-				return err
-			}
-			if !slices.ContainsFunc(pkgs, func(p string) bool { _, exempt := c.Cfg.Cover.ExemptFor(p); return !exempt }) {
-				_, _ = fmt.Fprintln(c.Out, "the floor measures nothing here: every package the change touches holds no statements or is exempt")
-				return nil
-			}
-			return whole(profile)
-		}
+		run.Floor = scopedFloor(c, list)
 	}
 	var notes []string
 	for _, n := range []struct {

@@ -15,8 +15,10 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +40,20 @@ import (
 // by never being measured, which is the shape the per-package rule exists to
 // catch. A nil list turns that rule off.
 func Run(cfg config.Cover, profiles []string, out io.Writer, list Lister) error {
+	return floor(cfg, profiles, out, list, nil)
+}
+
+// RunOn is Run judging only the packages named. A profile can measure more
+// than the floor is asked about: a run scoped to a change instruments the
+// packages it reaches, whose figure from its tests alone is not the whole
+// suite's, and only the ones it changes, or that lost coverage, are judged.
+// list should name the same packages, so that one of them with no data is
+// reported as unmeasured.
+func RunOn(cfg config.Cover, profiles []string, out io.Writer, list Lister, pkgs []string) error {
+	return floor(cfg, profiles, out, list, pkgs)
+}
+
+func floor(cfg config.Cover, profiles []string, out io.Writer, list Lister, judged []string) error {
 	if len(profiles) == 0 {
 		return fmt.Errorf("no coverage profile given; the gate needs at least one")
 	}
@@ -50,6 +66,9 @@ func Run(cfg config.Cover, profiles []string, out io.Writer, list Lister) error 
 	if len(byPkg) == 0 {
 		return fmt.Errorf("%s covers no packages; did the tests run?",
 			strings.Join(profiles, ", "))
+	}
+	if judged != nil {
+		maps.DeleteFunc(byPkg, func(p string, _ *counts) bool { return !slices.Contains(judged, p) })
 	}
 
 	pkgs := make([]string, 0, len(byPkg))
@@ -136,6 +155,29 @@ func unmeasured(cfg config.Cover, byPkg map[string]*counts, list Lister) ([]stri
 }
 
 type counts struct{ covered, total int }
+
+// Lost names the packages holding a statement block that the profile base
+// covers and the profile now does not, or does not hold at all: coverage
+// taken away between two runs of the same tests. The packages are the
+// ones both runs measured with -coverpkg; a block's key is its file and
+// span, so a block is compared only where its source did not change.
+func Lost(base, now string) ([]string, error) {
+	before, after := map[blockKey]blockVal{}, map[blockKey]blockVal{}
+	if err := addProfile(before, base); err != nil {
+		return nil, err
+	}
+	if err := addProfile(after, now); err != nil {
+		return nil, err
+	}
+	var lost []string
+	for k, b := range before {
+		if b.covered && !after[k].covered && !gates.InNodeModules(b.pkg) && !slices.Contains(lost, b.pkg) {
+			lost = append(lost, b.pkg)
+		}
+	}
+	slices.Sort(lost)
+	return lost, nil
+}
 
 // parse totals statement counts per package across every profile.
 //

@@ -42,16 +42,24 @@ type SuiteRun struct {
 	// Profile is the coverage profile the run writes, relative to the
 	// repository root. Empty collects none.
 	Profile string
-	// Floor applies the coverage floor to Profile. Nil applies none.
-	Floor func(profile string) error
+	// Floor applies the coverage floor to Profile. Nil applies none. A
+	// floor that needs another run of go test, such as one comparing the
+	// run against the base it changes, makes it with test.
+	Floor func(profile string, test Tester) error
 	// Packages are the packages vet and go test read. Empty reads ./..., the
 	// whole module; a run scoped to a change names the packages it reaches.
+	// The profile measures ./... either way, which is every package of the
+	// module the run's test binaries link.
 	Packages []string
-	// CoverPkg are the packages the profile measures. Empty measures ./...;
-	// a scoped run measures the packages it changes, which every test that
-	// can reach them is in the run to exercise.
-	CoverPkg []string
 }
+
+// Tester runs go test again in the suite's environment: the race detector,
+// the timeout, the stripped PATH, the TMPDIR sandbox and the run's container
+// label, with args after the suite's own flags. It returns what the run
+// wrote to standard output, and stream sends it to the terminal too. A run
+// made with it is inside the suite's checks: what it leaves under TMPDIR or
+// in the container engine fails the suite as the first run's would.
+type Tester func(stream bool, args ...string) ([]byte, error)
 
 // patterns is what vet and go test read: Packages, or the whole module.
 func (opt SuiteRun) patterns() []string {
@@ -79,20 +87,17 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 	}
 
 	env := os.Environ()
-	args := []string{"test"}
+	flags := []string{"test"}
 	if opt.Race {
 		env = append(withoutKey(env, "CGO_ENABLED"), "CGO_ENABLED=1")
-		args = append(args, "-race")
+		flags = append(flags, "-race")
 	}
 	if t := strings.TrimSpace(opt.Timeout); t != "" {
-		args = append(args, "-timeout", t)
+		flags = append(flags, "-timeout", t)
 	}
+	args := slices.Clone(flags)
 	if opt.Profile != "" {
-		coverpkg := "./..."
-		if len(opt.CoverPkg) > 0 {
-			coverpkg = strings.Join(opt.CoverPkg, ",")
-		}
-		args = append(args, "-covermode=atomic", "-coverpkg="+coverpkg, "-coverprofile="+opt.Profile)
+		args = append(args, "-covermode=atomic", "-coverpkg=./...", "-coverprofile="+opt.Profile)
 	}
 	args = append(args, opt.patterns()...)
 
@@ -134,6 +139,18 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 	if runErr != nil {
 		failures = append(failures, runFailure(opt, string(output), runErr))
 	}
+	// A floor over a run that failed measures the tests that happened to
+	// finish, so it reports nothing the failure has not already said. It
+	// runs before the sandbox and the engine are read, so a run it makes
+	// is held to them too.
+	if opt.Floor != nil && runErr == nil {
+		test := func(stream bool, more ...string) ([]byte, error) {
+			return run(env, stream, goBin, append(slices.Clone(flags), more...)...)
+		}
+		if err := opt.Floor(filepath.Join(root, opt.Profile), test); err != nil {
+			failures = append(failures, "the suite's coverage is under the floor: "+err.Error())
+		}
+	}
 	if opt.Sandbox {
 		after, err := touchedAt(sandbox)
 		if err != nil {
@@ -146,13 +163,6 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 	if watch != nil {
 		if f := watch.leftovers(out); f != "" {
 			failures = append(failures, f)
-		}
-	}
-	// A floor over a run that failed measures the tests that happened to
-	// finish, so it reports nothing the failure has not already said.
-	if opt.Floor != nil && runErr == nil {
-		if err := opt.Floor(filepath.Join(root, opt.Profile)); err != nil {
-			failures = append(failures, "the suite's coverage is under the floor: "+err.Error())
 		}
 	}
 	if len(failures) > 0 {

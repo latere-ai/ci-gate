@@ -89,11 +89,8 @@ package.** Every test that can reach a changed package imports it,
 directly or through another package, so every such test is in the run,
 and the profile, measured over the changed packages alone, gives each one
 the figure the whole suite would. Packages the run reaches but the change
-did not touch are not measured: the tests that cover them through
-packages outside the run are not in it, so the run cannot give them the
-whole suite's figure. Their figure can still move, when a changed
-package's test that exercised them is removed or rewritten; that is left
-to CI, as [What it cannot see](#what-it-cannot-see) says. A change whose
+did not touch are held to the coverage they had at the base, as
+[[032-untouched-packages-keep-their-coverage]] decides. A change whose
 every package holds no statements or is exempt gives the floor nothing to
 measure, and the floor says so and passes, as the whole run passes a
 package it cannot measure for the same reasons.
@@ -146,18 +143,13 @@ graph go back to the whole tree.
 
 ## What it cannot see
 
-Two breaks a scoped check passes and CI catches after the push, which is
-where it is caught today for any push made without the bar:
-
-- A test that reads a file outside its own package's directory at run
-  time, by a relative path such as `../docs`, depends on that file in a
-  way the import graph does not record. A change to such a file reaches
-  the test's package only if the file also sits under a package the test
-  imports. A repository that leans on this pattern can run `-all`.
-- A package the change did not touch, whose coverage a changed package's
-  tests carried, drops under the floor when those tests are removed or
-  rewritten. Measuring it would mean running every test that reaches it,
-  which is the whole suite for a package at the bottom of the graph.
+A test that reads a file outside its own package's directory at run
+time, by a relative path such as `../docs`, depends on that file in a way
+the import graph does not record. A change to such a file reaches the
+test's package only if the file also sits under a package the test
+imports. Such a break is caught by CI after the push, which is where it
+is caught today for any push made without the bar. A repository that
+leans on this pattern can run `-all`.
 
 `go list` runs once, for this machine's platform and with no build tags,
 so a package only another platform builds, or only the race detector's
@@ -194,4 +186,4 @@ excludes here looked like no package at all; and a change confined to
 packages with no statements, or exempt ones, failed the floor for
 measuring nothing. The decisions above carry the fixed rule. The earlier
 text also said an unchanged package's coverage cannot move; it can, and
-[What it cannot see](#what-it-cannot-see) now says so.
+[[032-untouched-packages-keep-their-coverage]] holds it to the base's.

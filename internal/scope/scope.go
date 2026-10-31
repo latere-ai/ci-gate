@@ -64,6 +64,11 @@ type Scope struct {
 	// Reached are Changed and every package whose build or tests import one
 	// of them, directly or through another package of the module.
 	Reached []Package
+
+	// The module the change was measured in, as Resolve listed it.
+	root   string
+	module string
+	pkgs   []listed
 }
 
 // Narrows reports whether the scope holds: a nil scope, or one that fell
@@ -131,7 +136,7 @@ func Resolve(root, goBin string, run gates.Exec) *Scope {
 		}
 	}
 
-	pkgs, err := list(root, goBin, run)
+	module, pkgs, err := list(root, goBin, run)
 	if err != nil {
 		s.Whole = err.Error()
 		return s
@@ -143,6 +148,7 @@ func Resolve(root, goBin string, run gates.Exec) *Scope {
 	}
 	s.Changed = changed
 	s.Reached = importers(changed, pkgs)
+	s.root, s.module, s.pkgs = root, module, pkgs
 	return s
 }
 
@@ -215,23 +221,23 @@ func (p listed) embeds(f string) bool {
 	return false
 }
 
-// list asks the toolchain for every package of the module, with what each
-// one's build and tests import.
-func list(root, goBin string, run gates.Exec) ([]listed, error) {
+// list asks the toolchain for the module's path and every package of the
+// module, with what each one's build and tests import.
+func list(root, goBin string, run gates.Exec) (string, []listed, error) {
 	module, err := run(nil, false, goBin, "list", "-m")
 	if err != nil {
-		return nil, fmt.Errorf("go list cannot name the module at %s: %w", root, err)
+		return "", nil, fmt.Errorf("go list cannot name the module at %s: %w", root, err)
 	}
 	prefix := strings.TrimSpace(string(module))
 	// Outside a module go list -m names command-line-arguments, and in a
 	// workspace it names every module, one per line; neither is one module
 	// whose ./... the gates read.
 	if prefix == "" || prefix == "command-line-arguments" || strings.Contains(prefix, "\n") {
-		return nil, fmt.Errorf("%s is not one Go module, so its packages cannot be scoped", root)
+		return "", nil, fmt.Errorf("%s is not one Go module, so its packages cannot be scoped", root)
 	}
 	out, err := run(nil, false, goBin, "list", "-e", "-json=ImportPath,Deps,TestImports,XTestImports,EmbedFiles,TestEmbedFiles,XTestEmbedFiles", "./...")
 	if err != nil {
-		return nil, fmt.Errorf("go list cannot list the module's packages: %w", err)
+		return "", nil, fmt.Errorf("go list cannot list the module's packages: %w", err)
 	}
 	var pkgs []listed
 	dec := json.NewDecoder(bytes.NewReader(out))
@@ -240,25 +246,32 @@ func list(root, goBin string, run gates.Exec) ([]listed, error) {
 		if err := dec.Decode(&p); errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
-			return nil, fmt.Errorf("reading go list's packages: %w", err)
+			return "", nil, fmt.Errorf("reading go list's packages: %w", err)
 		}
-		// A package's directory is its import path below the module's: go
-		// list's own Dir is absolute, and a checkout reached through a
-		// symlink reports it on the other side of the link.
-		switch {
-		case p.ImportPath == prefix:
-			p.dir = "."
-		case strings.HasPrefix(p.ImportPath, prefix+"/"):
-			p.dir = strings.TrimPrefix(p.ImportPath, prefix+"/")
-		default:
+		var ok bool
+		if p.dir, ok = dirOf(prefix, p.ImportPath); !ok {
 			continue
 		}
 		pkgs = append(pkgs, p)
 	}
 	if len(pkgs) == 0 {
-		return nil, errors.New("go list found no package in the module, so nothing can be scoped")
+		return "", nil, errors.New("go list found no package in the module, so nothing can be scoped")
 	}
-	return pkgs, nil
+	return prefix, pkgs, nil
+}
+
+// dirOf is a package's directory, its import path below the module's, and
+// whether the package is the module's at all. go list's own Dir is
+// absolute, and a checkout reached through a symlink reports it on the
+// other side of the link.
+func dirOf(module, importPath string) (string, bool) {
+	switch {
+	case importPath == module:
+		return ".", true
+	case strings.HasPrefix(importPath, module+"/"):
+		return strings.TrimPrefix(importPath, module+"/"), true
+	}
+	return "", false
 }
 
 // owners names the packages each changed file belongs to: the package whose
@@ -290,13 +303,7 @@ func owners(root string, files []string, pkgs []listed) ([]Package, string) {
 			return nil, fmt.Sprintf("%s holds Go files but no package go list reports: a package removed or moved, "+
 				"or one build constraints exclude here, so what imports it is outside the graph", dir)
 		}
-		owner := -1
-		for i, p := range pkgs {
-			if within(f, p.dir) && (owner < 0 || depth(p.dir) > depth(pkgs[owner].dir)) {
-				owner = i
-			}
-		}
-		if owner >= 0 {
+		if owner := nearest(f, pkgs); owner >= 0 {
 			add(pkgs[owner])
 		}
 		for _, p := range pkgs {
@@ -307,6 +314,18 @@ func owners(root string, files []string, pkgs []listed) ([]Package, string) {
 	}
 	slices.SortFunc(changed, func(a, b Package) int { return strings.Compare(a.ImportPath, b.ImportPath) })
 	return changed, ""
+}
+
+// nearest is the index of the package whose directory is f's nearest, or -1
+// when f sits under none.
+func nearest(f string, pkgs []listed) int {
+	owner := -1
+	for i, p := range pkgs {
+		if within(f, p.dir) && (owner < 0 || depth(p.dir) > depth(pkgs[owner].dir)) {
+			owner = i
+		}
+	}
+	return owner
 }
 
 // importers is changed and every package whose build or tests reach one of

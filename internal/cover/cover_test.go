@@ -274,3 +274,55 @@ func TestAFailingListerIsAnError(t *testing.T) {
 		t.Fatal("a package list that cannot be read must fail rather than skip the rule")
 	}
 }
+
+// A block the base's run covered that the change's run does not, or does
+// not hold at all, is coverage lost; one covered by both, or by neither,
+// is not, and a block only the change's run covers is coverage gained.
+func TestLostNamesThePackagesThatLostABlock(t *testing.T) {
+	base := profile(t,
+		mod+"kept/k.go:1.1,2.1 4 1",
+		mod+"kept/k.go:3.1,4.1 4 0",
+		mod+"lost/l.go:1.1,2.1 4 3",
+		mod+"gone/g.go:1.1,2.1 2 1",
+		mod+"frontend/node_modules/x/x.go:1.1,2.1 9 1",
+	)
+	now := profile(t,
+		mod+"kept/k.go:1.1,2.1 4 2",
+		mod+"kept/k.go:3.1,4.1 4 1",
+		mod+"lost/l.go:1.1,2.1 4 0",
+	)
+	got, err := Lost(base, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, " ") != mod+"gone "+mod+"lost" {
+		t.Errorf("lost %v", got)
+	}
+	if _, err := Lost(filepath.Join(t.TempDir(), "none"), now); err == nil {
+		t.Error("a base profile that cannot be read must fail")
+	}
+	if _, err := Lost(base, filepath.Join(t.TempDir(), "none")); err == nil {
+		t.Error("a profile that cannot be read must fail")
+	}
+}
+
+// RunOn judges only the packages it names, however many more the profile
+// measured.
+func TestRunOnJudgesOnlyThePackagesNamed(t *testing.T) {
+	p := profile(t,
+		mod+"changed/c.go:1.1,2.1 10 1",
+		mod+"reached/r.go:1.1,2.1 10 0",
+	)
+	var sb strings.Builder
+	if err := RunOn(cfg(), []string{p}, &sb, known(mod+"changed"), []string{mod + "changed"}); err != nil {
+		t.Fatalf("a package the floor was not asked about cannot fail it: %v\n%s", err, sb.String())
+	}
+	if strings.Contains(sb.String(), "reached") {
+		t.Errorf("an unjudged package is not reported:\n%s", sb.String())
+	}
+	sb.Reset()
+	err := RunOn(cfg(), []string{p}, &sb, known(mod+"changed", mod+"missing"), []string{mod + "changed", mod + "missing"})
+	if err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Errorf("a named package with no data is unmeasured: %v", err)
+	}
+}
