@@ -77,5 +77,8 @@ negative cap or wait, and
 ## Outcome
 
 Implemented as specified. Run on 2026-11-01 against a clone of pons at
-main with podman, configured with the version, size, shell and start
-checks of its verify.yml image job.
+main under podman, configured with the version, size, shell and start
+checks of its verify.yml image job: it passed, and left no image or
+container behind. The Docker path is the same arguments without
+`--read-only-tmpfs=false`, held by the unit tests; its first live run is
+a service's first CI run with the gate.
