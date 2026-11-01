@@ -65,6 +65,21 @@ func scoped(c Ctx, name string) (skip, note string, err error) {
 			}
 		}
 		return "no frontend package changed since " + s.Since(), "", nil
+	case "image":
+		// A build is minutes; a change outside every image's context, or
+		// to prose alone, cannot move its verdict.
+		for _, im := range c.Cfg.Image.Images {
+			dir := filepath.ToSlash(filepath.Clean(im.ContextOr()))
+			for _, f := range s.Files {
+				if (dir == "." || f == dir || strings.HasPrefix(f, dir+"/")) && !strings.HasSuffix(f, ".md") {
+					return "", "", nil
+				}
+			}
+			if s.Touches(filepath.ToSlash(filepath.Clean(im.DockerfileOr()))) {
+				return "", "", nil
+			}
+		}
+		return "no file an image is built from changed since " + s.Since(), "", nil
 	case "lean":
 		dirs, err := gates.LakeProjects(c.Exec)
 		if err != nil {

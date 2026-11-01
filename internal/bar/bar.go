@@ -200,6 +200,17 @@ var Gates = []Gate{
 				return gates.OSExec(filepath.Join(c.Root, dir), c.Out)
 			})
 		}},
+	{Name: "image", Doc: "every named image builds, reports its version, stays under its cap, holds no shell, and starts read-only and answers its probe",
+		// After frontend: a container build is minutes too.
+		Applies: func(c Ctx) (bool, string, error) {
+			if len(c.Cfg.Image.Images) == 0 {
+				return false, "image.images names no image", nil
+			}
+			return true, "", nil
+		},
+		Run: func(c Ctx) error {
+			return gates.Image(c.Cfg.Image.Images, c.Out, exec.LookPath, c.Exec)
+		}},
 	{Name: "lean", Doc: "every Lake project git tracks builds with no warning, so no proof uses sorry",
 		// Before lint and the suite: a machine without lake installs elan and
 		// a toolchain first, which is a minute, not seconds.

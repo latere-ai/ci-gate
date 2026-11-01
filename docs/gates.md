@@ -30,6 +30,7 @@ another. `go tool lateregate <gate>` runs one.
 | `manifests` | every kustomization renders with kustomize at the pinned version | git tracks a kustomization that is not a Component |
 | `rules` | every PrometheusRule passes promtool at the pinned version | a tracked YAML file holds a `kind: PrometheusRule` document |
 | `frontend` | every named Bun package installs from its lockfile, then typechecks, tests and builds | `frontend.projects` names a package |
+| `image` | every named container image builds, reports its version, stays under its size cap, holds no shell, and starts read-only and answers its probe | `image.images` names an image |
 | `lean` | every Lake project builds with `lake build --wfail`, so no proof uses `sorry` | git tracks a `lakefile.toml` or `lakefile.lean` |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
 | `vuln` | govulncheck at the pinned version finds no reachable vulnerability | always |
@@ -1338,6 +1339,55 @@ hold a Bun package that only a release builds, or a tool whose tests need
 a browser, and naming the packages is the decision about which ones the
 bar holds. On a laptop it runs only when a file under a named package
 changed, since an install and a build take minutes.
+
+## `image`: the image a release ships still builds and starts
+
+A repository names its container images in `image.images`:
+
+```yaml
+image:
+  images:
+    - name: ponsd
+      version_args: [version]
+      version_expect: "ponsd "
+      max_mib: 40
+      start_args: [serve]
+      env:
+        PONS_PUBLIC_URL: http://127.0.0.1:8080
+      port: 8080
+      probe: /livez
+```
+
+For each, the gate builds the image from `dockerfile` (default
+`Dockerfile`) in `context` (default `.`), with any `build_args`, under a
+local tag of its own. It then checks, in order:
+
+1. `version_args` run in the image, and what they print starts with
+   `version_expect`, so the image is the build it claims to be. Both are
+   required.
+2. The image is no larger than `max_mib`, when one is set.
+3. The image holds no shell: `/bin/sh` does not run in it. An image that
+   needs one names the reason in `allow_shell`.
+4. The image starts with `start_args` and `env`, a read-only root file
+   system and every capability dropped, the way production runs it, and
+   answers a 2xx at `probe` on `port` within `wait_seconds` (default 10).
+   The container's logs are printed when it does not. An image whose start
+   needs something the gate does not bring up, such as a database, names
+   the reason in `skip_start` and is not started.
+
+Each image stops at its first failing check, every image is checked, and
+the error names each one that failed. The image and its container are
+removed either way. The port is published on `127.0.0.1` at a port the
+engine picks, so two runs on one machine do not collide.
+
+Docker is used when it is on `PATH`, podman otherwise; neither fails the
+gate. Under podman the start adds `--read-only-tmpfs=false`: podman
+otherwise mounts a writable `/tmp`, `/run` and `/dev` under `--read-only`,
+where Docker and a Kubernetes read-only root mount none, and an image
+that writes `/tmp` would pass on podman alone. The gate is opt-in, since which image a release ships and how it
+starts is the repository's decision. On a laptop it runs only when a file
+inside an image's build context changed, other than a Markdown file, or
+its Dockerfile did, since a build takes minutes.
 
 ## `lean`: the proofs still check
 

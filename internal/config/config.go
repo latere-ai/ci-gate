@@ -58,6 +58,7 @@ type Config struct {
 	PlatformViaSDK PlatformViaSDK `yaml:"platform_via_sdk"`
 	Words          Words          `yaml:"words"`
 	Frontend       Frontend       `yaml:"frontend"`
+	Image          Image          `yaml:"image"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
@@ -843,6 +844,9 @@ func (c *Config) validate(path string) error {
 	if err := c.Frontend.validate(); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
+	if err := c.Image.validate(); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
 	if err := c.Identity.validate(path); err != nil {
 		return err
 	}
@@ -1113,6 +1117,119 @@ func (f Frontend) validate() error {
 			return fmt.Errorf("frontend.projects: %q is named twice", p)
 		}
 		seen[clean] = true
+	}
+	return nil
+}
+
+// Image names the container images the image gate builds and starts, each
+// the way its release ships it. A repository opts in by naming them.
+type Image struct {
+	Images []ImageSpec `yaml:"images"`
+}
+
+// ImageSpec is one image: how it builds, what proves it is the build it
+// claims to be, and how it starts.
+type ImageSpec struct {
+	// Name labels the image in the gate's output.
+	Name string `yaml:"name"`
+	// Dockerfile and Context are relative to the repository root: Dockerfile
+	// and . when unset.
+	Dockerfile string            `yaml:"dockerfile"`
+	Context    string            `yaml:"context"`
+	BuildArgs  map[string]string `yaml:"build_args"`
+	// VersionArgs run in the image (`ponsd version`), and what they print
+	// starts with VersionExpect. Both are required.
+	VersionArgs   []string `yaml:"version_args"`
+	VersionExpect string   `yaml:"version_expect"`
+	// MaxMiB caps the image's size; 0 sets no cap.
+	MaxMiB int `yaml:"max_mib"`
+	// AllowShell, when set, is the reason the image ships /bin/sh. Without
+	// it, a shell in the image fails the gate.
+	AllowShell string `yaml:"allow_shell"`
+	// StartArgs and Env start the image, read-only and with no capabilities;
+	// it then answers a 2xx at Probe on Port within WaitSeconds (10).
+	StartArgs   []string          `yaml:"start_args"`
+	Env         map[string]string `yaml:"env"`
+	Port        int               `yaml:"port"`
+	Probe       string            `yaml:"probe"`
+	WaitSeconds int               `yaml:"wait_seconds"`
+	// SkipStart, when set, is the reason the image is not started here (a
+	// start that needs a database first stays the repository's own job).
+	SkipStart string `yaml:"skip_start"`
+}
+
+// DockerfileOr is the Dockerfile, or Dockerfile when unset.
+func (s ImageSpec) DockerfileOr() string {
+	if s.Dockerfile == "" {
+		return "Dockerfile"
+	}
+	return s.Dockerfile
+}
+
+// ContextOr is the build context, or . when unset.
+func (s ImageSpec) ContextOr() string {
+	if s.Context == "" {
+		return "."
+	}
+	return s.Context
+}
+
+// WaitSecondsOr is how long the probe is asked, or 10 seconds when unset.
+func (s ImageSpec) WaitSecondsOr() int {
+	if s.WaitSeconds == 0 {
+		return 10
+	}
+	return s.WaitSeconds
+}
+
+// BuildArgKeys and EnvKeys are the map keys in order, so a run passes the
+// same arguments every time.
+func (s ImageSpec) BuildArgKeys() []string { return sortedKeys(s.BuildArgs) }
+
+// EnvKeys is Env's keys in order.
+func (s ImageSpec) EnvKeys() []string { return sortedKeys(s.Env) }
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+func (im Image) validate() error {
+	seen := map[string]bool{}
+	for i, s := range im.Images {
+		at := fmt.Sprintf("image.images[%d]", i)
+		if s.Name == "" {
+			return fmt.Errorf("%s: name is required", at)
+		}
+		at = "image " + s.Name
+		if seen[s.Name] {
+			return fmt.Errorf("%s is named twice", at)
+		}
+		seen[s.Name] = true
+		for _, p := range []string{s.DockerfileOr(), s.ContextOr()} {
+			if !filepath.IsLocal(filepath.Clean(p)) {
+				return fmt.Errorf("%s: %q must be a path inside the repository", at, p)
+			}
+		}
+		if len(s.VersionArgs) == 0 || s.VersionExpect == "" {
+			return fmt.Errorf("%s: version_args and version_expect are required; the image proves it is the build it claims to be by printing its version", at)
+		}
+		if s.MaxMiB < 0 || s.WaitSeconds < 0 {
+			return fmt.Errorf("%s: max_mib and wait_seconds cannot be negative", at)
+		}
+		if s.SkipStart != "" {
+			continue
+		}
+		if s.Port <= 0 || s.Port > 65535 {
+			return fmt.Errorf("%s: port is required to start the image, or skip_start with the reason it is not started", at)
+		}
+		if !strings.HasPrefix(s.Probe, "/") {
+			return fmt.Errorf("%s: probe must be a path such as /livez, or skip_start with the reason it is not started", at)
+		}
 	}
 	return nil
 }

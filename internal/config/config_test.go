@@ -829,3 +829,51 @@ func TestFrontendProjectsStayInsideAndAreNamedOnce(t *testing.T) {
 		}
 	}
 }
+
+func TestImagesAreNamedOnceProveTheirVersionAndStartOrSayWhy(t *testing.T) {
+	c, err := Load(write(t, `image:
+  images:
+    - name: ponsd
+      version_args: [version]
+      version_expect: "ponsd "
+      max_mib: 40
+      start_args: [serve]
+      env: {PONS_PUBLIC_URL: "http://127.0.0.1:8080"}
+      port: 8080
+      probe: /livez
+    - name: worker
+      dockerfile: worker/Dockerfile
+      context: worker
+      version_args: [--version]
+      version_expect: "worker "
+      skip_start: needs Postgres first
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.Image.Images
+	if len(got) != 2 || got[0].Port != 8080 || got[0].WaitSecondsOr() != 10 || got[1].DockerfileOr() != "worker/Dockerfile" || got[1].ContextOr() != "worker" || got[0].DockerfileOr() != "Dockerfile" || got[0].ContextOr() != "." {
+		t.Fatalf("images %+v", got)
+	}
+	const (
+		at = "image:\n  images:\n    - name: a\n"
+		v  = "      version_args: [version]\n      version_expect: a\n"
+		ok = v + "      port: 8080\n      probe: /livez\n"
+	)
+	for body, want := range map[string]string{
+		"image:\n  images:\n    - port: 8080\n":                                   "name is required",
+		at + ok + "    - name: a\n" + ok:                                          "named twice",
+		at + "      dockerfile: ../Dockerfile\n" + ok:                             "inside the repository",
+		at + "      context: /abs\n" + ok:                                         "inside the repository",
+		at + "      version_expect: a\n      port: 8080\n      probe: /x\n":       "version_args and version_expect are required",
+		at + "      version_args: [version]\n      port: 8080\n      probe: /x\n": "version_args and version_expect are required",
+		at + "      max_mib: -1\n" + ok:                                           "cannot be negative",
+		at + v + "      probe: /livez\n":                                          "port is required",
+		at + v + "      port: 8080\n":                                             "probe must be a path",
+		at + v + "      port: 70000\n      probe: /livez\n":                       "port is required",
+	} {
+		if _, err := Load(write(t, body)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+}

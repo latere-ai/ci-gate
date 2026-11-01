@@ -532,3 +532,31 @@ func TestFrontendRunsOnlyForAChangedPackage(t *testing.T) {
 		t.Errorf("frontend with a changed package: %s %q", e.Status, e.Reason)
 	}
 }
+
+// The image gate runs on a laptop only when a file an image is built from
+// changed: one inside its context other than prose, or its Dockerfile.
+func TestImageRunsOnlyWhenItsBuildInputsChanged(t *testing.T) {
+	c, _ := ctx(t, nil, lake)
+	c.Cfg.Image.Images = []config.ImageSpec{{Name: "worker", Context: "worker", Dockerfile: "build/worker.Dockerfile"}}
+	for files, want := range map[string]string{
+		"worker/README.md":        "no file an image is built from changed since origin/main (222222222222)",
+		"cmd/other/main.go":       "no file an image is built from changed since origin/main (222222222222)",
+		"worker/main.go":          "",
+		"build/worker.Dockerfile": "",
+	} {
+		c.Scope = change(files)
+		plan, err := Plan(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e := entry(plan, "image")
+		if want == "" && e.Status != Run || want != "" && (e.Status != Skip || e.Reason != want) {
+			t.Errorf("%s: %s %q, want %q", files, e.Status, e.Reason, want)
+		}
+	}
+	c.Cfg.Image.Images = []config.ImageSpec{{Name: "root"}}
+	c.Scope = change("go.mod")
+	if plan, err := Plan(c); err != nil || entry(plan, "image").Status != Run {
+		t.Errorf("a root context runs on any code change: %v %+v", err, entry(plan, "image"))
+	}
+}

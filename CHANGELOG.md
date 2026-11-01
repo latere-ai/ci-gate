@@ -32,6 +32,14 @@ committed: the commit log already holds that.
   whichever of `typecheck`, `test` and `build` the package defines. Bun
   and Node come from `PATH`; the shared pipeline sets them up when the
   gate runs. On a laptop it runs only when a named package changed.
+- **An `image` gate for the container images a repository names** in
+  `image.images`: each builds, prints a version that starts with the
+  expected prefix, stays under its size cap, holds no shell unless
+  `allow_shell` gives the reason, and starts with a read-only root file
+  system and no capabilities and answers its probe, unless `skip_start`
+  gives the reason. Docker or podman comes from `PATH`. On a laptop it
+  runs only when a file an image is built from changed. A service can
+  drop the workflow job that ran the same checks. See docs/gates.md.
 
 ## v0.61.0 - 2026-10-31
 

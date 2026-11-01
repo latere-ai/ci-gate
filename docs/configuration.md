@@ -197,6 +197,11 @@ enums:
 
 frontend:
   projects: []             # Bun package directories the frontend gate checks; empty skips the gate
+
+image:
+  images: []               # entries: {name, dockerfile, context, build_args, version_args, version_expect,
+                           #   max_mib, allow_shell, start_args, env, port, probe, wait_seconds, skip_start};
+                           #   empty skips the image gate
 ```
 
 [`gates.md`](gates.md) explains what each gate does with these keys.
