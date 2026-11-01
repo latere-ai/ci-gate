@@ -144,8 +144,8 @@ Several files connect the binary to the places it is invoked from, and
 each is a place to drift. `contract` reads all of them and names every
 difference in one run:
 
-- exactly one workflow calls `latere-ai/ci/.github/workflows/lateregate.yml@v1`,
-  on push to `main` and on pull requests, with a top-level `concurrency`
+- exactly one workflow calls `latere-ai/ci/.github/workflows/lateregate.yml`,
+  at `@v1` or pinned to one commit, on push to `main` and on pull requests, with a top-level `concurrency`
   whose group names `github.ref` and which sets `cancel-in-progress: true`,
   so a push cancels the run of the commit it supersedes
 - `.githooks/pre-commit` is executable and runs `lateregate hook`
@@ -157,8 +157,13 @@ difference in one run:
 - `.lateregate.yaml` has an `identity` block
 - `.lateregate.yaml` restates no default
 - a `Makefile` target named for a gate or a command (`cover`, `test-race`,
-  `lint`, `release`, ...) delegates to `lateregate`, or does not exist
-- `go.mod` carries the `tool` line for `latere.ai/x/ci-gate/cmd/lateregate`
+  `lint`, `release`, ...) delegates to `lateregate` (directly or through a
+  make variable such as `$(LATEREGATE)`), or does not exist
+- `go.mod` carries the `tool` line for `latere.ai/x/ci-gate/cmd/lateregate`.
+  A repository that keeps the tool out of its root module's graph pins it
+  in a nested module and names that directory as the caller's
+  `gate_module`; `contract` then reads that module's `go.mod`, and the
+  hooks run `go -C <module> tool lateregate hook -C <back to the root>`
 
 Nothing here is waivable. A waiver says a repository is behind on a gate;
 wiring is fixed in the commit that notices it.

@@ -327,6 +327,7 @@ func TestAGateNamedTargetMustDelegate(t *testing.T) {
 		{"delegating everything", "check:\n\t@go tool lateregate\n\ntest:\n\t@go tool lateregate test\n\n", ""},
 		{"no gate targets", "build:\n\tgo build ./...\n\nvalidate: lint-otel\n\n", ""},
 		{"this repository's own form", "cover:\n\t@$(GO) run ./cmd/lateregate cover\n\n", ""},
+		{"through a make variable", "cover:\n\t@$(LATEREGATE) cover $(GATE_ROOT)\n\n", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := check(t, dir, untracked(tc.db))
@@ -458,6 +459,37 @@ func TestTheToolMustBePinned(t *testing.T) {
 	write(t, dir, "go.mod", "module example.com/m\n\ngo 1.27\n\ntool (\n\tlatere.ai/x/ci-gate/cmd/lateregate\n\tgolang.org/x/tools/cmd/stringer\n)\n")
 	if _, err := check(t, dir, untracked("")); err != nil {
 		t.Fatalf("a tool block pins it: %v", err)
+	}
+}
+
+// A caller may pin the shared workflow to one commit instead of v1, and may
+// name a gate_module: the module that pins the tool, nested so the root
+// module's consumers never see it. The pin is then read there.
+func TestACommitPinAndANestedGateModule(t *testing.T) {
+	dir := repo(t)
+	pinned := strings.Replace(Caller, Workflow,
+		"latere-ai/ci/.github/workflows/lateregate.yml@a003d32532e5c8b50e139449c9066edea42a9605\n    with:\n      gate_module: internal/gate", 1)
+	write(t, dir, ".github/workflows/ci.yml", pinned)
+	write(t, dir, "go.mod", "module example.com/m\n\ngo 1.27\n")
+	write(t, dir, "internal/gate/go.mod", "module example.com/m/internal/gate\n\ngo 1.27\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n")
+	if _, err := check(t, dir, untracked("")); err != nil {
+		t.Fatalf("a commit pin with a nested gate module that pins the tool is in shape: %v", err)
+	}
+	write(t, dir, "internal/gate/go.mod", "module example.com/m/internal/gate\n\ngo 1.27\n")
+	if _, err := check(t, dir, untracked("")); err == nil || !strings.Contains(err.Error(), "internal/gate/go.mod does not pin the tool") ||
+		!strings.Contains(err.Error(), "go -C internal/gate get -tool") {
+		t.Fatalf("the pin is read in the gate module, got %v", err)
+	}
+	for _, bad := range []string{"../elsewhere", "missing"} {
+		write(t, dir, ".github/workflows/ci.yml", strings.Replace(pinned, "internal/gate", bad, 1))
+		if _, err := check(t, dir, untracked("")); err == nil || !strings.Contains(err.Error(), "gate_module") {
+			t.Fatalf("gate_module %q must be refused, got %v", bad, err)
+		}
+	}
+	short := strings.Replace(Caller, Workflow, "latere-ai/ci/.github/workflows/lateregate.yml@main", 1)
+	write(t, dir, ".github/workflows/ci.yml", short)
+	if _, err := check(t, dir, untracked("")); err == nil || !strings.Contains(err.Error(), "no workflow calls") {
+		t.Fatalf("a branch ref is neither v1 nor a commit, got %v", err)
 	}
 }
 

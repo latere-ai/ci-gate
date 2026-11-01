@@ -12,6 +12,13 @@ committed: the commit log already holds that.
 
 ### Added
 
+- **`contract` reads a nested gate module.** A caller may pin the shared
+  workflow to one commit as well as `@v1`, and may pass it a
+  `gate_module`, the directory of the module that pins the tool; the pin
+  is then read from that module's `go.mod`. A Makefile recipe that reaches
+  the tool through a make variable such as `$(LATEREGATE)` reads as
+  delegating. See docs/commands.md, "The wiring".
+
 - **Four gates for what a release reads: `tidy`, `actionlint`,
   `manifests` and `rules`.** `tidy` fails when `go mod tidy` would change
   a tracked module. `actionlint` lints the workflows with actionlint

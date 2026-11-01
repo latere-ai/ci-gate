@@ -35,6 +35,10 @@ import (
 // Workflow is the reusable workflow every repository calls.
 const Workflow = "latere-ai/ci/.github/workflows/lateregate.yml@v1"
 
+// workflowRef matches a call of the shared workflow at the moving v1 tag or
+// pinned to one commit, which is the same workflow held still.
+var workflowRef = regexp.MustCompile(`latere-ai/ci/\.github/workflows/lateregate\.yml@(?:v1|[0-9a-f]{40})\b`)
+
 // oldWorkflow is the one it replaces, reported by name because the fix
 // differs from the fix for no workflow at all.
 const oldWorkflow = "latere-ai/ci/.github/workflows/go-verify.yml@"
@@ -81,7 +85,8 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	var findings []string
 	note := func(f string) { findings = append(findings, f) }
 
-	if f := checkWorkflow(root); f != "" {
+	module, f := checkWorkflow(root)
+	if f != "" {
 		note(f)
 	}
 	if f := checkHook(root); f != "" {
@@ -113,15 +118,16 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	if handRolled != "" {
 		note(handRolled)
 	}
-	if f := checkPin(root); f != "" {
+	if f := checkPin(root, module); f != "" {
 		note(f)
 	}
 
 	if len(findings) > 0 {
 		return fmt.Errorf("%d drift(s) from the shared shape:\n- %s", len(findings), strings.Join(findings, "\n- "))
 	}
-	_, _ = fmt.Fprintf(out, "in shape: workflow calls %s, %s and %s delegate, %s untracked, %s ignored, %s tracked with an Unreleased heading, identity declares the role %s, %s, no restated default, no hand-rolled gate target, go.mod pins the tool\n",
-		Workflow, hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "), changelog.Name, string(cfg.Identity.Role), postgresNote(cfg))
+	_, _ = fmt.Fprintf(out, "in shape: a workflow calls the shared lateregate.yml, %s and %s delegate, %s untracked, %s ignored, %s tracked with an Unreleased heading, identity declares the role %s, %s, no restated default, no hand-rolled gate target, %s pins the tool\n",
+		hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "), changelog.Name, string(cfg.Identity.Role), postgresNote(cfg),
+		filepath.ToSlash(filepath.Join(module, "go.mod")))
 	return nil
 }
 
@@ -137,38 +143,78 @@ func postgresNote(cfg *config.Config) string {
 }
 
 // checkWorkflow finds the caller. Exactly one file calls the shared
-// workflow, and it runs on push to main and on pull requests.
-func checkWorkflow(root string) string {
+// workflow, and it runs on push to main and on pull requests. It also
+// returns the caller's gate_module, the directory of the module that pins
+// the tool; "." when the caller names none.
+func checkWorkflow(root string) (string, string) {
 	files, _ := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.y*ml"))
 	var callers, old []string
+	module := "."
 	for _, f := range files {
 		body, err := os.ReadFile(f)
 		if err != nil {
-			return fmt.Sprintf("%s: %v", f, err)
+			return module, fmt.Sprintf("%s: %v", f, err)
 		}
 		rel, _ := filepath.Rel(root, f)
 		switch {
-		case strings.Contains(string(body), Workflow):
+		case workflowRef.Match(body):
 			callers = append(callers, rel)
 			if f := checkTriggers(rel, body); f != "" {
-				return f
+				return module, f
 			}
+			m, f := gateModule(root, rel, body)
+			if f != "" {
+				return module, f
+			}
+			module = m
 		case strings.Contains(string(body), oldWorkflow):
 			old = append(old, rel)
 		}
 	}
 	switch {
 	case len(callers) == 1:
-		return ""
+		return module, ""
 	case len(callers) > 1:
-		return fmt.Sprintf("%d workflows call %s (%s); one repository has one caller",
+		return ".", fmt.Sprintf("%d workflows call %s (%s); one repository has one caller",
 			len(callers), Workflow, strings.Join(callers, ", "))
 	case len(old) > 0:
-		return fmt.Sprintf("%s still calls go-verify.yml; switch its `uses:` to %s, which asks lateregate which gates apply",
+		return ".", fmt.Sprintf("%s still calls go-verify.yml; switch its `uses:` to %s, which asks lateregate which gates apply",
 			strings.Join(old, ", "), Workflow)
 	default:
-		return fmt.Sprintf("no workflow calls %s; run `lateregate init` to write .github/workflows/ci.yml", Workflow)
+		return ".", fmt.Sprintf("no workflow calls %s; run `lateregate init` to write .github/workflows/ci.yml", Workflow)
 	}
+}
+
+// gateModule reads the gate_module the caller's job passes the shared
+// workflow: a directory under root holding a go.mod, or "." for none.
+func gateModule(root, rel string, body []byte) (string, string) {
+	var doc struct {
+		Jobs map[string]struct {
+			Uses string            `yaml:"uses"`
+			With map[string]string `yaml:"with"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		return ".", fmt.Sprintf("%s: %v", rel, err)
+	}
+	for _, job := range doc.Jobs {
+		if !workflowRef.MatchString(job.Uses) {
+			continue
+		}
+		m := strings.TrimSpace(job.With["gate_module"])
+		if m == "" {
+			return ".", ""
+		}
+		clean := filepath.Clean(m)
+		if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return ".", fmt.Sprintf("%s: gate_module %q is not a directory inside the repository", rel, m)
+		}
+		if _, err := os.Stat(filepath.Join(root, clean, "go.mod")); err != nil {
+			return ".", fmt.Sprintf("%s: gate_module %q holds no go.mod; it names the module that pins the tool", rel, m)
+		}
+		return clean, ""
+	}
+	return ".", ""
 }
 
 // checkTriggers reads the caller's `on:` block. GitHub reads YAML where the
@@ -402,7 +448,9 @@ func checkMakefile(root string, exec gates.Exec) (string, error) {
 		}
 		delegates := false
 		for _, l := range lines {
-			if strings.Contains(l, "lateregate") {
+			// Case-insensitive, so a recipe that reaches the tool through
+			// a make variable, $(LATEREGATE), reads as delegating.
+			if strings.Contains(strings.ToLower(l), "lateregate") {
 				delegates = true
 			}
 		}
@@ -421,15 +469,20 @@ func checkMakefile(root string, exec gates.Exec) (string, error) {
 // toolLine matches the tool directive, bare or inside a tool ( ) block.
 var toolLine = regexp.MustCompile(`(?m)^\s*(tool\s+)?` + regexp.QuoteMeta(ToolPath) + `\s*$`)
 
-// checkPin: go.mod carries the tool line. This repository, whose module is
-// the tool, carries it for its own package the same way.
-func checkPin(root string) string {
-	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
+// checkPin: the gate module's go.mod carries the tool line. That is the
+// root's, unless the caller names a gate_module. This repository, whose
+// module is the tool, carries it for its own package the same way.
+func checkPin(root, module string) string {
+	gomod := filepath.ToSlash(filepath.Join(module, "go.mod"))
+	body, err := os.ReadFile(filepath.Join(root, module, "go.mod"))
 	if err != nil {
-		return "go.mod is missing; every gate here is a Go tool dependency"
+		return gomod + " is missing; every gate here is a Go tool dependency"
 	}
 	if !toolLine.Match(body) {
-		return "go.mod does not pin the tool:\n\tgo get -tool " + ToolPath
+		if module != "." {
+			return gomod + " does not pin the tool:\n\tgo -C " + filepath.ToSlash(module) + " get -tool " + ToolPath
+		}
+		return gomod + " does not pin the tool:\n\tgo get -tool " + ToolPath
 	}
 	return ""
 }
@@ -443,7 +496,7 @@ func Init(root string, out io.Writer, exec gates.Exec) error {
 	// The caller, only when no workflow calls either the new or the old
 	// pipeline. An old caller carries inputs somebody chose, so it is edited
 	// by hand and reported by Run until it is.
-	if f := checkWorkflow(root); strings.HasPrefix(f, "no workflow calls") {
+	if _, f := checkWorkflow(root); strings.HasPrefix(f, "no workflow calls") {
 		p := filepath.Join(root, ".github", "workflows", "ci.yml")
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return err
