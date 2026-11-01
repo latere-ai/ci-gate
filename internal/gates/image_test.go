@@ -128,6 +128,28 @@ func TestImageThatDoesNotAnswerFails(t *testing.T) {
 	}
 }
 
+// A container that exits at start has no port, and its logs say why.
+func TestImageThatExitsAtStartPrintsItsLogs(t *testing.T) {
+	answering(t, nil)
+	e := &imageEngine{
+		out:  map[string]string{"version": "ponsd v1\n", "image": "1\n", "logs": "issuer: connection refused"},
+		fail: map[string]bool{"shell": true, "port": true},
+	}
+	var out strings.Builder
+	err := Image([]config.ImageSpec{pons()}, &out, found, e.exec)
+	if err == nil || !strings.Contains(out.String(), "issuer: connection refused") || !strings.Contains(out.String(), "may have exited") {
+		t.Fatalf("Image = %v\n%s", err, out.String())
+	}
+	e = &imageEngine{
+		out:  map[string]string{"version": "ponsd v1\n", "image": "1\n"},
+		fail: map[string]bool{"shell": true, "port": true, "logs": true},
+	}
+	out.Reset()
+	if err := Image([]config.ImageSpec{pons()}, &out, found, e.exec); err == nil || !strings.Contains(out.String(), "logs could not be read") {
+		t.Fatalf("unreadable logs: %v\n%s", err, out.String())
+	}
+}
+
 // A declared shell and a declared skip are decisions with reasons; podman
 // stands in where Docker is not installed; no engine at all is an error.
 func TestImageDecisionsAndEngines(t *testing.T) {

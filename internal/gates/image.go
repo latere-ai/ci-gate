@@ -161,9 +161,12 @@ func startImage(engine, name, tag string, im config.ImageSpec, out io.Writer, ru
 			err = fmt.Errorf("remove the container %s: %w", name, rmErr)
 		}
 	}()
+	// A container that exits at start has no port to read, and its logs say
+	// why, so they are printed here as well as when the probe runs out.
 	mapped, err := run(nil, false, engine, "port", name, port)
 	if err != nil {
-		return fmt.Errorf("cannot read the host port for %s: %w", port, err)
+		printLogs(engine, name, im.Name, out, run)
+		return fmt.Errorf("cannot read the host port for %s; the container may have exited: %w", port, err)
 	}
 	host := hostPort(string(mapped))
 	if host == "" {
@@ -184,12 +187,21 @@ func startImage(engine, name, tag string, im config.ImageSpec, out io.Writer, ru
 		}
 		select {
 		case <-ctx.Done():
-			logs, _ := run(nil, false, engine, "logs", name)
-			_, _ = fmt.Fprintf(out, "%s logs:\n%s\n", im.Name, logs)
+			printLogs(engine, name, im.Name, out, run)
 			return fmt.Errorf("%s did not answer within %s: %w", im.Probe, wait, last)
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
+}
+
+// printLogs prints a container's logs, or says why they could not be read.
+func printLogs(engine, container, image string, out io.Writer, run Exec) {
+	logs, err := run(nil, false, engine, "logs", container)
+	if err != nil {
+		_, _ = fmt.Fprintf(out, "%s logs could not be read: %v\n", image, err)
+		return
+	}
+	_, _ = fmt.Fprintf(out, "%s logs:\n%s\n", image, logs)
 }
 
 // hostPort reads the host port from `port` output such as

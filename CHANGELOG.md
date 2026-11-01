@@ -10,6 +10,12 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- **The `image` gate prints a container's logs when it exits at start.**
+  It printed them only when the probe ran out, so a server that died
+  before its port could be read failed with no reason given.
+
 ## v0.62.0 - 2026-11-01
 
 ### Added
