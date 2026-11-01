@@ -57,6 +57,7 @@ type Config struct {
 
 	PlatformViaSDK PlatformViaSDK `yaml:"platform_via_sdk"`
 	Words          Words          `yaml:"words"`
+	Frontend       Frontend       `yaml:"frontend"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
@@ -839,6 +840,9 @@ func (c *Config) validate(path string) error {
 	if err := c.Enums.validate(); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
+	if err := c.Frontend.validate(); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
 	if err := c.Identity.validate(path); err != nil {
 		return err
 	}
@@ -1088,4 +1092,27 @@ func (s Spec) AllowsStatus(v string) bool {
 // IsExcluded reports whether a file name in Dir is not a spec.
 func (s Spec) IsExcluded(name string) bool {
 	return slices.Contains(s.Exclude, name)
+}
+
+// Frontend names the Bun packages the frontend gate checks, each a directory
+// holding a tracked package.json and bun.lock. A repository opts in by
+// naming them: a package that only a release builds, or a tool with tests
+// that need a browser, stays out by not being named.
+type Frontend struct {
+	Projects []string `yaml:"projects"`
+}
+
+func (f Frontend) validate() error {
+	seen := map[string]bool{}
+	for _, p := range f.Projects {
+		clean := filepath.Clean(p)
+		if p == "" || !filepath.IsLocal(clean) {
+			return fmt.Errorf("frontend.projects: %q must be a directory inside the repository", p)
+		}
+		if seen[clean] {
+			return fmt.Errorf("frontend.projects: %q is named twice", p)
+		}
+		seen[clean] = true
+	}
+	return nil
 }

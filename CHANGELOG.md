@@ -20,6 +20,11 @@ committed: the commit log already holds that.
   downloaded once per machine and checked against its digest. Each runs
   where git tracks its subject, so a service can drop the workflow job
   that did the same check with a pin of its own. See docs/gates.md.
+- **A `frontend` gate for the Bun packages a repository names** in
+  `frontend.projects`: a frozen install from the tracked `bun.lock`, then
+  whichever of `typecheck`, `test` and `build` the package defines. Bun
+  and Node come from `PATH`; the shared pipeline sets them up when the
+  gate runs. On a laptop it runs only when a named package changed.
 
 ## v0.61.0 - 2026-10-31
 

@@ -60,9 +60,10 @@ in seconds once its tool is built.
 `manifests` renders; it does not validate the rendered objects against a
 cluster's schemas. `rules` checks the rules parse and are well formed, not
 that the metrics they name exist; origo keeps that check in its own
-tooling. The `image` and `frontend` checks the ci spec lists are not here:
-`image` needs a container engine the self-hosted runner and a laptop
-provide differently, and `frontend` needs bun on the gate's runner.
+tooling. The `frontend` check the ci spec lists is
+[[034-the-frontend-a-release-ships-builds-on-push]]. The `image` check is
+not here: it needs a container engine the self-hosted runner and a laptop
+provide differently.
 
 ## Acceptance criteria
 

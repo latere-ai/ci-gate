@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -186,6 +187,19 @@ var Gates = []Gate{
 			return true, "", nil
 		},
 		Run: func(c Ctx) error { return gates.Rules(gates.DefaultPromtool(), c.Root, c.Out, c.Exec) }},
+	{Name: "frontend", Doc: "every named Bun package installs from its lockfile, then typechecks, tests and builds",
+		// After the static scans: an install and a build are minutes.
+		Applies: func(c Ctx) (bool, string, error) {
+			if len(c.Cfg.Frontend.Projects) == 0 {
+				return false, "frontend.projects names no package", nil
+			}
+			return true, "", nil
+		},
+		Run: func(c Ctx) error {
+			return gates.Frontend(c.Cfg.Frontend.Projects, c.Root, c.Out, exec.LookPath, c.Exec, func(dir string) gates.Exec {
+				return gates.OSExec(filepath.Join(c.Root, dir), c.Out)
+			})
+		}},
 	{Name: "lean", Doc: "every Lake project git tracks builds with no warning, so no proof uses sorry",
 		// Before lint and the suite: a machine without lake installs elan and
 		// a toolchain first, which is a minute, not seconds.

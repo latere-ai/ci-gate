@@ -511,3 +511,24 @@ func TestAFloorWithNothingToCompareFails(t *testing.T) {
 		t.Errorf("no directory for the overlay must fail the floor: %v", err)
 	}
 }
+
+// The frontend gate runs on a laptop only when a named package changed.
+func TestFrontendRunsOnlyForAChangedPackage(t *testing.T) {
+	c, _ := ctx(t, nil, lake)
+	c.Cfg.Frontend.Projects = []string{"web/app"}
+	c.Scope = change("docs/README.md")
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, "frontend"); e.Status != Skip || e.Reason != "no frontend package changed since origin/main (222222222222)" {
+		t.Errorf("frontend: %s %q", e.Status, e.Reason)
+	}
+	c.Scope = change("web/app/src/main.ts")
+	if plan, err = Plan(c); err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, "frontend"); e.Status != Run {
+		t.Errorf("frontend with a changed package: %s %q", e.Status, e.Reason)
+	}
+}

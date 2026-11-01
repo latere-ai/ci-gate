@@ -194,6 +194,9 @@ enums:
     fields: {}             # package.Struct.Field -> configured package.Type
     parsers: {}            # package.Function -> reason for primitive conversion
   typescript: []           # entries: {project, types, fields, parsers}; selectors are file.ts#Symbol
+
+frontend:
+  projects: []             # Bun package directories the frontend gate checks; empty skips the gate
 ```
 
 [`gates.md`](gates.md) explains what each gate does with these keys.

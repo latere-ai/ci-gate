@@ -809,3 +809,23 @@ func TestReleaseRequireGreenDefaultsOn(t *testing.T) {
 		})
 	}
 }
+
+// frontend.projects names directories inside the repository, each once.
+func TestFrontendProjectsStayInsideAndAreNamedOnce(t *testing.T) {
+	c, err := Load(write(t, "frontend:\n  projects: [frontend, web/gallery]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Frontend.Projects; len(got) != 2 || got[1] != "web/gallery" {
+		t.Fatalf("projects %v", got)
+	}
+	for body, want := range map[string]string{
+		"frontend:\n  projects: [../other]\n":            "must be a directory inside the repository",
+		"frontend:\n  projects: [\"\"]\n":                "must be a directory inside the repository",
+		"frontend:\n  projects: [frontend, frontend/]\n": "is named twice",
+	} {
+		if _, err := Load(write(t, body)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+}

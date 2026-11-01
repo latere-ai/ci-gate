@@ -56,6 +56,15 @@ func scoped(c Ctx, name string) (skip, note string, err error) {
 			return none, "", nil
 		}
 		return "", "", nil
+	case "frontend":
+		// An install and a build are minutes; a change that touches no
+		// named package cannot move their verdict.
+		for _, p := range c.Cfg.Frontend.Projects {
+			if s.Touches(filepath.ToSlash(filepath.Clean(p))) {
+				return "", "", nil
+			}
+		}
+		return "no frontend package changed since " + s.Since(), "", nil
 	case "lean":
 		dirs, err := gates.LakeProjects(c.Exec)
 		if err != nil {
