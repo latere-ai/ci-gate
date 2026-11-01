@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.62.1 - 2026-11-01
+
 ### Fixed
 
 - **The `image` gate prints a container's logs when it exits at start.**
