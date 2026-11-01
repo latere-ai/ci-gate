@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.62.0 - 2026-11-01
+
 ### Added
 
 - **`contract` reads a nested gate module.** A caller may pin the shared
