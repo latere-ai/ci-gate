@@ -25,6 +25,10 @@ another. `go tool lateregate <gate>` runs one.
 | `postgres` | the repository's Postgres role holds | always |
 | `enum-go` | declared Go domains use named types, named members and exhaustive switches | `enums.go.types` names a domain |
 | `enum-typescript` | declared TypeScript domains use native enums, named members and exhaustive switches | `enums.typescript` names a project |
+| `tidy` | `go mod tidy` would change no tracked module | git tracks a `go.mod` |
+| `actionlint` | actionlint at the pinned version finds nothing in the workflows | git tracks a workflow under `.github/workflows` |
+| `manifests` | every kustomization renders with kustomize at the pinned version | git tracks a kustomization that is not a Component |
+| `rules` | every PrometheusRule passes promtool at the pinned version | a tracked YAML file holds a `kind: PrometheusRule` document |
 | `lean` | every Lake project builds with `lake build --wfail`, so no proof uses `sorry` | git tracks a `lakefile.toml` or `lakefile.lean` |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
 | `vuln` | govulncheck at the pinned version finds no reachable vulnerability | always |
@@ -1266,6 +1270,45 @@ A check on a laptop scans the whole module when a Go package changed,
 since new code can call a vulnerable function nothing called before, and
 skips the scan when none did: the advisories that move with no commit
 are CI's, which scans on every push.
+
+## `tidy`, `actionlint`, `manifests` and `rules`: what a release reads
+
+Four checks every service carried in a workflow job of its own, each with
+its own pin of the tool. They live here so the tool is pinned once and the
+check runs the same on a laptop.
+
+`tidy` runs `go mod tidy -diff` in every module git tracks, outside
+`testdata/` and `vendor/`, and fails naming each module it would change.
+An untidy module builds today and stops the day a requirement it leans on
+implicitly moves.
+
+`actionlint` lints every workflow git tracks directly under
+`.github/workflows` with actionlint at the version this tool pins, run
+through `go run`, so the Go checksum database verifies the build. It reads
+`.github/actionlint.yaml` when the repository has one. Its shellcheck and
+pyflakes passes are off: they run whatever shellcheck the machine has, so a
+laptop and a runner would disagree.
+
+`manifests` renders every kustomization git tracks
+(`kustomization.yaml`, `kustomization.yml` or `Kustomization`, outside
+`testdata/`) with kustomize at the pinned version, through `go run`, and
+fails naming each that does not render: a patch whose target is gone, a
+resource that moved, a base an overlay can no longer reach. A Component is
+left out, since it renders only through the kustomization that includes it.
+
+`rules` lifts the `spec` out of every `kind: PrometheusRule` document in
+the YAML files git tracks, outside `testdata/`, and checks the groups with
+`promtool check rules` at the version this tool pins. A rule promtool
+rejects is one Prometheus refuses to load. promtool's module cannot run
+through `go run`, so the gate downloads the release archive for the
+machine's platform, checks it against the SHA-256 the release publishes,
+pinned here, and installs it under the user's cache directory, where the
+next run finds it. It never uses a promtool on `PATH`. A file that names
+PrometheusRule and does not parse fails the gate rather than leaving its
+rules unchecked. Darwin and Linux on arm64 and amd64 are pinned.
+
+None of the four has a configuration key; a repository that cannot meet one
+yet waives it with a reason and a date.
 
 ## `lean`: the proofs still check
 

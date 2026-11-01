@@ -10,6 +10,17 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **Four gates for what a release reads: `tidy`, `actionlint`,
+  `manifests` and `rules`.** `tidy` fails when `go mod tidy` would change
+  a tracked module. `actionlint` lints the workflows with actionlint
+  v1.7.12. `manifests` renders every kustomization with kustomize v5.7.1.
+  `rules` checks every PrometheusRule's groups with promtool v3.15.1,
+  downloaded once per machine and checked against its digest. Each runs
+  where git tracks its subject, so a service can drop the workflow job
+  that did the same check with a pin of its own. See docs/gates.md.
+
 ## v0.61.0 - 2026-10-31
 
 ### Fixed

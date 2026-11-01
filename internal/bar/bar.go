@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -158,6 +159,33 @@ var Gates = []Gate{
 			}
 			return tsenum.Run(projects, c.Root, c.Out, c.Exec)
 		}},
+	{Name: "tidy", Doc: "go mod tidy would change no tracked module",
+		Applies: func(c Ctx) (bool, string, error) {
+			return tracks(gates.GoModules(c.Exec))("tracks no go.mod")
+		},
+		Run: func(c Ctx) error { return gates.Tidy(c.GoBin, c.Out, c.Exec) }},
+	{Name: "actionlint", Doc: "actionlint " + gates.ActionlintVersion + " finds nothing in the workflows",
+		Applies: func(c Ctx) (bool, string, error) {
+			return tracks(gates.Workflows(c.Exec))("tracks no workflow under .github/workflows")
+		},
+		Run: func(c Ctx) error { return gates.Actionlint(c.GoBin, c.Out, c.Exec) }},
+	{Name: "manifests", Doc: "every kustomization renders with kustomize " + gates.KustomizeVersion,
+		Applies: func(c Ctx) (bool, string, error) {
+			return tracks(gates.Kustomizations(c.Exec, readIn(c.Root)))("tracks no kustomization")
+		},
+		Run: func(c Ctx) error { return gates.Manifests(c.GoBin, c.Root, c.Out, c.Exec) }},
+	{Name: "rules", Doc: "every PrometheusRule passes promtool " + gates.PromtoolVersion,
+		Applies: func(c Ctx) (bool, string, error) {
+			groups, err := gates.PrometheusRules(c.Exec, readIn(c.Root))
+			if err != nil {
+				return false, "", err
+			}
+			if len(groups) == 0 {
+				return false, "tracks no PrometheusRule", nil
+			}
+			return true, "", nil
+		},
+		Run: func(c Ctx) error { return gates.Rules(gates.DefaultPromtool(), c.Root, c.Out, c.Exec) }},
 	{Name: "lean", Doc: "every Lake project git tracks builds with no warning, so no proof uses sorry",
 		// Before lint and the suite: a machine without lake installs elan and
 		// a toolchain first, which is a minute, not seconds.
@@ -316,6 +344,26 @@ func tracksLake(c Ctx) (bool, string, error) {
 		return false, "tracks no Lake project (lakefile.toml or lakefile.lean)", nil
 	}
 	return true, "", nil
+}
+
+// tracks turns a list git gave into an Applies answer: an error stays an
+// error, since applicability that cannot be determined must not resolve to
+// "does not apply", and an empty list skips with why.
+func tracks(list []string, err error) func(why string) (bool, string, error) {
+	return func(why string) (bool, string, error) {
+		if err != nil {
+			return false, "", err
+		}
+		if len(list) == 0 {
+			return false, why, nil
+		}
+		return true, "", nil
+	}
+}
+
+// readIn reads a tracked file by its path under root.
+func readIn(root string) func(string) ([]byte, error) {
+	return func(f string) ([]byte, error) { return os.ReadFile(filepath.Join(root, f)) }
 }
 
 // Find returns the gate by name.

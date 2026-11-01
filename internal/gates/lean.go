@@ -195,7 +195,7 @@ func (tc LeanToolchain) install(home string, asset ElanAsset, env []string, out 
 		return err
 	}
 	init := filepath.Join(tmp, "elan-init")
-	if err := extractFile(archive, "elan-init", init); err != nil {
+	if err := extractFile(archive, "elan-init", init, maxElanInit); err != nil {
 		return err
 	}
 	if _, err := run(env, true, init, "-y", "--no-modify-path", "--default-toolchain", "none"); err != nil {
@@ -225,8 +225,9 @@ func checkSHA256(file, want string) error {
 }
 
 // extractFile writes the regular file named name in a gzipped tar archive to
-// dst, executable.
-func extractFile(archive, name, dst string) error {
+// dst, executable, refusing one over limit bytes so a corrupt or hostile
+// archive cannot fill the disk.
+func extractFile(archive, name, dst string, limit int64) error {
 	f, err := os.Open(archive)
 	if err != nil {
 		return err
@@ -248,14 +249,14 @@ func extractFile(archive, name, dst string) error {
 		if h.Typeflag != tar.TypeReg || path.Base(h.Name) != name {
 			continue
 		}
-		if h.Size > maxElanInit {
-			return fmt.Errorf("%s in %s is %d bytes, over the %d the gate reads", name, filepath.Base(archive), h.Size, maxElanInit)
+		if h.Size > limit {
+			return fmt.Errorf("%s in %s is %d bytes, over the %d the gate reads", name, filepath.Base(archive), h.Size, limit)
 		}
 		w, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 		if err != nil {
 			return err
 		}
-		if _, err := io.Copy(w, io.LimitReader(tr, maxElanInit)); err != nil {
+		if _, err := io.Copy(w, io.LimitReader(tr, limit)); err != nil {
 			_ = w.Close()
 			return err
 		}

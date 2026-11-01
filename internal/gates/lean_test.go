@@ -298,10 +298,10 @@ func TestExtractFileRefusesWhatIsNotAnArchive(t *testing.T) {
 	if err := os.WriteFile(notGzip, []byte("not gzip"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := extractFile(notGzip, "elan-init", filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "read elan.tar.gz") {
+	if err := extractFile(notGzip, "elan-init", filepath.Join(dir, "out"), maxElanInit); err == nil || !strings.Contains(err.Error(), "read elan.tar.gz") {
 		t.Fatalf("got %v", err)
 	}
-	if err := extractFile(filepath.Join(dir, "missing"), "elan-init", filepath.Join(dir, "out")); err == nil {
+	if err := extractFile(filepath.Join(dir, "missing"), "elan-init", filepath.Join(dir, "out"), maxElanInit); err == nil {
 		t.Fatal("a missing archive was read")
 	}
 	if err := checkSHA256(filepath.Join(dir, "missing"), "00"); err == nil {
