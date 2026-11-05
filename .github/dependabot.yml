@@ -1,0 +1,33 @@
+version: 2
+
+# Every third-party action is pinned to a commit so a repointed upstream tag
+# cannot execute new code. The commits are the organization's one list, which
+# lateregate embeds in internal/actionpins/action.yml and its action-pins gate
+# holds every repository to. A commit pin does not move on its own, so
+# dependabot keeps it from going stale: it opens a PR that rewrites the commit
+# and the trailing `# vX.Y.Z` comment.
+#
+# The list and this repository's own workflows are watched together, in one
+# group, so one PR moves both and ci-gate's own gate passes on it. A merged
+# update ships with its sweep: the release that changes the list is followed
+# the same day by one commit per repository that pins ci-gate, moving the gate
+# pin and running `lateregate action-pins -w`.
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/internal/actionpins"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+# Major bumps are deliberately NOT ignored: a pipeline sitting three majors
+# behind is its own risk, and a PR is the only thing that surfaces it. They
+# are not merge-on-green, though. A major reaches every repository with the
+# release that carries the list, so take it into one repository first, by
+# hand with `action-pins -w` against a local build, before releasing it.
