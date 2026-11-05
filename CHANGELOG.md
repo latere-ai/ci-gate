@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.65.0 - 2026-11-05
+
 ### Added
 
 - **`e2e` runs the suites that need real services.** A repository lists
