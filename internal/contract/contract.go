@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -43,25 +44,31 @@ var workflowRef = regexp.MustCompile(`latere-ai/ci/\.github/workflows/lateregate
 // differs from the fix for no workflow at all.
 const oldWorkflow = "latere-ai/ci/.github/workflows/go-verify.yml@"
 
-// Caller is the workflow file init writes. It is the whole caller.
+// Caller is the workflow file init writes. It is the whole caller, the same
+// bytes in every repository, so what a repository decides lives in
+// .lateregate.yaml and none of it in YAML.
 const Caller = `name: ci
 
-# Every gate lives in lateregate, pinned in go.mod. The reusable workflow
-# asks the binary which gates apply and runs one job per gate.
-
+# The bar lives in latere-ai/ci-gate, pinned in go.mod, and the shared
+# workflow runs it. What this repository decides is in .lateregate.yaml.
+# ` + "`lateregate init`" + ` writes this file, the same in every repository.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 # A newer push to the same ref supersedes this run: its commit carries every
-# change this one would verify, and the runner is better spent on it.
+# change this one would verify.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+# actions: read lets the gate find the last commit whose CI passed, which it
+# measures the change from.
 permissions:
   contents: read
+  actions: read
 
 jobs:
   gate:
@@ -85,7 +92,8 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	var findings []string
 	note := func(f string) { findings = append(findings, f) }
 
-	module, f := checkWorkflow(root)
+	var notes []string
+	module, explicit, f := checkWorkflow(root, &notes)
 	if f != "" {
 		note(f)
 	}
@@ -118,8 +126,20 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	if handRolled != "" {
 		note(handRolled)
 	}
-	if f := checkPin(root, module); f != "" {
-		note(f)
+	if !explicit {
+		var f string
+		module, f = findPin(root, exec)
+		if f != "" {
+			note(f)
+		}
+	}
+	if explicit {
+		if f := checkPin(root, module); f != "" {
+			note(f)
+		}
+	}
+	for _, n := range notes {
+		_, _ = fmt.Fprintln(out, "note: "+n)
 	}
 
 	if len(findings) > 0 {
@@ -145,44 +165,84 @@ func postgresNote(cfg *config.Config) string {
 // checkWorkflow finds the caller. Exactly one file calls the shared
 // workflow, and it runs on push to main and on pull requests. It also
 // returns the caller's gate_module, the directory of the module that pins
-// the tool; "." when the caller names none.
-func checkWorkflow(root string) (string, string) {
+// the tool, and whether the caller named one; "." and false when it names
+// none. A caller that differs from the one init writes adds a note, which is
+// not a finding.
+func checkWorkflow(root string, notes *[]string) (string, bool, string) {
 	files, _ := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.y*ml"))
 	var callers, old []string
-	module := "."
+	module, explicit := ".", false
 	for _, f := range files {
 		body, err := os.ReadFile(f)
 		if err != nil {
-			return module, fmt.Sprintf("%s: %v", f, err)
+			return module, false, fmt.Sprintf("%s: %v", f, err)
 		}
 		rel, _ := filepath.Rel(root, f)
 		switch {
 		case workflowRef.Match(body):
 			callers = append(callers, rel)
 			if f := checkTriggers(rel, body); f != "" {
-				return module, f
+				return module, false, f
 			}
 			m, f := gateModule(root, rel, body)
 			if f != "" {
-				return module, f
+				return module, false, f
 			}
-			module = m
+			module, explicit = m, m != "."
+			if string(body) != Caller && notes != nil {
+				*notes = append(*notes, rel+" differs from the shared caller; `lateregate init` writes the shared one")
+			}
 		case strings.Contains(string(body), oldWorkflow):
 			old = append(old, rel)
 		}
 	}
 	switch {
 	case len(callers) == 1:
-		return module, ""
+		return module, explicit, ""
 	case len(callers) > 1:
-		return ".", fmt.Sprintf("%d workflows call %s (%s); one repository has one caller",
+		return ".", false, fmt.Sprintf("%d workflows call %s (%s); one repository has one caller",
 			len(callers), Workflow, strings.Join(callers, ", "))
 	case len(old) > 0:
-		return ".", fmt.Sprintf("%s still calls go-verify.yml; switch its `uses:` to %s, which asks lateregate which gates apply",
+		return ".", false, fmt.Sprintf("%s still calls go-verify.yml; switch its `uses:` to %s, which asks lateregate which gates apply",
 			strings.Join(old, ", "), Workflow)
 	default:
-		return ".", fmt.Sprintf("no workflow calls %s; run `lateregate init` to write .github/workflows/ci.yml", Workflow)
+		return ".", false, fmt.Sprintf("no workflow calls %s; run `lateregate init` to write .github/workflows/ci.yml", Workflow)
 	}
+}
+
+// findPin finds the module that pins the tool when the caller names none:
+// the root go.mod if it has the tool line, otherwise the one tracked go.mod
+// that has it. None, or several, is a finding that names them. It returns the
+// module's directory relative to root.
+func findPin(root string, exec gates.Exec) (string, string) {
+	pins := func(dir string) bool {
+		body, err := os.ReadFile(filepath.Join(root, dir, "go.mod"))
+		return err == nil && toolLine.Match(body)
+	}
+	if pins(".") {
+		return ".", ""
+	}
+	out, err := exec(nil, false, "git", "ls-files", "--", "go.mod", ":(glob)**/go.mod")
+	if err != nil {
+		return ".", "go.mod does not pin the tool, and git could not list the other modules: " + err.Error()
+	}
+	var found []string
+	for f := range strings.FieldsSeq(string(out)) {
+		dir := path.Dir(f)
+		if dir != "." && pins(dir) {
+			found = append(found, f)
+		}
+	}
+	switch len(found) {
+	case 0:
+		if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+			return ".", "go.mod is missing; every gate here is a Go tool dependency"
+		}
+		return ".", "go.mod does not pin the tool, and no other tracked go.mod does:\n\tgo get -tool " + ToolPath
+	case 1:
+		return path.Dir(found[0]), ""
+	}
+	return ".", fmt.Sprintf("%d go.mod files pin the tool (%s); one module pins it", len(found), strings.Join(found, ", "))
 }
 
 // gateModule reads the gate_module the caller's job passes the shared
@@ -496,7 +556,7 @@ func Init(root string, out io.Writer, exec gates.Exec) error {
 	// The caller, only when no workflow calls either the new or the old
 	// pipeline. An old caller carries inputs somebody chose, so it is edited
 	// by hand and reported by Run until it is.
-	if _, f := checkWorkflow(root); strings.HasPrefix(f, "no workflow calls") {
+	if _, _, f := checkWorkflow(root, nil); strings.HasPrefix(f, "no workflow calls") {
 		p := filepath.Join(root, ".github", "workflows", "ci.yml")
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return err
