@@ -1349,8 +1349,9 @@ pipeline sets up both on the runner when the plan runs this gate.
 The gate is opt-in, unlike the gates that ask the tree: a repository can
 hold a Bun package that only a release builds, or a tool whose tests need
 a browser, and naming the packages is the decision about which ones the
-bar holds. On a laptop it runs only when a file under a named package
-changed, since an install and a build take minutes.
+bar holds. Measured against a change (a laptop, or CI with `-since`), it
+runs only when a file under a named package changed, or under a directory
+`frontend.reads` lists for it, since an install and a build take minutes.
 
 ## `image`: the image a release ships still builds and starts
 

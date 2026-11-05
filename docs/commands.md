@@ -7,6 +7,7 @@ is the one `go.mod` names.
 | Command | What it does |
 | --- | --- |
 | `lateregate [-all]`, `lateregate check [-all]` | runs every gate that applies, reports all of them, and exits non-zero if any failed; on a laptop the four slow gates read only [what changed since the default branch](#what-a-check-reads), and `-all` reads the whole tree |
+| `lateregate base -since green\|REV` | prints the full SHA of the commit a run measures its change from, and a newline; when the whole tree must be checked it prints nothing on stdout and the reason on stderr; exits 0 either way, non-zero only on a usage error |
 | `lateregate list [-json]` | prints the plan: each gate with `RUN`, `SKIP`, `WAIV` or `FOLD` and why |
 | `lateregate <gate>` | runs one gate; [`gates.md`](gates.md) lists them |
 | `lateregate contract` | reports every way the repository's wiring drifted from the shared shape |
@@ -28,6 +29,7 @@ Flags every command accepts:
 | `-json` | `list` only: print the plan as JSON |
 | `-profile FILE` | `cover` only: read this profile instead of collecting one; repeat it per test tier |
 | `-w` | `license` only: write the declared notice on every file that has none |
+| `-since green\|REV` | `check`, `list` and `base`: measure the change from the newest commit on the default branch that the calling workflow passed on a push and HEAD contains (`green`), or from a git revision, instead of the merge base with the default branch |
 | `-all` | `check` only: read the whole tree rather than what changed since the default branch |
 | `-force-red` | `release` only: cut over a red CI, printing every finding it overrides |
 
@@ -72,7 +74,39 @@ reports (a package removed or moved, or one a build constraint excludes
 on this machine), or when the change cannot be measured: no default
 branch, no merge base, or a module `go list` cannot list. `-all` checks
 the whole tree on request. A runner (`CI` set), `release`, a gate run by
-name and `list` always read the whole tree.
+name and `list` always read the whole tree, unless `-since` names a base.
+
+### From the last green commit
+
+`-since green` finds the base through the GitHub API with the job's token
+(`GH_TOKEN`, then `GITHUB_TOKEN`; off CI it falls back to `gh auth token`).
+It reads `GITHUB_REPOSITORY`, the calling workflow's file from
+`GITHUB_WORKFLOW_REF` and the API root from `GITHUB_API_URL`, takes the
+repository's default branch, and lists the workflow's successful push runs
+on it, newest first. The base is the first run whose commit is `HEAD` or an
+ancestor of it, which the compare endpoint answers. A commit the checkout
+lacks is fetched at depth 1. Anything that goes wrong (no token, a missing
+variable, an API error, no matching run, a failed fetch) checks the whole
+tree, and `base` says why on stderr. A cancelled run is never a base.
+
+`-since REV` names the commit directly. On a laptop the scope then narrows
+as above, measured from `REV`. With `CI` set, packages never narrow: each
+gate reads the whole tree or is skipped.
+
+| Gate | On CI with a base |
+| --- | --- |
+| `frontend`, `image`, `lean` | the rules above |
+| `fmt-check`, `modernize`, `cgo-free`, `otel-client`, `lint`, `vuln`, `suite` and the gates the suite folds in | skipped when every changed file is inert to Go, else the whole tree |
+| every other gate | runs |
+
+A changed file is inert to Go when it is not a `.go` file or a whole-tree
+file, it lies under no package directory and no nested module, no
+`//go:embed` pattern matches it, and no string literal in a tracked Go file
+names it: its path, a directory on its path, or its base name, as an
+element of the literal split on `/`. A test that reads
+`../../specs/003-api.md` holds the literal `specs`, so a spec change runs
+the suite. A test that walks the tree from its root without naming anything
+is the case this misses, and `release` checks the whole tree.
 
 The run opens with what it read and ends its verdict on it:
 

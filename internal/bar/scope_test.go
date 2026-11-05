@@ -560,3 +560,122 @@ func TestImageRunsOnlyWhenItsBuildInputsChanged(t *testing.T) {
 		t.Errorf("a root context runs on any code change: %v %+v", err, entry(plan, "image"))
 	}
 }
+
+// ciChange is a change measured for CI from a named base.
+func ciChange(inert bool, files ...string) *scope.Scope {
+	return &scope.Scope{Base: base, Files: files, CI: true, GoInert: inert}
+}
+
+// On CI a gate that reads Go runs over the whole tree or is skipped, and
+// the packages never narrow.
+func TestCIRunsTheGoGatesWholeOrSkipsThem(t *testing.T) {
+	c, _ := ctx(t, nil, lake)
+	goGates := []string{"fmt-check", "modernize", "cgo-free", "otel-client", "lint", "vuln", "suite"}
+
+	c.Scope = ciChange(true, "specs/003-api.md")
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const why = "every file changed since 222222222222 is inert to Go: none is Go source, under a package, embedded or named by a string in the Go files"
+	for _, name := range goGates {
+		if e := entry(plan, name); e.Status != Skip || e.Reason != why {
+			t.Errorf("%s: %s %q, want skip %q", name, e.Status, e.Reason, why)
+		}
+	}
+	for _, name := range []string{"license", "identity", "postgres"} {
+		if e := entry(plan, name); e.Status != Run {
+			t.Errorf("%s reads the whole tree in seconds and must run: %s %q", name, e.Status, e.Reason)
+		}
+	}
+
+	c.Scope = ciChange(false, "store/store.go")
+	c.Scope.Changed = []scope.Package{{ImportPath: "example.com/m/store", Dir: "store"}}
+	if plan, err = Plan(c); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range goGates {
+		if e := entry(plan, name); e.Status != Run || e.Reason != "" {
+			t.Errorf("%s: %s %q, want a plain run over the whole tree", name, e.Status, e.Reason)
+		}
+	}
+	if c.Scope.Packages() {
+		t.Error("a CI scope never narrows to packages")
+	}
+	if run, _ := suiteRun(c); run.Packages != nil {
+		t.Errorf("the suite reads the whole tree on CI: %v", run.Packages)
+	}
+}
+
+// frontend, image and lean keep their rules on CI.
+func TestCIKeepsTheFrontendImageAndLeanRules(t *testing.T) {
+	c, _ := ctx(t, nil, lake)
+	c.Cfg.Frontend.Projects = []string{"web/app"}
+	c.Cfg.Image.Images = []config.ImageSpec{{Name: "worker", Context: "worker"}}
+	c.Scope = ciChange(true, ".github/workflows/release.yml")
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{
+		"frontend": "no frontend package changed since 222222222222",
+		"image":    "no file an image is built from changed since 222222222222",
+		"lean":     "no Lake project changed since 222222222222",
+	} {
+		if e := entry(plan, name); e.Status != Skip || e.Reason != want {
+			t.Errorf("%s: %s %q, want skip %q", name, e.Status, e.Reason, want)
+		}
+	}
+	c.Scope = ciChange(false, "web/app/src/main.ts", "worker/main.go", "proofs/Basic.lean")
+	if plan, err = Plan(c); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"frontend", "image", "lean"} {
+		if e := entry(plan, name); e.Status != Run {
+			t.Errorf("%s: %s %q", name, e.Status, e.Reason)
+		}
+	}
+}
+
+// A directory a project's tests read counts as touching the project, on a
+// laptop and on CI.
+func TestFrontendReadsCountAsTouchingTheProject(t *testing.T) {
+	c, _ := ctx(t, nil, lake)
+	c.Cfg.Frontend.Projects = []string{"web/app"}
+	c.Cfg.Frontend.Reads = map[string][]string{"web/app/": {"docs", "i18n/"}}
+	for _, s := range []*scope.Scope{change("docs/a/api-text.yaml"), ciChange(true, "i18n/zh.yaml")} {
+		plan, err := Plan(withScope(c, s))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e := entry(plan, "frontend"); e.Status != Run {
+			t.Errorf("%v: %s %q", s.Files, e.Status, e.Reason)
+		}
+	}
+	plan, err := Plan(withScope(c, change("specs/a.md")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, "frontend"); e.Status != Skip {
+		t.Errorf("a change outside the project and its reads: %s %q", e.Status, e.Reason)
+	}
+}
+
+func withScope(c Ctx, s *scope.Scope) Ctx {
+	c.Scope = s
+	return c
+}
+
+// A CI run says what it read, and when the Go gates read the whole tree,
+// which file made them.
+func TestCIHeaderNamesWhyTheGoGatesReadTheTree(t *testing.T) {
+	s := ciChange(false, "docs/x.md")
+	s.GoWhy = `the literal "docs" names a changed file in a_test.go`
+	want := "checking what changed since 222222222222: 1 file; the gates that read Go read the whole tree: " + s.GoWhy
+	if got := header(s); got != want {
+		t.Errorf("header %q, want %q", got, want)
+	}
+	if got := header(ciChange(true, "docs/x.md")); got != "checking what changed since 222222222222: 1 file" {
+		t.Errorf("an inert change: %q", got)
+	}
+}

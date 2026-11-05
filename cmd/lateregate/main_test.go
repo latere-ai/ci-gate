@@ -14,7 +14,9 @@ import (
 	"strings"
 	"testing"
 
+	"latere.ai/x/ci-gate/internal/bar"
 	"latere.ai/x/ci-gate/internal/config"
+	"latere.ai/x/ci-gate/internal/gates"
 )
 
 func out(t *testing.T, argv ...string) (string, error) {
@@ -645,5 +647,126 @@ func TestIdentityAndItsFamilySubcommand(t *testing.T) {
 	}
 	if !strings.Contains(s, "| service | drive | drive |") {
 		t.Errorf("the layer table is printed:\n%s", s)
+	}
+}
+
+// commit records the files as one commit of the repository at dir.
+func commit(t *testing.T, dir, msg string, files map[string]string) {
+	t.Helper()
+	for p, body := range files {
+		full := filepath.Join(dir, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"add", "-A"}, {"commit", "-q", "-m", msg}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if outb, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, outb)
+		}
+	}
+}
+
+func revOf(t *testing.T, dir, rev string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", rev)
+	cmd.Dir = dir
+	b, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// base prints the commit a run measures from, or nothing and the reason on
+// stderr when the whole tree must be checked; both exit 0.
+func TestBasePrintsTheCommitOrSaysWhyNot(t *testing.T) {
+	dir := checkout(t)
+	commit(t, dir, "one", map[string]string{"a.txt": "1"})
+	commit(t, dir, "two", map[string]string{"a.txt": "2"})
+	var errs strings.Builder
+	old := stderr
+	stderr = &errs
+	t.Cleanup(func() { stderr = old })
+
+	s, err := out(t, "base", "-C", dir, "-since", "HEAD~1")
+	if err != nil || s != revOf(t, dir, "HEAD~1")+"\n" {
+		t.Errorf("base -since HEAD~1 = %q, %v", s, err)
+	}
+	if errs.Len() != 0 {
+		t.Errorf("a resolved base says nothing on stderr: %q", errs.String())
+	}
+
+	s, err = out(t, "base", "-C", dir, "-since", "no-such-rev")
+	if err != nil || s != "" || !strings.Contains(errs.String(), "checking the whole tree: git cannot resolve") {
+		t.Errorf("an unknown revision: %q, %v, stderr %q", s, err, errs.String())
+	}
+
+	errs.Reset()
+	t.Setenv("GITHUB_REPOSITORY", "")
+	s, err = out(t, "base", "-C", dir, "-since", "green")
+	if err != nil || s != "" || !strings.Contains(errs.String(), "GITHUB_REPOSITORY is not set") {
+		t.Errorf("green with no environment: %q, %v, stderr %q", s, err, errs.String())
+	}
+
+	if _, err := out(t, "base", "-C", dir); err == nil || !strings.Contains(err.Error(), "usage: lateregate base -since") {
+		t.Errorf("base without -since is a usage error: %v", err)
+	}
+}
+
+// On CI a change measured from a base skips the gates that read Go when
+// every changed file is inert, and runs them when it is not.
+func TestListSinceOnCISkipsGoGatesForAnInertChange(t *testing.T) {
+	dir := checkout(t)
+	commit(t, dir, "base", map[string]string{"go.mod": "module m\n", "main.go": "package main\n", "CHANGELOG.md": "a\n", "specs/s.md": "s\n"})
+	commit(t, dir, "notes", map[string]string{"CHANGELOG.md": "b\n"})
+	t.Setenv("CI", "true")
+
+	s, err := out(t, "list", "-C", dir, "-json", "-since", "HEAD~1")
+	if err != nil {
+		t.Fatalf("list: %v\n%s", err, s)
+	}
+	for _, name := range []string{"suite", "lint", "vuln", "fmt-check"} {
+		if !strings.Contains(s, `"name":"`+name+`","status":"skip","reason":"every file changed since `) {
+			t.Errorf("%s must be skipped as inert:\n%s", name, s)
+		}
+	}
+	if !strings.Contains(s, `"name":"identity","status":"run"`) {
+		t.Errorf("every other gate runs:\n%s", s)
+	}
+
+	commit(t, dir, "code", map[string]string{"main.go": "package main\n\nvar x int\n"})
+	if s, err = out(t, "list", "-C", dir, "-json", "-since", "HEAD~1"); err != nil || !strings.Contains(s, `"name":"suite","status":"run"`) {
+		t.Errorf("a Go change runs the suite: %v\n%s", err, s)
+	}
+	// -all wins over -since, and a base that cannot be had reads the tree.
+	if s, err = out(t, "list", "-C", dir, "-json", "-since", "HEAD~1", "-all"); err != nil || !strings.Contains(s, `"name":"suite","status":"run"`) {
+		t.Errorf("-all: %v\n%s", err, s)
+	}
+	if s, err = out(t, "list", "-C", dir, "-json", "-since", "nonsense"); err != nil || !strings.Contains(s, `"name":"suite","status":"run"`) {
+		t.Errorf("no base: %v\n%s", err, s)
+	}
+}
+
+// measureFrom: no base on CI reads the whole tree; a laptop measures from
+// the default branch, which a checkout without one cannot find.
+func TestMeasureFromChoosesTheBase(t *testing.T) {
+	dir := checkout(t)
+	commit(t, dir, "base", map[string]string{"a.txt": "1"})
+	c := bar.Ctx{Root: dir, GoBin: "go", Exec: gates.OSExec(dir, io.Discard)}
+	t.Setenv("CI", "true")
+	if s := measureFrom(c, "", false); s != nil {
+		t.Errorf("CI with no base reads the whole tree: %+v", s)
+	}
+	t.Setenv("CI", "")
+	if s := measureFrom(c, "", false); s == nil || s.Narrows() {
+		t.Errorf("a laptop with no origin/main reads the whole tree and says why: %+v", s)
+	}
+	if s := measureFrom(c, "HEAD", true); s != nil {
+		t.Errorf("-all wins: %+v", s)
 	}
 }
