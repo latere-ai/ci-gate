@@ -29,7 +29,7 @@ another. `go tool lateregate <gate>` runs one.
 | `actionlint` | actionlint at the pinned version finds nothing in the workflows | git tracks a workflow under `.github/workflows` |
 | `manifests` | every kustomization renders with kustomize at the pinned version | git tracks a kustomization that is not a Component |
 | `rules` | every PrometheusRule passes promtool at the pinned version | a tracked YAML file holds a `kind: PrometheusRule` document |
-| `frontend` | every named Bun package installs from its lockfile, then typechecks, tests and builds | `frontend.projects` names a package |
+| `frontend` | every named Bun package installs from its lockfile, then typechecks, tests, builds and runs its `e2e` script | `frontend.projects` names a package |
 | `image` | every named container image builds, reports its version, stays under its size cap, holds no shell, and starts read-only and answers its probe | `image.images` names an image |
 | `lean` | every Lake project builds with `lake build --wfail`, so no proof uses `sorry` | git tracks a `lakefile.toml` or `lakefile.lean` |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | git tracks a Go file |
@@ -1336,15 +1336,27 @@ frontend:
 For each, the gate checks that `package.json` and `bun.lock` are both
 tracked, runs `bun install --frozen-lockfile` in the package's directory,
 which fails when the lockfile no longer matches `package.json`, and then
-runs whichever of `typecheck`, `test` and `build` the package defines, in
-that order. A package stops at its first failing step, every package is
+runs whichever of `typecheck`, `test`, `build` and `e2e` the package
+defines, in that order. A package stops at its first failing step, every package is
 checked, and the error names each one that failed. A package that defines
-none of the three fails, since there would be nothing to check.
+none of the four fails, since there would be nothing to check.
 
 Bun and Node must both be on `PATH`. The scripts run tools such as `tsc`
 and `vite` that are built for Node, and without it Bun stands in a shim
 under which a type checker can check no files and say nothing. The shared
 pipeline sets up both on the runner when the plan runs this gate.
+
+A package whose tests drive Chromium is also named in `frontend.browser`:
+
+```yaml
+frontend:
+  projects: [frontend]
+  browser: [frontend]
+```
+
+The gate installs no browser. The plan names `chromium:frontend` in the
+`needs` of the `frontend` entry (`list -json`), the shared pipeline installs
+it from there before the gate runs, and a laptop already has one.
 
 The gate is opt-in, unlike the gates that ask the tree: a repository can
 hold a Bun package that only a release builds, or a tool whose tests need

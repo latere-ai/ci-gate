@@ -15,13 +15,18 @@ import (
 )
 
 // frontendScripts are the package scripts the frontend gate runs, in order,
-// where the package defines them.
-var frontendScripts = []string{"typecheck", "test", "build"}
+// where the package defines them. e2e is last: it drives the built page, and
+// a project whose tests need a browser has one installed before the gate
+// runs, by the workflow from the plan or already on a laptop.
+var frontendScripts = []string{"typecheck", "test", "build", "e2e"}
 
 // Frontend checks each named Bun package: a frozen install from its tracked
-// lockfile, then whichever of typecheck, test and build its package.json
+// lockfile, then whichever of typecheck, test, build and e2e its package.json
 // defines, in its own directory. A package fails at its first failing step,
 // and every package is checked.
+//
+// The gate installs no browser. A project that names one in frontend.browser
+// has it installed from the plan before this runs.
 //
 // Bun and real Node must both be on PATH. The scripts run tools (tsc, vite)
 // built and tested for Node, and without it bun stands in a node shim under
@@ -46,7 +51,7 @@ func Frontend(projects []string, root string, out io.Writer, lookPath func(strin
 	if len(failed) > 0 {
 		return fmt.Errorf("%d of %d frontend package(s) failed: %s", len(failed), len(projects), strings.Join(failed, ", "))
 	}
-	_, _ = fmt.Fprintf(out, "%d frontend package(s) install, typecheck, test and build\n", len(projects))
+	_, _ = fmt.Fprintf(out, "%d frontend package(s) install, typecheck, test, build and e2e where defined\n", len(projects))
 	return nil
 }
 
