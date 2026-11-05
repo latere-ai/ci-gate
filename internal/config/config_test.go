@@ -877,3 +877,44 @@ func TestImagesAreNamedOnceProveTheirVersionAndStartOrSayWhy(t *testing.T) {
 		}
 	}
 }
+
+// frontend.browser names projects that frontend.projects also names, each once.
+func TestFrontendBrowserNamesNamedProjectsOnce(t *testing.T) {
+	c, err := Load(write(t, "frontend:\n  projects: [frontend, web/gallery]\n  browser: [web/gallery/]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Frontend.Browser; len(got) != 1 || got[0] != "web/gallery/" {
+		t.Fatalf("browser %v", got)
+	}
+	for body, want := range map[string]string{
+		"frontend:\n  projects: [frontend]\n  browser: [../other]\n":            "frontend.browser: \"../other\" must be a directory inside the repository",
+		"frontend:\n  projects: [frontend]\n  browser: [web]\n":                 "frontend.browser: \"web\" is not named in frontend.projects",
+		"frontend:\n  projects: [frontend]\n  browser: [frontend, frontend/]\n": "is named twice",
+		"frontend:\n  browser: [frontend]\n":                                    "is not named in frontend.projects",
+	} {
+		if _, err := Load(write(t, body)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+}
+
+// test.os lists runner labels: non-empty, each once.
+func TestTestOSNamesRunnerLabelsOnce(t *testing.T) {
+	c, err := Load(write(t, "test:\n  os: [macos-latest, windows-latest]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Test.OS; len(got) != 2 || got[0] != "macos-latest" {
+		t.Fatalf("os %v", got)
+	}
+	for body, want := range map[string]string{
+		"test:\n  os: [macos-latest, macos-latest]\n": "test.os: \"macos-latest\" is named twice",
+		"test:\n  os: [\"\"]\n":                       "test.os: a runner label must not be empty",
+		"test:\n  os: [\"  \"]\n":                     "test.os: a runner label must not be empty",
+	} {
+		if _, err := Load(write(t, body)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+}
