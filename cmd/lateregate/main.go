@@ -34,6 +34,7 @@ import (
 	"latere.ai/x/ci-gate/internal/identity"
 	"latere.ai/x/ci-gate/internal/license"
 	"latere.ai/x/ci-gate/internal/scope"
+	"latere.ai/x/ci-gate/internal/ship"
 )
 
 const usage = `lateregate is the shared per-push quality bar for a Go repository.
@@ -68,6 +69,12 @@ Usage:
 	                           print the CHANGELOG.md section for TAG, read at REF (default: the working tree), or fail
 	lateregate release [-force-red] VERSION
 	                           refuse while CI is red or HEAD is not origin's default branch, then move the notes under "## Unreleased" into a section for VERSION, commit, tag, push both atomically
+	lateregate build           the whole bar, then the deploy image built for the cluster's platform (a ship repository)
+	lateregate push            build the image from the release tag HEAD sits on and publish it (a ship repository)
+	lateregate deploy [VERSION]
+	                           roll the newest stable tag, or VERSION, out to the cluster and run the live check (a ship repository)
+	lateregate deploy-credential -context NAME
+	                           store the rollout identity's kubeconfig as the 1Password Document deploy reads; once per repository
 
 Gates, in the order check runs them:
 GATES
@@ -99,6 +106,9 @@ func (p *profileList) Set(v string) error {
 	*p = append(*p, v)
 	return nil
 }
+
+// shipDeps wires the ship commands to the machine; the tests replace it.
+var shipDeps = ship.New
 
 // stderr is where base says why the whole tree must be checked.
 var stderr io.Writer = os.Stderr
@@ -141,6 +151,7 @@ func run(argv []string, out io.Writer) error {
 		"measure the change from `green`, the last green commit of the calling workflow, or from a git revision (check, list, base)")
 	forceRed := fs.Bool("force-red", false,
 		"cut over a red CI, printing what it overrides (release); the maintainer's escape hatch, and in no pipeline")
+	kubeContext := fs.String("context", "", "kubeconfig context of a cluster administrator (deploy-credential)")
 	only := fs.String("only", "", "run the one e2e suite of this name, whatever it runs on (e2e)")
 	on := fs.String("on", "", "run the e2e suites that run on this event, push or tag (e2e); push when unset")
 	var profiles profileList
@@ -263,7 +274,8 @@ func run(argv []string, out io.Writer) error {
 		// The guard runs before the bar: a red default branch is three API
 		// reads, the bar is a full instrumented suite, and paying for the
 		// second to learn the first is the wrong order.
-		if cfg.Release.Green() {
+		// A repository that ships from a workstation runs no CI to read.
+		if cfg.Release.Green() && !cfg.Ships() {
 			guard := &greencut.Guard{
 				Root: *root,
 				// Every runner sets GITHUB_API_URL, and an enterprise
@@ -295,7 +307,39 @@ func run(argv []string, out io.Writer) error {
 		if err := bar.Check(check); err != nil {
 			return fmt.Errorf("not releasing %s: %w", fs.Args()[0], err)
 		}
-		return changelog.Cut(*root, fs.Args()[0], time.Now(), out, ctx.Exec, cfg.Release.Stamp)
+		if err := changelog.Cut(*root, fs.Args()[0], time.Now(), out, ctx.Exec, cfg.Release.Stamp); err != nil {
+			return err
+		}
+		if cfg.Ships() {
+			if err := ship.PublishRelease(shipDeps(*root, cfg, out), fs.Args()[0]); err != nil {
+				return fmt.Errorf("%s is tagged and pushed, but its GitHub release was not published; `lateregate deploy` publishes it: %w", fs.Args()[0], err)
+			}
+		}
+		return nil
+	case "build":
+		if !cfg.Ships() {
+			return fmt.Errorf("%s has no ship block: this repository does not build and ship from a workstation", config.Name)
+		}
+		// The same bar a release runs, over the whole tree.
+		check := ctx
+		check.Args = nil
+		if err := bar.Check(check); err != nil {
+			return fmt.Errorf("not building: %w", err)
+		}
+		return ship.Build(shipDeps(*root, cfg, out))
+	case "push":
+		return ship.Push(shipDeps(*root, cfg, out))
+	case "deploy":
+		if len(fs.Args()) > 1 {
+			return fmt.Errorf("usage: lateregate deploy [vX.Y.Z]")
+		}
+		version := ""
+		if len(fs.Args()) == 1 {
+			version = fs.Args()[0]
+		}
+		return ship.Deploy(shipDeps(*root, cfg, out), version)
+	case "deploy-credential":
+		return ship.DeployCredential(shipDeps(*root, cfg, out), *kubeContext)
 	case "golangci":
 		if reason, err := golangci.Own(*root, cfg); err != nil {
 			return err
