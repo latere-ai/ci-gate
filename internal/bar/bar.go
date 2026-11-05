@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/ci-gate/internal/actionpins"
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/cover"
 	"latere.ai/x/ci-gate/internal/depcheck"
@@ -185,6 +186,18 @@ var Gates = []Gate{
 			return tracks(gates.Workflows(c.Exec))("tracks no workflow under .github/workflows")
 		},
 		Run: func(c Ctx) error { return gates.Actionlint(c.GoBin, c.Out, c.Exec) }},
+	// Like every gate here it takes the generic waiver; nothing is special-cased.
+	{Name: "action-pins", Doc: "every third-party action is the organization's one commit",
+		Applies: func(c Ctx) (bool, string, error) {
+			return tracks(gates.ActionFiles(c.Exec))("tracks no workflow or action")
+		},
+		Run: func(c Ctx) error {
+			files, err := gates.ActionFiles(c.Exec)
+			if err != nil {
+				return err
+			}
+			return actionpins.Run(c.Root, files, c.Out)
+		}},
 	{Name: "manifests", Doc: "every kustomization renders with kustomize " + gates.KustomizeVersion,
 		Applies: func(c Ctx) (bool, string, error) {
 			return tracks(gates.Kustomizations(c.Exec, readIn(c.Root)))("tracks no kustomization")

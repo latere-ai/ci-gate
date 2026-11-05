@@ -128,6 +128,28 @@ func Actionlint(goBin string, out io.Writer, run Exec) error {
 	return nil
 }
 
+// ActionFiles lists the files whose `uses:` the action-pins gate reads: the
+// tracked workflows directly under .github/workflows and every tracked
+// action.yml or action.yaml, outside testdata.
+func ActionFiles(run Exec) ([]string, error) {
+	files, err := trackedFiles(run, "workflows and actions", []string{"testdata"},
+		".github/workflows/*.yml", ".github/workflows/*.yaml",
+		"action.yml", "*/action.yml", "action.yaml", "*/action.yaml")
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, f := range files {
+		switch {
+		case path.Dir(f) == ".github/workflows":
+			out = append(out, f)
+		case path.Base(f) == "action.yml" || path.Base(f) == "action.yaml":
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
 // kustomizationNames are the file names that make a directory a kustomization.
 var kustomizationNames = []string{"kustomization.yaml", "kustomization.yml", "Kustomization"}
 

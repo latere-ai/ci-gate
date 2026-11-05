@@ -151,3 +151,20 @@ func writeFile(t *testing.T, root, rel, body string) {
 		t.Fatal(err)
 	}
 }
+
+// The action-pins gate reads the workflows directly under .github/workflows
+// and every action.yml or action.yaml, and nothing under testdata.
+func TestActionFilesReadWorkflowsAndActions(t *testing.T) {
+	var calls []call
+	listed := ".github/workflows/ci.yml\n.github/workflows/nested/x.yml\n.github/workflows/r.yaml\n" +
+		"action.yml\nactions/setup/action.yaml\nactions/setup/README.md\n" +
+		"internal/x/testdata/action.yml\ninternal/x/testdata/.github/workflows/w.yml\n"
+	got, err := ActionFiles(fake(t, &calls, listed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{".github/workflows/ci.yml", ".github/workflows/r.yaml", "action.yml", "actions/setup/action.yaml"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ActionFiles = %v, want %v", got, want)
+	}
+}

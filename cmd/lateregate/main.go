@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/ci-gate/internal/actionpins"
 	"latere.ai/x/ci-gate/internal/bar"
 	"latere.ai/x/ci-gate/internal/changelog"
 	"latere.ai/x/ci-gate/internal/config"
@@ -77,11 +78,13 @@ coverage exemption, a spec vocabulary, a license, a dated waiver.
 
 cover takes -profile for a repository that runs its own tiers; otherwise it
 collects one. tempdir takes the command to watch after --. license -w writes
-the declared notice on every file that has none:
+the declared notice on every file that has none, and action-pins -w moves
+every listed third-party action to the organization's commit:
 
 	lateregate cover -profile=out/unit.out -profile=out/integration.out
 	lateregate tempdir -- go test -tags corpus ./...
 	lateregate license -w
+	lateregate action-pins -w
 `
 
 // profileList collects a repeatable -profile flag.
@@ -131,7 +134,7 @@ func run(argv []string, out io.Writer) error {
 	root := fs.String("C", ".", "repository root holding "+config.Name)
 	goBin := fs.String("go", "go", "Go toolchain to run")
 	asJSON := fs.Bool("json", false, "print the plan as JSON (list)")
-	write := fs.Bool("w", false, "write the declared notice on every file that has none (license)")
+	write := fs.Bool("w", false, "write the declared notice on every file that has none (license), or move every listed action to the organization's commit (action-pins)")
 	all := fs.Bool("all", false,
 		"check the whole tree rather than what changed since the default branch (check); CI always does")
 	since := fs.String("since", "",
@@ -179,6 +182,14 @@ func run(argv []string, out io.Writer) error {
 	case "license":
 		if *write {
 			return license.Write(cfg.License, *root, out, time.Now())
+		}
+	case "action-pins":
+		if *write {
+			files, err := gates.ActionFiles(ctx.Exec)
+			if err != nil {
+				return err
+			}
+			return actionpins.Write(*root, files, out)
 		}
 	case "check":
 		ctx.Scope = measureFrom(ctx, *since, *all)
