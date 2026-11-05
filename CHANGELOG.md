@@ -10,6 +10,32 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **The plan names the tools each running gate needs.** `list -json` entries
+  gain `needs`: `node` and `bun` for `frontend` and `enum-typescript`, and
+  `chromium:<dir>` for each project `frontend.browser` lists. The `test`
+  entry gains `os`, the runner labels from the new `test.os` key. Both are
+  left out when empty, and the JSON stays an array.
+- **`frontend.browser` and `test.os` in `.lateregate.yaml`.** The first
+  lists projects, each also in `frontend.projects`, whose tests drive
+  Chromium. The second lists runner labels for the plain test on other
+  systems, such as `macos-latest`.
+- **The frontend gate runs an `e2e` script.** After `typecheck`, `test` and
+  `build`, a package that defines `e2e` runs it. The gate installs no
+  browser: the pipeline installs one from the plan.
+
+### Changed
+
+- **`lateregate init` writes one caller.** `.github/workflows/ci.yml` is the
+  same bytes in every repository: push to main, pull requests and dispatch,
+  the concurrency block, `contents: read` and `actions: read`, and one job
+  with no inputs. `contract` accepts it under `ci.yml` or `verify.yml`, finds
+  the module that pins the tool without `gate_module` (the root, or the one
+  tracked `go.mod` that has the `tool` line, and names them when there are
+  none or several), and notes a caller that differs. A caller that still
+  passes `gate_module` keeps working.
+
 ## v0.63.0 - 2026-11-05
 
 ### Changed
