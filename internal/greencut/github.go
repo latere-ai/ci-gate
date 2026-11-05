@@ -6,7 +6,8 @@ package greencut
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -122,12 +123,21 @@ func (g *Guard) get(p string, q url.Values, v any) (int, error) {
 		return resp.StatusCode, nil
 	}
 	if v != nil {
-		if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+		if err := json.UnmarshalRead(resp.Body, v, foreignJSON); err != nil {
 			return resp.StatusCode, fmt.Errorf("GET %s: %w", p, err)
 		}
 	}
 	return resp.StatusCode, nil
 }
+
+// foreignJSON reads JSON this package does not produce. Duplicate keys,
+// invalid UTF-8 and any letter case are accepted, as the tools whose output
+// is read here may produce them.
+var foreignJSON = json.JoinOptions(
+	jsontext.AllowDuplicateNames(true),
+	jsontext.AllowInvalidUTF8(true),
+	json.MatchCaseInsensitiveNames(true),
+)
 
 // slug reads the owner and repository the cut is for out of origin.
 func (g *Guard) slug() (string, string, error) {

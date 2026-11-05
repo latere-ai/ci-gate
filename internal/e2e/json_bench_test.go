@@ -4,7 +4,7 @@
 package e2e
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"strings"

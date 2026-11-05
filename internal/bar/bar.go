@@ -11,7 +11,8 @@
 package bar
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
@@ -670,7 +671,7 @@ func List(c Ctx, asJSON bool) error {
 		return err
 	}
 	if asJSON {
-		return json.NewEncoder(c.Out).Encode(plan)
+		return json.MarshalEncode(jsontext.NewEncoder(c.Out), plan)
 	}
 	for _, e := range plan {
 		_, _ = fmt.Fprintln(c.Out, line(e, "", ""))

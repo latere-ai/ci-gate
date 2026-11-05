@@ -15,7 +15,8 @@ package scope
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -234,6 +235,15 @@ func changedFiles(run gates.Exec, base string) ([]string, error) {
 	return files, nil
 }
 
+// foreignJSON reads JSON this package does not produce. Duplicate keys,
+// invalid UTF-8 and any letter case are accepted, as the tools whose output
+// is read here may produce them.
+var foreignJSON = json.JoinOptions(
+	jsontext.AllowDuplicateNames(true),
+	jsontext.AllowInvalidUTF8(true),
+	json.MatchCaseInsensitiveNames(true),
+)
+
 // listed is one package as go list reports it.
 type listed struct {
 	ImportPath   string
@@ -281,10 +291,10 @@ func list(root, goBin string, run gates.Exec) (string, []listed, error) {
 		return "", nil, fmt.Errorf("go list cannot list the module's packages: %w", err)
 	}
 	var pkgs []listed
-	dec := json.NewDecoder(bytes.NewReader(out))
+	dec := jsontext.NewDecoder(bytes.NewReader(out), foreignJSON)
 	for {
 		var p listed
-		if err := dec.Decode(&p); errors.Is(err, io.EOF) {
+		if err := json.UnmarshalDecode(dec, &p, foreignJSON); errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			return "", nil, fmt.Errorf("reading go list's packages: %w", err)

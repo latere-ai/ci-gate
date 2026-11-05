@@ -12,7 +12,8 @@ package containers
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net"
@@ -120,8 +121,25 @@ func (e *Engine) Networks(ctx context.Context, label string) ([]Network, error) 
 	return ns, e.list(ctx, "/networks?", label, "network", &ns)
 }
 
+// foreignJSON reads JSON this package does not produce. Duplicate keys,
+// invalid UTF-8 and any letter case are accepted, as the tools whose output
+// is read here may produce them.
+var foreignJSON = json.JoinOptions(
+	jsontext.AllowDuplicateNames(true),
+	jsontext.AllowInvalidUTF8(true),
+	json.MatchCaseInsensitiveNames(true),
+)
+
+// outboundJSON writes the filters the container engine reads: stable key
+// order, and null where a slice or map is nil, as the engine's API expects.
+var outboundJSON = json.JoinOptions(
+	json.Deterministic(true),
+	json.FormatNilSliceAsNull(true),
+	json.FormatNilMapAsNull(true),
+)
+
 func (e *Engine) list(ctx context.Context, path, label, kind string, into any) error {
-	filters, err := json.Marshal(map[string][]string{"label": {label}})
+	filters, err := json.Marshal(map[string][]string{"label": {label}}, outboundJSON)
 	if err != nil {
 		return err
 	}
@@ -133,7 +151,7 @@ func (e *Engine) list(ctx context.Context, path, label, kind string, into any) e
 	if resp.StatusCode != http.StatusOK {
 		return refused(resp, "listing "+kind+"s")
 	}
-	if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
+	if err := json.UnmarshalRead(resp.Body, into, foreignJSON); err != nil {
 		return fmt.Errorf("reading the %s list: %w", kind, err)
 	}
 	return nil
@@ -186,7 +204,7 @@ func refused(resp *http.Response, doing string) error {
 	var msg struct {
 		Message string `json:"message"`
 	}
-	if json.Unmarshal(body, &msg) == nil && msg.Message != "" {
+	if json.Unmarshal(body, &msg, foreignJSON) == nil && msg.Message != "" {
 		return fmt.Errorf("%s: the engine answered %d: %s", doing, resp.StatusCode, msg.Message)
 	}
 	return fmt.Errorf("%s: the engine answered %d", doing, resp.StatusCode)

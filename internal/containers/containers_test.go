@@ -5,7 +5,7 @@ package containers
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -62,7 +62,7 @@ func (f *fakeEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				out = append(out, c)
 			}
 		}
-		_ = json.NewEncoder(w).Encode(out)
+		_ = json.MarshalWrite(w, out)
 	case r.Method == http.MethodGet && r.URL.Path == "/networks":
 		var q map[string][]string
 		if err := json.Unmarshal([]byte(r.URL.Query().Get("filters")), &q); err != nil {
@@ -80,7 +80,7 @@ func (f *fakeEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				out = append(out, n)
 			}
 		}
-		_ = json.NewEncoder(w).Encode(out)
+		_ = json.MarshalWrite(w, out)
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/networks/"):
 		id := strings.TrimPrefix(r.URL.Path, "/networks/")
 		if s, ok := f.status[id]; ok {
@@ -443,5 +443,28 @@ func TestANetworkListingThatFailsKeepsWhatWasRemoved(t *testing.T) {
 	gone, err := Sweep(context.Background(), serve(t, f), "box", func(int) bool { return false })
 	if err == nil || len(gone.Containers) != 1 {
 		t.Fatalf("swept %+v, err %v; want the container kept in the result and the listing's error", gone, err)
+	}
+}
+
+// The label filter reaches the engine as the exact JSON the engine's API
+// documents, and an answer with duplicate keys, invalid UTF-8 and another key
+// case is still read.
+func TestListSendsTheFilterAndReadsALenientAnswer(t *testing.T) {
+	var filters string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		filters = r.URL.Query().Get("filters")
+		_, _ = w.Write([]byte("[{\"Id\":\"a\",\"Id\":\"b\",\"image\":\"x\xff\",\"State\":\"running\"}]"))
+	}))
+	t.Cleanup(srv.Close)
+	e := &Engine{base: srv.URL, client: srv.Client()}
+	got, err := e.List(context.Background(), "owner=box")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"label":["owner=box"]}`; filters != want {
+		t.Errorf("filters %q, want %q", filters, want)
+	}
+	if len(got) != 1 || got[0].ID != "b" || got[0].Image != "x�" || got[0].State != "running" {
+		t.Errorf("got %+v", got)
 	}
 }

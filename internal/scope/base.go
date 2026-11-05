@@ -5,7 +5,8 @@ package scope
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -221,7 +222,7 @@ func (s *Scope) overlay(run gates.Exec, dir, root string, read map[string]string
 		}
 		replace[at] = backing
 	}
-	data, err := json.Marshal(struct{ Replace map[string]string }{replace})
+	data, err := json.Marshal(struct{ Replace map[string]string }{replace}, json.Deterministic(true))
 	if err != nil {
 		return "", err
 	}
@@ -251,7 +252,7 @@ func (s *Scope) baseTests(goBin string, run gates.Exec, overlay string) (baseTes
 		return baseTests{}, fmt.Errorf("go list cannot list the base's tests: %w", err)
 	}
 	b := baseTests{links: map[string][]string{}, embedded: map[string]bool{}}
-	dec := json.NewDecoder(bytes.NewReader(out))
+	dec := jsontext.NewDecoder(bytes.NewReader(out), foreignJSON)
 	for {
 		var p struct {
 			ImportPath                                  string
@@ -259,7 +260,7 @@ func (s *Scope) baseTests(goBin string, run gates.Exec, overlay string) (baseTes
 			Error                                       *struct{ Err string }
 			EmbedFiles, TestEmbedFiles, XTestEmbedFiles []string
 		}
-		if err := dec.Decode(&p); errors.Is(err, io.EOF) {
+		if err := json.UnmarshalDecode(dec, &p, foreignJSON); errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			return baseTests{}, fmt.Errorf("reading go list's base packages: %w", err)

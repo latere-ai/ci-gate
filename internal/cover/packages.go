@@ -5,11 +5,14 @@ package cover
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -25,6 +28,15 @@ import (
 // profile, and an absent package clears a per-package floor by not being
 // measured. The floor then says nothing about the packages that need it most.
 type Lister func() ([]string, error)
+
+// foreignJSON reads JSON this package does not produce. Duplicate keys,
+// invalid UTF-8 and any letter case are accepted, as the tools whose output
+// is read here may produce them.
+var foreignJSON = json.JoinOptions(
+	jsontext.AllowDuplicateNames(true),
+	jsontext.AllowInvalidUTF8(true),
+	json.MatchCaseInsensitiveNames(true),
+)
 
 // GoLister returns a Lister backed by `go list ./...`.
 //
@@ -49,14 +61,16 @@ func GoLister(goBin, dir string) Lister {
 		}
 
 		var pkgs []string
-		dec := json.NewDecoder(strings.NewReader(string(out)))
-		for dec.More() {
+		dec := jsontext.NewDecoder(strings.NewReader(string(out)), foreignJSON)
+		for {
 			var pkg struct {
 				ImportPath string
 				Dir        string
 				GoFiles    []string
 			}
-			if err := dec.Decode(&pkg); err != nil {
+			if err := json.UnmarshalDecode(dec, &pkg, foreignJSON); errors.Is(err, io.EOF) {
+				break
+			} else if err != nil {
 				return nil, fmt.Errorf("parsing the package list: %w", err)
 			}
 			if len(pkg.GoFiles) == 0 || gates.InNodeModules(pkg.ImportPath) {

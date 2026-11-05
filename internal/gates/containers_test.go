@@ -4,7 +4,7 @@
 package gates
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net"
 	"net/http"
@@ -64,7 +64,7 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				out = append(out, n)
 			}
 		}
-		_ = json.NewEncoder(w).Encode(out)
+		_ = json.MarshalWrite(w, out)
 		return
 	}
 	out := []containers.Container{}
@@ -73,7 +73,7 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			out = append(out, c)
 		}
 	}
-	_ = json.NewEncoder(w).Encode(out)
+	_ = json.MarshalWrite(w, out)
 }
 
 func (e *engine) hold(c containers.Container) {

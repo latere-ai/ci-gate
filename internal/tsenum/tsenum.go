@@ -6,7 +6,8 @@ package tsenum
 
 import (
 	_ "embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
@@ -44,7 +45,7 @@ func Run(projects []Project, root string, out io.Writer, run gates.Exec) error {
 	input, _ := json.Marshal(struct {
 		Root     string    `json:"root"`
 		Projects []Project `json:"projects"`
-	}{root, projects})
+	}{root, projects}, json.Deterministic(true), jsontext.AllowInvalidUTF8(true))
 	if _, err := run(nil, true, "node", "--input-type=module", "--eval", analyzer, "--", "--enum-input", string(input)); err != nil {
 		return fmt.Errorf("TypeScript enum domain check failed (requires Node and each project's installed TypeScript; run lateregate enum-typescript-prepare): %w", err)
 	}

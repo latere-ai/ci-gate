@@ -4,7 +4,8 @@
 package gates
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -55,6 +56,15 @@ func Frontend(projects []string, root string, out io.Writer, lookPath func(strin
 	return nil
 }
 
+// foreignJSON reads JSON this package does not produce. Duplicate keys,
+// invalid UTF-8 and any letter case are accepted, as the tools whose output
+// is read here may produce them.
+var foreignJSON = json.JoinOptions(
+	jsontext.AllowDuplicateNames(true),
+	jsontext.AllowInvalidUTF8(true),
+	json.MatchCaseInsensitiveNames(true),
+)
+
 // checkProject runs one package's install and scripts.
 func checkProject(dir, root string, out io.Writer, run, here Exec) error {
 	manifest, lock := path.Join(dir, "package.json"), path.Join(dir, "bun.lock")
@@ -68,7 +78,7 @@ func checkProject(dir, root string, out io.Writer, run, here Exec) error {
 	var pkg struct {
 		Scripts map[string]string `json:"scripts"`
 	}
-	if err := json.Unmarshal(body, &pkg); err != nil {
+	if err := json.Unmarshal(body, &pkg, foreignJSON); err != nil {
 		return fmt.Errorf("%s does not parse: %w", manifest, err)
 	}
 	_, _ = fmt.Fprintf(out, "bun install --frozen-lockfile in %s\n", dir)

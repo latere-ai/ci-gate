@@ -5,7 +5,7 @@ package reap
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net"
 	"net/http"
 	"os"
@@ -63,10 +63,10 @@ func (e *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/networks" {
-		_ = json.NewEncoder(w).Encode(e.networks)
+		_ = json.MarshalWrite(w, e.networks)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(e.list)
+	_ = json.MarshalWrite(w, e.list)
 }
 
 func TestSweepRemovesWhatAnExitedProcessLeft(t *testing.T) {

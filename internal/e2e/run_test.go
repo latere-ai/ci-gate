@@ -6,7 +6,7 @@ package e2e
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
@@ -545,6 +545,17 @@ func TestAHundredFailuresAreCountedNotListed(t *testing.T) {
 	var out bytes.Buffer
 	err := testRunner(p, &out).Run(context.Background(), []Item{{Suite: goSuite("a")}})
 	if err == nil || !strings.Contains(out.String(), "20 tests failed: ") || !strings.Contains(out.String(), "and 12 more") {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+}
+
+// go test -json lines are foreign input: an event with duplicate keys and
+// another key case is read like any other.
+func TestAStreamWithDuplicateAndMixedCaseKeysIsRead(t *testing.T) {
+	raw := stream(t, passing...) + `{"action":"pass","Action":"pass","package":"p/x","Test":"TestB"}` + "\n"
+	p := &procs{steps: []step{{stdout: raw}}}
+	var out bytes.Buffer
+	if err := testRunner(p, &out).Run(context.Background(), []Item{{Suite: goSuite("lux")}}); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
 }

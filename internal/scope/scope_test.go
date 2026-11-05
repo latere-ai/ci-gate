@@ -4,7 +4,8 @@
 package scope
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"os/exec"
@@ -78,7 +79,7 @@ func (r *repo) exec(_ []string, _ bool, name string, args ...string) ([]byte, er
 		}
 		var b strings.Builder
 		for _, p := range r.pkgs {
-			j, _ := json.MarshalIndent(p, "", "\t")
+			j, _ := json.Marshal(p, jsontext.WithIndent("\t"))
 			b.Write(j)
 			b.WriteByte('\n')
 		}
@@ -392,5 +393,16 @@ func TestResolveAgainstARealCheckout(t *testing.T) {
 	}
 	if got := paths(s.Reached); !slices.Equal(got, []string{"example.com/real/a", "example.com/real/b"}) {
 		t.Errorf("reached %v", got)
+	}
+}
+
+// go list output is foreign input: a package listed with duplicate keys and
+// keys in another letter case is still read.
+func TestAPackageListWithDuplicateAndMixedCaseKeysIsRead(t *testing.T) {
+	r := newRepo("a/a.go")
+	r.listOut = `{"importpath":"example.com/m/a","ImportPath":"example.com/m/a","Deps":[]}` + "\n"
+	s := Resolve(tree(t, "a/a.go"), "go", r.exec)
+	if !s.Narrows() || !slices.Equal(paths(s.Reached), []string{"example.com/m/a"}) {
+		t.Errorf("reached %v, whole %q", paths(s.Reached), s.Whole)
 	}
 }

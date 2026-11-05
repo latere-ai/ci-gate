@@ -4,7 +4,7 @@
 package greencut
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -42,7 +42,7 @@ func (a *api) serve(t *testing.T) *httptest.Server {
 	mux := http.NewServeMux()
 	write := func(w http.ResponseWriter, v any) {
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(v); err != nil {
+		if err := json.MarshalWrite(w, v); err != nil {
 			t.Error(err)
 		}
 	}
@@ -696,7 +696,7 @@ func TestRunsArePagedAndTheNewestPerWorkflowWins(t *testing.T) {
 		newest, older := greenRun(1284, "ci"), redRun(1280, "ci", "failure")
 		newest.WorkflowID, older.WorkflowID = 42, 42
 		older.HeadSHA = oldSHA
-		_ = json.NewEncoder(w).Encode(runsPage{Runs: []run{newest, older}})
+		_ = json.MarshalWrite(w, runsPage{Runs: []run{newest, older}})
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, base.URL+r.URL.RequestURI(), http.StatusTemporaryRedirect)

@@ -4,7 +4,8 @@
 package scope
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 	"testing"
@@ -43,7 +44,7 @@ func benchListStream(tb testing.TB, pkgs, deps int) []byte {
 			p.EmbedFiles = []string{"testdata/schema.json", "templates/report.tmpl"}
 			p.TestEmbedFiles = []string{"testdata/golden.txt"}
 		}
-		b, err := json.MarshalIndent(p, "", "\t")
+		b, err := json.Marshal(p, jsontext.WithIndent("\t"))
 		if err != nil {
 			tb.Fatal(err)
 		}
@@ -111,7 +112,7 @@ func BenchmarkJSONGoListBaseTestsDecode(b *testing.B) {
 					if i%4 == 0 && suffix == "" {
 						p.EmbedFiles = []string{"testdata/schema.json"}
 					}
-					enc, err := json.MarshalIndent(p, "", "\t")
+					enc, err := json.Marshal(p, jsontext.WithIndent("\t"))
 					if err != nil {
 						b.Fatal(err)
 					}

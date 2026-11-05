@@ -4,7 +4,7 @@
 package bar
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -336,6 +336,9 @@ func TestListPrintsThePlanAsTextAndJSON(t *testing.T) {
 	sb.Reset()
 	if err := List(c, true); err != nil {
 		t.Fatal(err)
+	}
+	if !strings.HasSuffix(sb.String(), "}]\n") {
+		t.Errorf("list -json is one line ending in a newline, got %q", sb.String())
 	}
 	var plan []Entry
 	if err := json.Unmarshal([]byte(sb.String()), &plan); err != nil {

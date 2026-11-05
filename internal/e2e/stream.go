@@ -6,7 +6,8 @@ package e2e
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -71,6 +72,15 @@ func (s *skipScanner) Write(p []byte) (int, error) {
 
 func (s *skipScanner) flush() { s.split.flush() }
 
+// foreignJSON reads JSON this package does not produce. Duplicate keys,
+// invalid UTF-8 and any letter case are accepted, as the tools whose output
+// is read here may produce them.
+var foreignJSON = json.JoinOptions(
+	jsontext.AllowDuplicateNames(true),
+	jsontext.AllowInvalidUTF8(true),
+	json.MatchCaseInsensitiveNames(true),
+)
+
 // event is a line of `go test -json`.
 type event struct {
 	Action  string
@@ -122,7 +132,7 @@ func (k *testSink) say(format string, args ...any) {
 
 func (k *testSink) line(raw string) {
 	var ev event
-	if !strings.HasPrefix(raw, "{") || json.Unmarshal([]byte(raw), &ev) != nil {
+	if !strings.HasPrefix(raw, "{") || json.Unmarshal([]byte(raw), &ev, foreignJSON) != nil {
 		// Not an event: a line go test itself printed before it began.
 		k.say("%s", raw)
 		return
