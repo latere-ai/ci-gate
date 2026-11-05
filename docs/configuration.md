@@ -201,6 +201,8 @@ frontend:
   browser: []              # projects, each also in projects, whose tests drive Chromium; the plan
                            #   names chromium:<dir> so CI installs a browser before the gate
 
+modules: []                # Go modules beside the root, each a directory with a tracked go.mod; the suite and lint run in each
+
 test:
   os: []                   # runner labels, such as macos-latest, on which CI runs the plain test
                            #   beside the suite; non-empty strings, each once
@@ -273,5 +275,42 @@ e2e:
   Unset, a skipped test fails it.
 - `on` is a subset of `push` and `tag`, `[push]` when unset. `lateregate e2e`
   runs the `push` suites; `lateregate e2e -on tag` runs the `tag` ones.
+
+`modules` names the Go modules that sit beside the root module, such as
+`tools/specindex`. A directory with its own `go.mod` is not part of the
+root's `./...`, so nothing tests it unless it is listed. Each entry is a
+clean slash path below the repository root, named once, holding a tracked
+`go.mod`. The root module is always tested and is not listed.
+
+```yaml
+modules: [tools/specindex]
+```
+
+After the root module, the `suite` gate runs in each listed module, from
+that module's directory: `go vet`, then `go test -race` with the cover
+profile, under the same stripped `PATH` and `TMPDIR` sandbox, with the cover
+floor applied to that module's packages. The report is per module, a
+failing module does not stop the next, and the gate fails if any module
+failed. A waiver on the suite, race, hermetic, tempdir or cover applies to
+every module.
+
+`cover.exempt` keys are matched against each module's import paths as
+suffixes, so a key written for a package of the root also matches a package
+of the same name in a module. A key can instead name a module's package by
+its place below the repository root, `tools/specindex/cmd/gen`, which
+matches whatever the module is called.
+
+The `lint` gate runs `golangci-lint` in each listed module too, with the
+configuration rendered for that module's path. A repository that keeps its
+own configuration with `golangci.own` has one file, at the root, and lint
+reads the root module only; the gate says so. `vuln` and the other gates
+read the root module alone.
+
+Measured against a change, a listed module runs when a changed file lies
+inside its directory, including its `go.mod` and `go.sum`, and is skipped
+with that reason otherwise. A change to a module's `go.mod` does not send the
+root to its whole tree. On CI with a base, the modules follow the Go rule
+of the gates that read Go: they run unless every changed file is inert to
+Go, and a file inside a module is never inert.
 
 [`gates.md`](gates.md) explains what each gate does with these keys.

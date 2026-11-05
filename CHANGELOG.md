@@ -10,8 +10,6 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
-## v0.64.0 - 2026-11-05
-
 ### Added
 
 - **`e2e` runs the suites that need real services.** A repository lists
@@ -33,6 +31,20 @@ committed: the commit log already holds that.
   measures the change as `check` does, so a gate that narrows reads only
   what it reaches. Without `-since` a gate run by name reads the whole tree
   as before.
+- **`modules` tests the Go modules beside the root.** A directory with its
+  own `go.mod`, such as `tools/specindex`, is outside the root's `./...`
+  and nothing tested it. List it under `modules` and the `suite` gate runs,
+  after the root, `go vet` and the covering race test in it, under the same
+  stripped `PATH` and `TMPDIR` sandbox, with the cover floor on its
+  packages and a report per module. A failing module does not stop the
+  next, and a waiver applies to all. `lint` runs in each module too, unless
+  `golangci.own` keeps a single configuration at the root. On a laptop a
+  module runs when a changed file lies inside it, and a change to its
+  `go.mod` does not send the root to its whole tree.
+
+## v0.64.0 - 2026-11-05
+
+### Added
 
 - **CI can measure a change from the last green commit.** `check` and
   `list` take `-since green` or `-since REV`. `green` is the newest commit

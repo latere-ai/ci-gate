@@ -36,6 +36,10 @@ type SuiteRun struct {
 	// reports what survives it; TempDir holds the admitted survivors.
 	Sandbox bool
 	TempDir config.TempDir
+	// Home is the repository root the sandbox is named for, when the run is
+	// in a module below it. Empty names it for the root the run is given, so
+	// every module of a repository shares the repository's sandbox.
+	Home string
 	// Containers names the run to the container engine, sweeps what earlier
 	// runs' exited processes left, and reports each container this run left.
 	Containers bool
@@ -113,7 +117,11 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 	var sandbox string
 	var before time.Time
 	if opt.Sandbox {
-		dir, release, err := claimSandbox(root, out)
+		home := root
+		if opt.Home != "" {
+			home = opt.Home
+		}
+		dir, release, err := claimSandbox(home, out)
 		if err != nil {
 			return err
 		}

@@ -39,7 +39,11 @@ func scoped(c Ctx, name string) (skip, note string, err error) {
 	none := "no Go package changed since " + s.Since()
 	switch name {
 	case Suite:
+		mods := moduleNote(c)
 		if len(s.Changed) == 0 {
+			if mods != "" {
+				return "", "over the " + mods + "; no Go package of the root module changed", nil
+			}
 			return none, "", nil
 		}
 		note := "over the " + count(len(s.Reached), "package") + " the change reaches"
@@ -48,16 +52,27 @@ func scoped(c Ctx, name string) (skip, note string, err error) {
 		if run, _ := suiteRun(c); run.Floor != nil {
 			note += "; the floor on the " + count(len(s.Changed), "package") + " it changes and on any it reaches that loses coverage"
 		}
+		if mods != "" {
+			note += "; and the " + mods
+		}
 		return "", note, nil
 	case "lint":
 		// A change can move a finding into a package it did not touch: a
 		// function that now returns an error leaves an unchecked call in
 		// its caller, and a deprecation marks every use. So the linter reads
 		// what the change reaches, as the suite does.
+		mods := moduleNote(c)
 		if len(s.Changed) == 0 {
+			if mods != "" {
+				return "", "over the " + mods + "; no Go package of the root module changed", nil
+			}
 			return none, "", nil
 		}
-		return "", "over the " + count(len(s.Reached), "package") + " the change reaches", nil
+		note := "over the " + count(len(s.Reached), "package") + " the change reaches"
+		if mods != "" {
+			note += "; and the " + mods
+		}
+		return "", note, nil
 	case "vuln":
 		// govulncheck fails on a vulnerability the code calls, so a Go
 		// change can fail it with no dependency moving: a new call to a
