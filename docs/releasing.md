@@ -248,3 +248,43 @@ turns the guard off. Without it a tag still deploys, its notes may still
 not publish, and the first person to find out is a reader who wanted to
 know what changed. A repository that sets it should say in a comment
 beside the key who checks CI instead.
+
+## Shipping from a workstation
+
+A repository with a [`ship` block](configuration.md#ship-a-repository-that-releases-from-a-workstation)
+runs no push CI and tags no releases on GitHub Actions. The person
+releasing runs four commands, each a thin call to `lateregate`, usually as
+`make` targets:
+
+| Step | Command | What it does |
+| --- | --- | --- |
+| build | `make build` | the whole bar, then the deploy image built for the cluster's platform and left in the local engine |
+| release | `make release VERSION=v1.4.0` | `lateregate release`: the bar, the changelog cut, the commit and tag pushed, then the GitHub release created from the changelog |
+| push | `make push` | builds the image from the tagged commit and publishes it |
+| deploy | `make deploy` | rolls the newest stable tag out to the cluster and runs the live check |
+
+`release` behaves as above with two differences. It reads no CI, since there
+is none, and it creates the GitHub release for the tag with the changelog
+section as its notes once the tag is pushed. A failure to create it is
+reported after the tag has landed; `deploy` creates the release if it is
+still missing, and neither undoes anything.
+
+`push` and `deploy` work from a tag, not from a branch, so a release is the
+same artifact however many times it is rolled out: `push` refuses a
+checkout that is not exactly on a release tag or has local changes, and
+`deploy` takes the tag's tree from git and pins the deployment to the
+image's digest.
+
+Two things are set up once. The engine needs a login to the registry with
+a token that has `write:packages` (`podman login ghcr.io`), and the
+repository's rollout identity needs its kubeconfig stored in 1Password:
+
+```sh
+go tool lateregate deploy-credential -context ADMIN_CONTEXT
+```
+
+run by an operator with their own administrator kubeconfig, once per
+repository, before the first `deploy`. It stores the Document that
+`ship.deploy.kubeconfig` names; running it again stores the identity's
+current token over it. What each command does is in
+[`commands.md`](commands.md#shipping-from-a-workstation-build-push-deploy).

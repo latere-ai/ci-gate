@@ -10,6 +10,35 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **A `ship` block makes a repository build, publish and deploy from a
+  workstation.** It names the image (registry path, Dockerfile, platform,
+  version argument, `prepare` commands) and the deploy (a 1Password reference
+  to the rollout kubeconfig, namespace, deployment, live-check URL and
+  script, `preflight` and `after_roll` commands). See
+  `docs/configuration.md` and `docs/releasing.md`.
+- **`lateregate build`** runs the whole bar and builds the image for the
+  cluster's platform, left in the local engine as `dev-<short sha>`.
+- **`lateregate push`** builds from a clean tree on a `vX.Y.Z` tag and
+  publishes `<tag>`, `sha-<short sha>` and `latest` (not for a prerelease),
+  and prints the digest. A refused login says which token scope the engine
+  needs.
+- **`lateregate deploy [vX.Y.Z]`** rolls the newest stable tag, or the one
+  named, out from the tag's own tree, pinned to the image's digest, through
+  a kubeconfig read from 1Password into a file that is removed on every exit,
+  then runs the live check and creates the GitHub release if it is missing.
+- **`lateregate deploy-credential -context NAME`** stores the rollout
+  identity's kubeconfig as the 1Password Document `deploy` reads, once per
+  repository, after proving the identity can apply `deploy/prod`.
+
+### Changed
+
+- **`lateregate release` of a repository with a `ship` block reads no CI**
+  and creates the GitHub release from the changelog once the tag is pushed.
+- **`contract` and `init` ask for no push workflow in a repository with a
+  `ship` block.** A caller it does keep is checked as before.
+
 ## v0.67.0 - 2026-11-05
 
 ### Added

@@ -18,6 +18,10 @@ is the one `go.mod` names.
 | `lateregate enum-typescript-prepare` | installs the configured frontend projects' dependencies from their tracked lockfiles |
 | `lateregate identity family -repos DIR [-expect FILE]` | checks the identity blocks of every checkout under `DIR` against each other and the issuer's client registry |
 | `lateregate release-notes TAG [REF]` | prints the `CHANGELOG.md` section for `TAG`, or fails |
+| `lateregate build` | for a [`ship`](configuration.md#ship-a-repository-that-releases-from-a-workstation) repository: runs the whole bar, then builds the deploy image for the cluster's platform |
+| `lateregate push` | builds the image from the release tag HEAD sits on and publishes it |
+| `lateregate deploy [vX.Y.Z]` | rolls the newest stable tag, or the one named, out to the cluster and runs the live check |
+| `lateregate deploy-credential -context NAME` | the one-time step that stores the rollout identity's kubeconfig where `deploy` reads it |
 | `lateregate release [-force-red] vX.Y.Z` | refuses while CI is red or the checkout is not origin's default branch at its tip, runs the bar, moves the notes into the tag's section, commits, tags and pushes both in one atomic push; see [`releasing.md`](releasing.md) |
 
 Flags every command accepts:
@@ -32,6 +36,7 @@ Flags every command accepts:
 | `-since green\|REV` | `check`, `list` and `base`: measure the change from the newest commit on the default branch that the calling workflow passed on a push and HEAD contains (`green`), or from a git revision, instead of the merge base with the default branch |
 | `-all` | `check` only: read the whole tree rather than what changed since the default branch |
 | `-force-red` | `release` only: cut over a red CI, printing every finding it overrides |
+| `-context NAME` | `deploy-credential` only: the kubeconfig context of a cluster administrator; required |
 
 `tempdir` takes the command to watch after `--`:
 
@@ -186,7 +191,10 @@ difference in one run:
 - exactly one workflow calls `latere-ai/ci/.github/workflows/lateregate.yml`,
   at `@v1` or pinned to one commit, on push to `main` and on pull requests, with a top-level `concurrency`
   whose group names `github.ref` and which sets `cancel-in-progress: true`,
-  so a push cancels the run of the commit it supersedes
+  so a push cancels the run of the commit it supersedes. A repository with
+  a [`ship` block](configuration.md#ship-a-repository-that-releases-from-a-workstation)
+  runs no push workflow and is not asked for one; a caller it does keep is
+  read by the same rules
 - `.githooks/pre-commit` is executable and runs `lateregate hook`
 - `.githooks/pre-push` is executable and runs `lateregate prepush`
 - `.golangci.yml` is not tracked, unless `golangci.own` declares it with a
@@ -210,7 +218,7 @@ wiring is fixed in the commit that notices it.
 `init` writes what `contract` checks, where it is missing:
 
 - `.github/workflows/ci.yml`, the caller, when no workflow calls the
-  reusable pipeline yet;
+  reusable pipeline yet, and never in a repository with a `ship` block;
 - `.githooks/pre-commit`, and `.githooks/pre-push` when there is none;
 - `git config core.hooksPath .githooks`;
 - `.golangci.yml` and `coverage.out` in `.gitignore`;
@@ -241,6 +249,80 @@ jobs:
   gate:
     uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
 ```
+
+## Shipping from a workstation: `build`, `push`, `deploy`
+
+A repository whose `.lateregate.yaml` has a
+[`ship` block](configuration.md#ship-a-repository-that-releases-from-a-workstation)
+builds, publishes and deploys from the machine of whoever releases it. Each
+command is the whole of its step, so a `Makefile` target is one line,
+`go tool lateregate <command>`. The flow, with `release`, is in
+[`releasing.md`](releasing.md#shipping-from-a-workstation).
+
+Container commands use `docker` when it is on `PATH` and `podman` otherwise.
+The cluster is reached only through the kubeconfig `deploy` reads from
+1Password; no command uses the operator's default kubectl context.
+
+**`build`** runs the whole bar over the whole tree, the same call `release`
+makes, then runs `ship.image.prepare` and builds the image with `--platform`
+set to `ship.image.platform`. The image stays in the local engine, tagged
+`<name>:dev-<short sha>`, and nothing is pushed. The version it carries is
+`git describe --tags --always --dirty`.
+
+**`push`** refuses unless HEAD is exactly a `vX.Y.Z` tag (a prerelease suffix
+is accepted, a `+` build suffix is not, since an image tag cannot hold one)
+and the working tree is clean. It runs no bar: the release that cut the tag
+ran it on this tree. It runs `prepare`, builds with the tag as the version,
+tags the image `<name>:<tag>`, `<name>:sha-<short sha>` and `<name>:latest`
+(not `latest` for a prerelease), pushes each, and prints the pushed digest. When the
+registry refuses the push, the error says so and that the engine needs a
+login with a token that has `write:packages`, for example `podman login
+ghcr.io`. The command reads and prints no token.
+
+**`deploy [vX.Y.Z]`** deploys the named tag, or the newest stable
+`vX.Y.Z` tag on origin by version order. It takes the tag's tree from `git
+archive`, not from the working tree, so a dirty or moved checkout cannot
+change what deploys. It resolves the digest of `<name>:<tag>` in the
+registry, and refuses when the image is not there, naming `push` as the fix.
+It then reads the rollout identity's kubeconfig from the 1Password Document
+`ship.deploy.kubeconfig` names into a file only its owner can read, which is
+removed on every exit path, including an interrupt. Every `kubectl` call
+passes that file with `--kubeconfig`, and the environment of every step has
+`KUBECONFIG` set to it. The steps, each stopping the deploy and naming itself
+when it fails:
+
+1. `ship.deploy.preflight`
+2. `kubectl apply -k deploy/prod/` when it holds a `kustomization.yaml`,
+   `kubectl apply -f deploy/prod/` otherwise
+3. `kubectl set image` on the deployment's container, to `<name>@sha256:...`
+4. `kubectl rollout status` with `ship.deploy.rollout_timeout`
+5. `ship.deploy.after_roll`
+6. the live check, `ship.deploy.smoke`, with `BASE_URL`, `TAG`, `COMMIT` and
+   `OUTPUT_MD` in its environment and no token
+
+It prints one line, the tag, digest, namespace and deployment, and that the
+live check passed. Then, if the tag has no GitHub release, it creates one
+with the changelog section as its notes. A failure there is reported as an
+error after a deploy that stands. Image signing and an SBOM are not part of
+this path.
+
+**`deploy-credential -context NAME`** is the one-time operator step that
+makes the Document `deploy` reads, run before a repository's first `deploy`.
+`-context` is required and names a context of an administrator's kubeconfig;
+every call it makes with that kubeconfig passes `--context NAME`. It reads
+`deploy/bootstrap/rollout-identity.yaml` for the ServiceAccount and the
+`kubernetes.io/service-account-token` Secret annotated for it, and fails if
+either is missing. It reads the cluster's server address from the context
+and the Secret's `ca.crt` and token, writes a kubeconfig of one cluster, one
+user and one context to a file only its owner can read (the token is never
+on a command line, and never printed), and proves the identity with `kubectl
+apply --dry-run=server` over `deploy/prod`, so a Role that lacks a kind fails
+here. It stores the file with `op document create`, or `op document edit` when
+the item exists; any other failure to look the item up is an error. It reads
+the Document back the way `deploy` does and compares the bytes, so a wrong
+reference shows now. The temporary file is removed on every exit path, and it
+prints one line saying which account's kubeconfig is stored at which
+reference.
 
 ## The pre-commit: `hook`
 

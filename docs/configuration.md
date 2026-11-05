@@ -38,7 +38,11 @@ license:
 | `spec.require` | `[title, status]` |
 | `spec.index` | `specs/README.md` when the file exists |
 | `golangci.sloglint` | `context: scope`, every package: where a context is in hand, the `*Context` variant is right |
-| `release.require_green` | `true` |
+| `release.require_green` | `true`, and not read at all when a `ship` block is present |
+| `ship.image.dockerfile`, `ship.image.context` | `Dockerfile`, `.` |
+| `ship.image.platform` | `linux/amd64` |
+| `ship.deploy.container` | the deployment's name |
+| `ship.deploy.rollout_timeout`, `ship.deploy.smoke` | `300s`, `tools/smoke/release.sh` |
 
 ## Waivers
 
@@ -214,6 +218,26 @@ image:
 
 e2e: []                    # entries: {name, why, test | command, services, buckets, env, tools, reads,
                            #   timeout, allow_skip, on}; empty skips the e2e gate
+
+ship:                      # absent: the repository releases through GitHub Actions
+  image:
+    name: ""               # required: the registry path without a tag, ghcr.io/latere-ai/auth
+    dockerfile: Dockerfile
+    context: .
+    platform: linux/amd64  # the cluster's platform: linux/amd64, linux/arm64, ...
+    build_args: {}         # extra --build-arg pairs
+    version_arg: ""        # the build argument that receives the version, if the Dockerfile declares one
+    prepare: []            # shell commands run from the root before the build, for a Dockerfile that copies a prebuilt binary
+  deploy:
+    kubeconfig: ""         # required: a 1Password reference to a Document, op://VAULT/ITEM/FILE
+    namespace: ""          # required
+    deployment: ""         # required
+    container: ""          # the deployment's name when unset
+    rollout_timeout: 300s
+    url: ""                # required: the address the live check runs against, https only
+    smoke: tools/smoke/release.sh
+    preflight: []          # shell commands run from the tag's tree before the apply
+    after_roll: []         # shell commands run from the tag's tree after the rollout
 ```
 
 `frontend.reads` is for a project whose tests read files that live outside
@@ -316,3 +340,34 @@ of the gates that read Go: they run unless every changed file is inert to
 Go, and a file inside a module is never inert.
 
 [`gates.md`](gates.md) explains what each gate does with these keys.
+
+## `ship`: a repository that releases from a workstation
+
+A `ship` block says the repository builds its image, publishes it and deploys
+it from a workstation instead of from GitHub Actions. Its presence changes
+three things:
+
+- `lateregate release` reads no CI, as `release.require_green: false` does,
+  and publishes the GitHub release once the tag is pushed;
+- `contract` no longer asks for a workflow that calls the shared
+  `lateregate.yml`, and `init` does not write one. Everything else it
+  checks stays, and a scheduled workflow such as the gate bump is
+  unaffected;
+- `build`, `push`, `deploy` and `deploy-credential` have something to act on;
+  [`commands.md`](commands.md#shipping-from-a-workstation-build-push-deploy)
+  describes them.
+
+`image.name`, `deploy.kubeconfig`, `deploy.namespace`, `deploy.deployment`
+and `deploy.url` have no default and are required. The file is refused,
+naming the key, when one is missing, when `image.name` carries a tag,
+when `image.platform` is not a Linux platform, when `deploy.kubeconfig` is
+not an `op://` reference naming a vault, an item and a file (the
+kubeconfig itself never belongs in this file), when `deploy.url` is not
+https, or when `version_arg` is also a `build_args` key.
+
+`deploy.smoke` is read from the tag being deployed, and a missing file stops
+the deploy: a release with no live check is refused, not skipped. `prepare`,
+`preflight` and `after_roll` commands run under `bash` with `set -euo
+pipefail`. `prepare` runs with `VERSION`, `COMMIT`, `GOOS` and `GOARCH` in
+its environment; `preflight` and `after_roll` run with `KUBECONFIG` set to
+the rollout identity's file.
