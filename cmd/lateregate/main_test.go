@@ -774,6 +774,9 @@ func TestMeasureFromChoosesTheBase(t *testing.T) {
 // A gate run by name reads the whole tree, and with -since it narrows as
 // check does: the e2e suites a change cannot reach are named and left out.
 func TestE2EByNameHonorsSince(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip(err)
+	}
 	dir := checkout(t)
 	cfg := "e2e:\n" +
 		"  - name: walk\n    why: the command runs\n    command: echo walked\n    reads: [deploy]\n" +

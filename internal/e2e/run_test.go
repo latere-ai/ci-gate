@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -454,6 +455,7 @@ func (errWriter) Write([]byte) (int, error) { return 0, errors.New("closed") }
 // The real process runner: a shell command's output and exit, its stop at
 // the deadline, and the real runner wired to the machine.
 func TestOSStart(t *testing.T) {
+	needShell(t)
 	var out bytes.Buffer
 	w := &lockedWriter{w: &out}
 	if err := OSStart(context.Background(), Proc{Dir: t.TempDir(), Env: os.Environ(), Name: "sh", Args: []string{"-c", "echo out; echo err >&2"}, Stdout: w, Stderr: w}); err != nil {
@@ -476,6 +478,7 @@ func TestOSStart(t *testing.T) {
 }
 
 func TestNewRunnerIsWiredToTheMachine(t *testing.T) {
+	needShell(t)
 	r := NewRunner(t.TempDir(), "go", io.Discard, nil)
 	if r.Start == nil || r.Tools == nil || r.NewHost == nil || r.LookPath == nil || len(r.Env) == 0 || r.Grace == 0 {
 		t.Errorf("%+v", r)
@@ -491,5 +494,13 @@ func TestNewRunnerIsWiredToTheMachine(t *testing.T) {
 	}
 	if filepath.Base(r.Root) == "" {
 		t.Error("root")
+	}
+}
+
+// needShell skips a test that runs a shell where the suite's PATH holds none.
+func needShell(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip(err)
 	}
 }
