@@ -58,13 +58,15 @@ var (
 	tagRE     = regexp.MustCompile(`^v?\d+(\.\d+)*$`)
 )
 
-// Key is the owner and repository of a reference, the list's key.
+// Key is the owner and repository of a reference, the list's key, in lower
+// case: GitHub resolves Azure/setup-kubectl and azure/setup-kubectl to the
+// same repository, so the list holds both spellings to one row.
 func Key(ref string) string {
 	parts := strings.SplitN(ref, "/", 3)
 	if len(parts) < 2 {
-		return ref
+		return strings.ToLower(ref)
 	}
-	return parts[0] + "/" + parts[1]
+	return strings.ToLower(parts[0] + "/" + parts[1])
 }
 
 // List parses the embedded list.

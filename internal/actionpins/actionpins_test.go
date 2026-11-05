@@ -101,6 +101,8 @@ func TestCheck(t *testing.T) {
 			[]string{"action.yml:5: actions/checkout is pinned to the tag v4, the list has commit " + checkoutSHA + " (v7.0.1)"}},
 		{"local docker and latere-ai skipped", "w.yml",
 			"jobs:\n  a:\n    uses: Latere-AI/ci/.github/workflows/x.yml@v1\n    steps:\n      - uses: ./local\n      - uses: docker://alpine:3\n      - uses: latere-ai/ci/actions/x@v1\n", nil},
+		{"owner and repository in any case", "w.yml",
+			"jobs:\n  a:\n    steps:\n      - uses: Actions/Checkout@" + checkoutSHA + " # v7.0.1\n", nil},
 		{"with keys are not uses", "w.yml",
 			"jobs:\n  a:\n    steps:\n      - run: x\n        with:\n          uses: foo/bar@v1\n", nil},
 		{"several in one run", "w.yml",
