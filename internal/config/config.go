@@ -59,6 +59,7 @@ type Config struct {
 	PlatformViaSDK PlatformViaSDK `yaml:"platform_via_sdk"`
 	Words          Words          `yaml:"words"`
 	Frontend       Frontend       `yaml:"frontend"`
+	Test           Test           `yaml:"test"`
 	Image          Image          `yaml:"image"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
@@ -850,6 +851,9 @@ func (c *Config) validate(path string) error {
 	if err := c.Frontend.validate(); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
+	if err := c.Test.validate(); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
 	if err := c.Image.validate(); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
@@ -1114,35 +1118,70 @@ type Frontend struct {
 	// repository, outside it, that its tests read. A change under one runs
 	// the gate as a change to the project does.
 	Reads map[string][]string `yaml:"reads"`
+	// Browser lists the projects whose tests drive Chromium, each also named
+	// in Projects. The plan names a browser for each, and the workflow
+	// installs it before the gate runs.
+	Browser []string `yaml:"browser"`
 }
 
 func (f Frontend) validate() error {
+	projects, err := localDirs("frontend.projects", f.Projects)
+	if err != nil {
+		return err
+	}
+	if _, err := localDirs("frontend.browser", f.Browser); err != nil {
+		return err
+	}
+	for _, b := range f.Browser {
+		if !projects[filepath.Clean(b)] {
+			return fmt.Errorf("frontend.browser: %q is not named in frontend.projects", b)
+		}
+	}
+	for _, p := range slices.Sorted(maps.Keys(f.Reads)) {
+		if !projects[filepath.Clean(p)] {
+			return fmt.Errorf("frontend.reads: %q is not a project named in frontend.projects", p)
+		}
+		if _, err := localDirs("frontend.reads."+p, f.Reads[p]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// localDirs checks that each entry of a list names a directory inside the
+// repository, once, and returns the cleaned set.
+func localDirs(key string, list []string) (map[string]bool, error) {
 	seen := map[string]bool{}
-	for _, p := range f.Projects {
+	for _, p := range list {
 		clean := filepath.Clean(p)
 		if p == "" || !filepath.IsLocal(clean) {
-			return fmt.Errorf("frontend.projects: %q must be a directory inside the repository", p)
+			return nil, fmt.Errorf("%s: %q must be a directory inside the repository", key, p)
 		}
 		if seen[clean] {
-			return fmt.Errorf("frontend.projects: %q is named twice", p)
+			return nil, fmt.Errorf("%s: %q is named twice", key, p)
 		}
 		seen[clean] = true
 	}
-	for _, p := range slices.Sorted(maps.Keys(f.Reads)) {
-		if !slices.ContainsFunc(f.Projects, func(q string) bool { return filepath.Clean(q) == filepath.Clean(p) }) {
-			return fmt.Errorf("frontend.reads: %q is not a project named in frontend.projects", p)
+	return seen, nil
+}
+
+// Test configures the plain test run that CI repeats on other systems.
+type Test struct {
+	// OS lists runner labels, such as macos-latest, on which CI runs the
+	// plain test beside the suite. Empty runs it on the default runner only.
+	OS []string `yaml:"os"`
+}
+
+func (t Test) validate() error {
+	seen := map[string]bool{}
+	for _, label := range t.OS {
+		if strings.TrimSpace(label) == "" {
+			return errors.New("test.os: a runner label must not be empty")
 		}
-		dirs := map[string]bool{}
-		for _, d := range f.Reads[p] {
-			clean := filepath.Clean(d)
-			if d == "" || !filepath.IsLocal(clean) {
-				return fmt.Errorf("frontend.reads.%s: %q must be a directory inside the repository", p, d)
-			}
-			if dirs[clean] {
-				return fmt.Errorf("frontend.reads.%s: %q is named twice", p, d)
-			}
-			dirs[clean] = true
+		if seen[label] {
+			return fmt.Errorf("test.os: %q is named twice", label)
 		}
+		seen[label] = true
 	}
 	return nil
 }

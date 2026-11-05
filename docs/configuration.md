@@ -198,6 +198,12 @@ enums:
 frontend:
   projects: []             # Bun package directories the frontend gate checks; empty skips the gate
   reads: {}                # project -> directories outside it that its tests read; a change under one runs the gate
+  browser: []              # projects, each also in projects, whose tests drive Chromium; the plan
+                           #   names chromium:<dir> so CI installs a browser before the gate
+
+test:
+  os: []                   # runner labels, such as macos-latest, on which CI runs the plain test
+                           #   beside the suite; non-empty strings, each once
 
 image:
   images: []               # entries: {name, dockerfile, context, build_args, version_args, version_expect,
