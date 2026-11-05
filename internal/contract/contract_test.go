@@ -526,7 +526,7 @@ func TestInitWritesTheWiringOnce(t *testing.T) {
 		return nil, nil
 	}
 	var sb strings.Builder
-	if err := Init(dir, &sb, exec); err != nil {
+	if err := Init(dir, &config.Config{}, &sb, exec); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"wrote .github/workflows/ci.yml", "wrote .githooks/pre-commit", "wrote .githooks/pre-push", "added .golangci.yml to .gitignore", "wrote CHANGELOG.md; commit it"} {
@@ -557,7 +557,7 @@ func TestInitWritesTheWiringOnce(t *testing.T) {
 	// Now in shape apart from go.mod: nothing to write.
 	write(t, dir, "go.mod", "module m\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n")
 	sb.Reset()
-	if err := Init(dir, &sb, exec); err != nil {
+	if err := Init(dir, &config.Config{}, &sb, exec); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(sb.String(), "nothing to write") {
@@ -574,7 +574,7 @@ func TestInitDoesNotRewriteAnOldCaller(t *testing.T) {
 	dir := repo(t)
 	old := "on: {push: {branches: [main]}, pull_request: {}}\njobs:\n  v:\n    uses: latere-ai/ci/.github/workflows/go-verify.yml@v1\n    with:\n      test_os: '[\"ubuntu-latest\"]'\n"
 	write(t, dir, ".github/workflows/ci.yml", old)
-	if err := Init(dir, &strings.Builder{}, untracked("")); err != nil {
+	if err := Init(dir, &config.Config{}, &strings.Builder{}, untracked("")); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(dir, ".github", "workflows", "ci.yml"))
@@ -586,7 +586,7 @@ func TestInitDoesNotRewriteAnOldCaller(t *testing.T) {
 func TestInitReplacesAHandRolledHook(t *testing.T) {
 	dir := repo(t)
 	write(t, dir, ".githooks/pre-commit", "#!/bin/sh\ngofmt -l .\n")
-	if err := Init(dir, &strings.Builder{}, untracked("")); err != nil {
+	if err := Init(dir, &config.Config{}, &strings.Builder{}, untracked("")); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(dir, ".githooks", "pre-commit"))
@@ -603,7 +603,7 @@ func TestInitReportsAFailingHooksPath(t *testing.T) {
 		}
 		return nil, errors.New("exit 1")
 	}
-	if err := Init(dir, &strings.Builder{}, exec); err == nil || !strings.Contains(err.Error(), "core.hooksPath") {
+	if err := Init(dir, &config.Config{}, &strings.Builder{}, exec); err == nil || !strings.Contains(err.Error(), "core.hooksPath") {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -659,7 +659,7 @@ func TestInitLeavesAnOwnPrepushAlone(t *testing.T) {
 	write(t, dir, ".githooks/pre-push", own)
 	must(t, os.Chmod(filepath.Join(dir, ".githooks", "pre-push"), 0o755))
 	var sb strings.Builder
-	if err := Init(dir, &sb, untracked("")); err != nil {
+	if err := Init(dir, &config.Config{}, &sb, untracked("")); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(filepath.Join(dir, ".githooks", "pre-push"))
@@ -723,7 +723,7 @@ func TestInitSeedsTheChangelogOnce(t *testing.T) {
 	dir := repo(t)
 	must(t, os.Remove(filepath.Join(dir, changelog.Name)))
 	var sb strings.Builder
-	if err := Init(dir, &sb, untracked("")); err != nil {
+	if err := Init(dir, &config.Config{}, &sb, untracked("")); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(sb.String(), "wrote CHANGELOG.md") {
@@ -744,7 +744,7 @@ func TestInitSeedsTheChangelogOnce(t *testing.T) {
 	own := "# Changelog\n\n## v0.1.0\n\nnotes\n"
 	write(t, dir, changelog.Name, own)
 	sb.Reset()
-	if err := Init(dir, &sb, untracked("")); err != nil {
+	if err := Init(dir, &config.Config{}, &sb, untracked("")); err != nil {
 		t.Fatal(err)
 	}
 	body, _ = os.ReadFile(filepath.Join(dir, changelog.Name))
@@ -821,5 +821,61 @@ func TestThePinningModuleIsFoundWithoutAGateModule(t *testing.T) {
 	_, err = check(t, dir, failing)
 	if err == nil || !strings.Contains(err.Error(), "git could not list the other modules") {
 		t.Fatalf("a git failure is a finding: %v", err)
+	}
+}
+
+const shipBlock = "ship:\n  image:\n    name: ghcr.io/latere-ai/x\n  deploy:\n    kubeconfig: op://V/I/F\n    namespace: n\n    deployment: x\n    url: https://x.example\n"
+
+// A repository that ships from a workstation runs no push CI, so no workflow
+// has to call the shared one; the rest of the wiring is still read.
+func TestShipRepositoryNeedsNoCaller(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, config.Name, "identity:\n  role: none\n"+shipBlock)
+	must(t, os.Remove(filepath.Join(dir, ".github", "workflows", "ci.yml")))
+	out, err := check(t, dir, untracked(""))
+	if err != nil {
+		t.Fatalf("a ship repository with no caller is in shape: %v", err)
+	}
+	if !strings.Contains(out, "no push workflow is required") {
+		t.Errorf("the report says why:\n%s", out)
+	}
+	// The same tree without the block is drift.
+	write(t, dir, config.Name, "identity:\n  role: none\n")
+	if _, err := check(t, dir, untracked("")); err == nil || !strings.Contains(err.Error(), "no workflow calls") {
+		t.Fatalf("without ship, no caller is drift: %v", err)
+	}
+	// Everything else is still required.
+	write(t, dir, config.Name, "identity:\n  role: none\n"+shipBlock)
+	must(t, os.Remove(filepath.Join(dir, ".githooks", "pre-push")))
+	if _, err := check(t, dir, untracked("")); err == nil || !strings.Contains(err.Error(), "pre-push is missing") {
+		t.Fatalf("a ship repository still needs its hooks: %v", err)
+	}
+}
+
+// A caller that is there is read as before, ship or not.
+func TestShipRepositoryWithACallerIsStillChecked(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, config.Name, "identity:\n  role: none\n"+shipBlock)
+	write(t, dir, ".github/workflows/ci.yml", strings.Replace(Caller, "  pull_request:\n", "", 1))
+	if _, err := check(t, dir, untracked("")); err == nil || !strings.Contains(err.Error(), "pull_request") {
+		t.Fatalf("a caller keeps its trigger rules: %v", err)
+	}
+}
+
+// init writes no push workflow for a ship repository.
+func TestInitWritesNoCallerForAShipRepository(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, ".gitignore", "coverage.out")
+	write(t, dir, config.Name, "identity:\n  role: none\n"+shipBlock)
+	cfg := load(t, dir)
+	var sb strings.Builder
+	if err := Init(dir, cfg, &sb, untracked("")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".github", "workflows")); err == nil {
+		t.Errorf("init wrote a workflow:\n%s", sb.String())
+	}
+	if !strings.Contains(sb.String(), "wrote .githooks/pre-commit") {
+		t.Errorf("init still writes the hooks:\n%s", sb.String())
 	}
 }

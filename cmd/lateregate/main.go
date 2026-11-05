@@ -223,7 +223,7 @@ func run(argv []string, out io.Writer) error {
 			return identity.Family(*repos, *expect, out)
 		}
 	case "init":
-		return contract.Init(*root, out, ctx.Exec)
+		return contract.Init(*root, cfg, out, ctx.Exec)
 	case "hook":
 		// Outside a module there is no local prefix; goimports then only
 		// separates the standard library, which is still the linter's rule.

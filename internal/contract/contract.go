@@ -94,7 +94,9 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 
 	var notes []string
 	module, explicit, f := checkWorkflow(root, &notes)
-	if f != "" {
+	// A repository that ships from a workstation runs no push CI, so the
+	// absence of a caller is its shape. A caller that is there is still read.
+	if f != "" && (!cfg.Ships() || !isNoCaller(f)) {
 		note(f)
 	}
 	if f := checkHook(root); f != "" {
@@ -145,8 +147,12 @@ func Run(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error 
 	if len(findings) > 0 {
 		return fmt.Errorf("%d drift(s) from the shared shape:\n- %s", len(findings), strings.Join(findings, "\n- "))
 	}
-	_, _ = fmt.Fprintf(out, "in shape: a workflow calls the shared lateregate.yml, %s and %s delegate, %s untracked, %s ignored, %s tracked with an Unreleased heading, identity declares the role %s, %s, no restated default, no hand-rolled gate target, %s pins the tool\n",
-		hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "), changelog.Name, string(cfg.Identity.Role), postgresNote(cfg),
+	callers := "a workflow calls the shared lateregate.yml"
+	if cfg.Ships() {
+		callers = "ship declares a workstation release, so no push workflow is required"
+	}
+	_, _ = fmt.Fprintf(out, "in shape: %s, %s and %s delegate, %s untracked, %s ignored, %s tracked with an Unreleased heading, identity declares the role %s, %s, no restated default, no hand-rolled gate target, %s pins the tool\n",
+		callers, hookPath, prepushPath, golangci.Name, strings.Join(Ignored, " and "), changelog.Name, string(cfg.Identity.Role), postgresNote(cfg),
 		filepath.ToSlash(filepath.Join(module, "go.mod")))
 	return nil
 }
@@ -161,6 +167,12 @@ func postgresNote(cfg *config.Config) string {
 	}
 	return "postgres declares no role and the gate decides from the imports"
 }
+
+// noCaller starts the finding for a repository with no workflow calling the
+// shared one.
+const noCaller = "no workflow calls"
+
+func isNoCaller(finding string) bool { return strings.HasPrefix(finding, noCaller) }
 
 // checkWorkflow finds the caller. Exactly one file calls the shared
 // workflow, and it runs on push to main and on pull requests. It also
@@ -206,7 +218,7 @@ func checkWorkflow(root string, notes *[]string) (string, bool, string) {
 		return ".", false, fmt.Sprintf("%s still calls go-verify.yml; switch its `uses:` to %s, which asks lateregate which gates apply",
 			strings.Join(old, ", "), Workflow)
 	default:
-		return ".", false, fmt.Sprintf("no workflow calls %s; run `lateregate init` to write .github/workflows/ci.yml", Workflow)
+		return ".", false, fmt.Sprintf(noCaller+" %s; run `lateregate init` to write .github/workflows/ci.yml", Workflow)
 	}
 }
 
@@ -551,12 +563,13 @@ func checkPin(root, module string) string {
 //
 // It does not touch Makefile or .lateregate.yaml: those hold decisions, and
 // a tool that writes decisions for a repository has made them for it.
-func Init(root string, out io.Writer, exec gates.Exec) error {
+func Init(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error {
 	wrote := 0
 	// The caller, only when no workflow calls either the new or the old
 	// pipeline. An old caller carries inputs somebody chose, so it is edited
-	// by hand and reported by Run until it is.
-	if _, _, f := checkWorkflow(root, nil); strings.HasPrefix(f, "no workflow calls") {
+	// by hand and reported by Run until it is. A repository that ships from
+	// a workstation runs no push workflow, so it is given none.
+	if _, _, f := checkWorkflow(root, nil); isNoCaller(f) && !cfg.Ships() {
 		p := filepath.Join(root, ".github", "workflows", "ci.yml")
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return err
