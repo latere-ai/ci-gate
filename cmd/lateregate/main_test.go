@@ -770,3 +770,37 @@ func TestMeasureFromChoosesTheBase(t *testing.T) {
 		t.Errorf("-all wins: %+v", s)
 	}
 }
+
+// A gate run by name reads the whole tree, and with -since it narrows as
+// check does: the e2e suites a change cannot reach are named and left out.
+func TestE2EByNameHonorsSince(t *testing.T) {
+	dir := checkout(t)
+	cfg := "e2e:\n" +
+		"  - name: walk\n    why: the command runs\n    command: echo walked\n    reads: [deploy]\n" +
+		"  - name: late\n    why: only on a tag\n    command: echo tagged\n    on: [tag]\n"
+	commit(t, dir, "base", map[string]string{"go.mod": "module m\n", "main.go": "package main\n", ".lateregate.yaml": cfg, "deploy/a.yaml": "a\n", "notes.md": "a\n"})
+	commit(t, dir, "notes", map[string]string{"notes.md": "b\n"})
+	t.Setenv("CI", "true")
+
+	s, err := out(t, "e2e", "-C", dir)
+	if err != nil || !strings.Contains(s, "PASS walk") || strings.Contains(s, "tagged") {
+		t.Fatalf("no base runs every push suite: %v\n%s", err, s)
+	}
+	s, err = out(t, "e2e", "-C", dir, "-since", "HEAD~1")
+	if err != nil || !strings.Contains(s, "SKIP walk:") || strings.Contains(s, "PASS walk") || !strings.Contains(s, "no e2e suite runs here") {
+		t.Fatalf("an inert change leaves the suite out: %v\n%s", err, s)
+	}
+	commit(t, dir, "deploy", map[string]string{"deploy/a.yaml": "b\n"})
+	if s, err = out(t, "e2e", "-C", dir, "-since", "HEAD~1"); err != nil || !strings.Contains(s, "PASS walk") {
+		t.Fatalf("a change under reads runs it: %v\n%s", err, s)
+	}
+	if s, err = out(t, "e2e", "-C", dir, "-only", "late"); err != nil || !strings.Contains(s, "PASS late") || strings.Contains(s, "walked") {
+		t.Fatalf("-only runs one suite whatever it runs on: %v\n%s", err, s)
+	}
+	if s, err = out(t, "e2e", "-C", dir, "-on", "tag"); err != nil || !strings.Contains(s, "PASS late") {
+		t.Fatalf("-on tag: %v\n%s", err, s)
+	}
+	if _, err = out(t, "e2e", "-C", dir, "-only", "nope"); err == nil {
+		t.Fatal("an unknown suite ran")
+	}
+}

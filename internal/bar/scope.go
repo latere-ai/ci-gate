@@ -67,6 +67,11 @@ func scoped(c Ctx, name string) (skip, note string, err error) {
 			return none, "", nil
 		}
 		return "", "", nil
+	case E2E:
+		// Each suite decides on its own; the gate is skipped when none would
+		// run, and the run prints each suite it leaves out.
+		skip, note = e2eScoped(c)
+		return skip, note, nil
 	case "frontend":
 		// An install and a build are minutes; a change that touches no
 		// named package cannot move their verdict.
