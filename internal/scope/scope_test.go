@@ -332,8 +332,8 @@ func TestTouchesAndSince(t *testing.T) {
 	if s.Since() != "origin/main (111111111111)" {
 		t.Errorf("since %q", s.Since())
 	}
-	if (&Scope{Base: "abc"}).Since() != " (abc)" {
-		t.Error("a short base is printed whole")
+	if (&Scope{Base: "abc"}).Since() != "abc" {
+		t.Error("a short base is printed whole, with no branch")
 	}
 	var none *Scope
 	if none.Narrows() || (&Scope{Whole: "go.mod changed"}).Narrows() {
