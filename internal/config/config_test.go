@@ -941,3 +941,60 @@ func TestTestOSNamesRunnerLabelsOnce(t *testing.T) {
 		}
 	}
 }
+
+// modules names directories below the root, as clean slash paths, once each,
+// and never the root, which is always tested.
+func TestModulesAreCleanDirectoriesBelowTheRootNamedOnce(t *testing.T) {
+	c, err := Load(write(t, "modules: [tools/specindex, adapters/latere]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Modules; len(got) != 2 || got[0] != "tools/specindex" {
+		t.Fatalf("modules %v", got)
+	}
+	for body, want := range map[string]string{
+		"modules: [.]\n":                         "is the root module",
+		"modules: [./]\n":                        "is the root module",
+		"modules: [tools/specindex/]\n":          "must be written as a clean slash path",
+		"modules: [./tools]\n":                   "must be written as a clean slash path",
+		"modules: [tools//x]\n":                  "must be written as a clean slash path",
+		"modules: ['tools\\x']\n":                "must be written as a clean slash path",
+		"modules: [../sibling]\n":                "must be a directory inside the repository",
+		"modules: [/etc]\n":                      "must be a directory inside the repository",
+		"modules: [\"\"]\n":                      "must be a directory inside the repository",
+		"modules: [tools/x, tools/y, tools/x]\n": "is named twice",
+	} {
+		if _, err := Load(write(t, body)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+}
+
+// A package of a nested module is exempted by a suffix of its import path,
+// or by its place below the repository root, whatever the module is called.
+func TestExemptForNamesANestedModulesPackagesByPlace(t *testing.T) {
+	c := Cover{
+		Exempt: map[string]string{"tools/specindex/cmd/gen": "entry point", "internal/store": "sql"},
+		Module: "example.org/other-name", Dir: "tools/specindex",
+	}
+	for pkg, want := range map[string]bool{
+		"example.org/other-name/cmd/gen":        true,
+		"example.org/other-name/cmd/other":      false,
+		"example.org/other-name/internal/store": true,
+		"example.org/other-nameX/cmd/gen":       false,
+		"example.org/m/tools/specindex/cmd/gen": true,
+	} {
+		if _, got := c.ExemptFor(pkg); got != want {
+			t.Errorf("ExemptFor(%s) = %v, want %v", pkg, got, want)
+		}
+	}
+	// The module's own root package is the directory itself.
+	root := Cover{Exempt: map[string]string{"tools/specindex": "the tool"}, Module: "example.org/x", Dir: "tools/specindex"}
+	if _, ok := root.ExemptFor("example.org/x"); !ok {
+		t.Error("the module's root package is its directory")
+	}
+	// Without a module the place is not consulted.
+	if _, ok := (Cover{Exempt: map[string]string{"x": "y"}}).ExemptFor("a/b"); ok {
+		t.Error("an unplaced package matches its path alone")
+	}
+}
