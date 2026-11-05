@@ -73,7 +73,7 @@ func TestFrontendNamesEveryFailedPackage(t *testing.T) {
 	if slices.Contains(m.ran, "a bun run test") || !slices.Contains(m.ran, "b bun run build") {
 		t.Fatalf("ran %q", m.ran)
 	}
-	if !strings.Contains(out.String(), "defines none of typecheck, test, build") {
+	if !strings.Contains(out.String(), "defines none of typecheck, test, build, e2e") {
 		t.Fatalf("a package with nothing to check is not named:\n%s", out.String())
 	}
 }
@@ -115,5 +115,44 @@ func TestFrontendRefusesWhatItCannotCheck(t *testing.T) {
 	}
 	if err := Frontend(nil, root, &out, found, fake(t, &[]call{}), (&feMachine{}).in); err == nil {
 		t.Fatal("no package passed vacuously")
+	}
+}
+
+// e2e runs last, after typecheck, test and build, and only where defined. The
+// gate installs no browser itself.
+func TestFrontendRunsE2EAfterBuild(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "web/package.json", `{"scripts": {"e2e": "playwright test", "build": "vite build", "test": "vitest", "typecheck": "tsc"}}`)
+	writeFile(t, root, "only/package.json", `{"scripts": {"e2e": "playwright test"}}`)
+	m := &feMachine{}
+	var out strings.Builder
+	if err := Frontend([]string{"web", "only"}, root, &out, found, fake(t, &[]call{}), m.in); err != nil {
+		t.Fatalf("Frontend = %v\n%s", err, out.String())
+	}
+	want := []string{
+		"web bun install --frozen-lockfile",
+		"web bun run typecheck",
+		"web bun run test",
+		"web bun run build",
+		"web bun run e2e",
+		"only bun install --frozen-lockfile",
+		"only bun run e2e",
+	}
+	if !slices.Equal(m.ran, want) {
+		t.Fatalf("ran %q", m.ran)
+	}
+	if !strings.Contains(out.String(), "build and e2e where defined") {
+		t.Errorf("final message:\n%s", out.String())
+	}
+	for _, c := range m.ran {
+		if strings.Contains(c, "playwright") {
+			t.Errorf("the gate installs no browser: %q", c)
+		}
+	}
+
+	// A failing e2e fails the package.
+	m = &feMachine{fail: []string{"web bun run e2e"}}
+	if err := Frontend([]string{"web"}, root, &out, found, fake(t, &[]call{}), m.in); err == nil {
+		t.Fatal("a failing e2e must fail the gate")
 	}
 }
