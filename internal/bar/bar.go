@@ -228,7 +228,7 @@ var Gates = []Gate{
 	{Name: "lint", Doc: "golangci-lint " + golangci.Version + " against the shared config",
 		Applies: tracksGo,
 		Run: func(c Ctx) error {
-			if c.Scope.Narrows() {
+			if c.Scope.Packages() {
 				return golangci.LintPackages(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec, patterns(c.Scope.Reached))
 			}
 			return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec)
@@ -305,7 +305,7 @@ func suiteRun(c Ctx) (gates.SuiteRun, []string) {
 	run.Floor = func(profile string, _ gates.Tester) error {
 		return cover.Run(c.Cfg.Cover, append([]string{profile}, c.Profiles...), c.Out, list)
 	}
-	if c.Scope.Narrows() {
+	if c.Scope.Packages() {
 		// The run reads the packages the change reaches, and its profile
 		// measures every package their test binaries link: the ones the
 		// change touched, and the ones whose coverage only its tests can

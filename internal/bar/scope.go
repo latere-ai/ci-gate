@@ -15,6 +15,11 @@ import (
 	"latere.ai/x/ci-gate/internal/scope"
 )
 
+// readsGo are the gates that read Go over the whole tree. On CI each runs
+// unless every changed file is inert to Go, and none narrows to packages.
+// The gates the suite folds in follow the suite.
+var readsGo = []string{"fmt-check", "modernize", "cgo-free", "otel-client", "lint", "vuln", Suite}
+
 // scoped is what a check scoped to a change does with one gate that the
 // plan would run: skip it, with the reason, or run it, with a note on what
 // it reads. Only the gates that take minutes narrow. Every other gate reads
@@ -23,6 +28,12 @@ import (
 func scoped(c Ctx, name string) (skip, note string, err error) {
 	s := c.Scope
 	if !s.Narrows() {
+		return "", "", nil
+	}
+	if s.CI && slices.Contains(readsGo, name) {
+		if s.GoInert {
+			return "every file changed since " + s.Since() + " is inert to Go: none is Go source, under a package, embedded or named by a string in the Go files", "", nil
+		}
 		return "", "", nil
 	}
 	none := "no Go package changed since " + s.Since()
@@ -62,6 +73,17 @@ func scoped(c Ctx, name string) (skip, note string, err error) {
 		for _, p := range c.Cfg.Frontend.Projects {
 			if s.Touches(filepath.ToSlash(filepath.Clean(p))) {
 				return "", "", nil
+			}
+			// Its tests also read directories outside it.
+			for k, dirs := range c.Cfg.Frontend.Reads {
+				if filepath.Clean(k) != filepath.Clean(p) {
+					continue
+				}
+				for _, r := range dirs {
+					if s.Touches(filepath.ToSlash(filepath.Clean(r))) {
+						return "", "", nil
+					}
+				}
 			}
 		}
 		return "no frontend package changed since " + s.Since(), "", nil
@@ -131,6 +153,12 @@ func header(s *scope.Scope) string {
 	_, _ = fmt.Fprintf(&b, "checking what changed since %s: %s", s.Since(), count(len(s.Files), "file"))
 	if len(s.Changed) > 0 {
 		_, _ = fmt.Fprintf(&b, ", %s, %s with what imports them", count(len(s.Changed), "Go package"), count(len(s.Reached), "package"))
+	}
+	if s.CI {
+		if !s.GoInert {
+			_, _ = fmt.Fprintf(&b, "; the gates that read Go read the whole tree: %s", s.GoWhy)
+		}
+		return b.String()
 	}
 	b.WriteString("; -all checks the whole tree")
 	return b.String()

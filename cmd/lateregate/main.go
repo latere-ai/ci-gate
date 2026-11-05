@@ -41,8 +41,14 @@ Usage:
 	lateregate [-all]          run every gate that applies, report all, fail on any; on a
 	                           laptop suite, lint, vuln and lean read only what changed
 	                           since the default branch, and -all reads the whole tree
-	lateregate check [-all]    the same, by name
+	lateregate check [-all] [-since green|REV]
+	                           the same, by name; -since measures from the last green commit
+	                           of the calling workflow, or from REV, instead of the default
+	                           branch; on CI each gate then reads the whole tree or is skipped
 	lateregate list [-json]    print each gate with run / skip / waived and why
+	lateregate base -since green|REV
+	                           print the commit a run measures its change from, or nothing and
+	                           the reason on stderr when the whole tree must be checked
 	lateregate <gate>          run one gate
 	lateregate contract        report every way the wiring drifted from the shared shape
 	lateregate identity family -repos DIR [-expect FILE]
@@ -87,6 +93,9 @@ func (p *profileList) Set(v string) error {
 	return nil
 }
 
+// stderr is where base says why the whole tree must be checked.
+var stderr io.Writer = os.Stderr
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "lateregate:", err)
@@ -121,6 +130,8 @@ func run(argv []string, out io.Writer) error {
 	write := fs.Bool("w", false, "write the declared notice on every file that has none (license)")
 	all := fs.Bool("all", false,
 		"check the whole tree rather than what changed since the default branch (check); CI always does")
+	since := fs.String("since", "",
+		"measure the change from `green`, the last green commit of the calling workflow, or from a git revision (check, list, base)")
 	forceRed := fs.Bool("force-red", false,
 		"cut over a red CI, printing what it overrides (release); the maintainer's escape hatch, and in no pipeline")
 	var profiles profileList
@@ -146,19 +157,30 @@ func run(argv []string, out io.Writer) error {
 	}
 
 	switch cmd {
+	case "base":
+		if *since == "" {
+			return fmt.Errorf("usage: lateregate base -since green|REV")
+		}
+		sha, whole := resolveBase(*since, *root, ctx.Exec)
+		if sha == "" {
+			_, _ = fmt.Fprintln(stderr, "lateregate: checking the whole tree: "+whole)
+			return nil
+		}
+		_, _ = fmt.Fprintln(out, sha)
+		return nil
 	case "license":
 		if *write {
 			return license.Write(cfg.License, *root, out, time.Now())
 		}
 	case "check":
-		// CI checks every push against the whole tree, and that is what
-		// lets a laptop check only the change: the default branch it is
-		// measured from already passed it all.
-		if !*all && os.Getenv("CI") == "" {
-			ctx.Scope = scope.Resolve(*root, *goBin, ctx.Exec)
-		}
+		ctx.Scope = measureFrom(ctx, *since, *all)
 		return bar.Check(ctx)
 	case "list":
+		// A plan is the whole tree's unless a base was named: the pipeline
+		// asks for the change only through -since.
+		if *since != "" {
+			ctx.Scope = measureFrom(ctx, *since, *all)
+		}
 		return bar.List(ctx, *asJSON)
 	case "enum-typescript-prepare":
 		return enumsetup.Prepare(cfg.Enums.TypeScript, *root, out, ctx.Exec)
@@ -277,4 +299,37 @@ func run(argv []string, out io.Writer) error {
 	}
 	_, _ = fmt.Fprint(out, help())
 	return fmt.Errorf("unknown command %q", cmd)
+}
+
+// measureFrom is the change a check reads. CI checks the whole tree unless
+// it was given a base, because the default branch is held to the whole bar
+// and a laptop is what narrows to the change; with a base, CI skips the
+// gates that cannot have moved. -all wins over any base.
+func measureFrom(c bar.Ctx, since string, all bool) *scope.Scope {
+	ci := os.Getenv("CI") != ""
+	switch {
+	case all:
+		return nil
+	case since != "":
+		sha, whole := resolveBase(since, c.Root, c.Exec)
+		if sha == "" {
+			return scope.WholeTree(whole)
+		}
+		return scope.ResolveSince(c.Root, c.GoBin, c.Exec, sha, ci)
+	case ci:
+		return nil
+	}
+	return scope.Resolve(c.Root, c.GoBin, c.Exec)
+}
+
+// resolveBase is the commit -since names, or the reason there is none.
+func resolveBase(since, root string, run gates.Exec) (sha, whole string) {
+	if since == "green" {
+		return greencut.Green(root, run)
+	}
+	out, err := run(nil, false, "git", "rev-parse", "--verify", since+"^{commit}")
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return "", fmt.Sprintf("git cannot resolve %q to a commit", since)
+	}
+	return strings.TrimSpace(string(out)), ""
 }

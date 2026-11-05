@@ -10,6 +10,27 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **CI can measure a change from the last green commit.** `check` and
+  `list` take `-since green` or `-since REV`. `green` is the newest commit
+  on the default branch that the calling workflow passed on a push and that
+  HEAD contains, read through the GitHub API; when it cannot be had, for any
+  reason, the whole tree is checked and the reason is printed. With `CI`
+  set and a base, `frontend`, `image` and `lean` keep their rules, the gates
+  that read Go (`fmt-check`, `modernize`, `cgo-free`, `otel-client`, `lint`,
+  `vuln`, `suite` and what folds into it) are skipped when every changed
+  file is inert to Go and otherwise read the whole tree, and every other
+  gate runs. A file is inert to Go when no package directory, embed pattern
+  or string literal in the repository's Go files reaches it.
+- **`lateregate base -since green|REV` prints the base.** It prints the
+  commit's SHA, or nothing and the reason on stderr when the whole tree
+  must be checked, and exits 0 either way, so a workflow can resolve the
+  base once and pass it to every `list`.
+- **`frontend.reads` names what a project's tests read outside it.** A
+  changed file under one of the listed directories runs the frontend gate,
+  on a laptop and on CI.
+
 ## v0.63.0 - 2026-11-05
 
 ### Changed

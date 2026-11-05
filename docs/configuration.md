@@ -197,11 +197,27 @@ enums:
 
 frontend:
   projects: []             # Bun package directories the frontend gate checks; empty skips the gate
+  reads: {}                # project -> directories outside it that its tests read; a change under one runs the gate
 
 image:
   images: []               # entries: {name, dockerfile, context, build_args, version_args, version_expect,
                            #   max_mib, allow_shell, start_args, env, port, probe, wait_seconds, skip_start};
                            #   empty skips the image gate
 ```
+
+`frontend.reads` is for a project whose tests read files that live outside
+its directory, such as the capability documents under `docs/`:
+
+```yaml
+frontend:
+  projects: [frontend]
+  reads:
+    frontend: [docs]
+```
+
+Each key is a project named in `frontend.projects`. Each directory must be
+inside the repository and is named once. When a run is measured against a
+change, on a laptop or on CI with `-since`, a changed file under one of
+them runs the frontend gate as a change under the project does.
 
 [`gates.md`](gates.md) explains what each gate does with these keys.
