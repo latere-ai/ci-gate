@@ -96,6 +96,35 @@ func TestE2ENeedsADockerAndTheToolsOfPushSuites(t *testing.T) {
 	}
 }
 
+// node and bun are listed by their bare names, after the fetched tools, and
+// only for a suite that runs on a push.
+func TestE2ENeedsNodeAndBunByBareName(t *testing.T) {
+	kindBun := cmdSuite("kind-bun")
+	kindBun.Tools = []string{config.ToolKind, config.ToolBun}
+	full := cmdSuite("full")
+	full.Services = []string{config.ServicePostgres}
+	full.Tools = []string{config.ToolBun, config.ToolNode}
+	tagged := cmdSuite("tagged")
+	tagged.Tools = []string{config.ToolBun}
+	tagged.On = []string{config.OnTag}
+	for name, tc := range map[string]struct {
+		suites []config.E2ESuite
+		want   []string
+	}{
+		"kind and bun": {[]config.E2ESuite{kindBun}, []string{"tool:kind", "bun"}},
+		"services":     {[]config.E2ESuite{full}, []string{"docker", "node", "bun"}},
+		"tag-only bun": {[]config.E2ESuite{goSuite("lone"), tagged}, nil},
+	} {
+		plan, err := Plan(e2eCtx(t, tc.suites...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := entry(plan, E2E).Needs; !slices.Equal(got, tc.want) {
+			t.Errorf("%s: needs %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
 // Under a change, a test suite follows the Go rule, a command suite runs when
 // a change is under its reads, and the gate is skipped only when every suite
 // would be.

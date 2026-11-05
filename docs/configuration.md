@@ -266,7 +266,9 @@ e2e:
   the entry does not list. `minio.endpoint` is a URL such as
   `http://127.0.0.1:49153`.
 - `tools` is a subset of `kubectl`, `kind` and `helm`, fetched at pinned
-  versions and put first on the suite's `PATH`.
+  versions and put first on the suite's `PATH`, and `node` and `bun`, which
+  the runner provides: on CI the shared workflow installs them from the
+  plan, and on a laptop they must be on `PATH`.
 - `reads` lists the directories or files a `command` suite reads. A change
   under one of them runs the suite when the run is measured against a
   change; a `test` suite reads the packages it names.

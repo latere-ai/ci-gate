@@ -22,6 +22,11 @@ const (
 	ToolKind    = "kind"
 	ToolHelm    = "helm"
 
+	// ToolNode and ToolBun are tools the runner provides, not ones
+	// lateregate fetches.
+	ToolNode = "node"
+	ToolBun  = "bun"
+
 	OnPush = "push"
 	OnTag  = "tag"
 
@@ -35,6 +40,12 @@ var (
 	E2EServices = []string{ServicePostgres, ServiceMinIO}
 	E2ETools    = []string{ToolKubectl, ToolKind, ToolHelm}
 	E2EEvents   = []string{OnPush, OnTag}
+
+	// E2ERunnerTools are the tools a suite may list that lateregate does not
+	// fetch. The pipeline installs them from the plan's needs, at the same
+	// versions the frontend gate gets, and on a laptop they are already on
+	// PATH.
+	E2ERunnerTools = []string{ToolNode, ToolBun}
 )
 
 // E2ERefs are the values a service hands a suite, by the name an env value
@@ -65,7 +76,8 @@ type E2ESuite struct {
 	// Env maps a variable to its value, which may name a service's address
 	// as ${postgres.url}.
 	Env map[string]string `yaml:"env"`
-	// Tools are fetched at their pinned versions and put first on PATH.
+	// Tools are fetched at their pinned versions and put first on PATH,
+	// except node and bun, which the runner provides.
 	Tools []string `yaml:"tools"`
 	// Reads are the directories a command suite reads, which decide whether
 	// a change since a base reaches it.
@@ -233,7 +245,7 @@ func (s E2ESuite) validateNeeds(at string) error {
 	if err := oneOf(at, "services", s.Services, E2EServices); err != nil {
 		return err
 	}
-	if err := oneOf(at, "tools", s.Tools, E2ETools); err != nil {
+	if err := oneOf(at, "tools", s.Tools, slices.Concat(E2ETools, E2ERunnerTools)); err != nil {
 		return err
 	}
 	if len(s.Buckets) > 0 && !slices.Contains(s.Services, ServiceMinIO) {

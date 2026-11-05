@@ -102,6 +102,21 @@ func TestE2ESuitesAreRefusedAtLoad(t *testing.T) {
 	}
 }
 
+// node and bun are accepted beside the fetched tools, and the refusal of any
+// other tool lists all five names.
+func TestE2EToolsTheRunnerProvides(t *testing.T) {
+	const head = "e2e:\n  - name: a\n    why: because\n    command: make x\n"
+	for _, tools := range []string{"[bun]", "[node, bun]", "[kubectl, kind, helm, node, bun]"} {
+		if _, err := Load(write(t, head+"    tools: "+tools+"\n")); err != nil {
+			t.Errorf("tools %s: %v", tools, err)
+		}
+	}
+	_, err := Load(write(t, head+"    tools: [deno]\n"))
+	if err == nil || !strings.Contains(err.Error(), "not one of kubectl, kind, helm, node, bun") {
+		t.Errorf("%v", err)
+	}
+}
+
 // A reference list reads each ${...} and refuses an unclosed one.
 func TestE2ERefsIn(t *testing.T) {
 	got, err := E2ERefsIn("a${x}b${y}")

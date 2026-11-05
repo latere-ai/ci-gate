@@ -131,12 +131,19 @@ func firstLine(s string) string {
 }
 
 // suite runs one suite: its tools first, since a download is cheaper than a
-// container, then its services, then the tests or the command. The services
-// are removed whatever happens.
+// container, then its services, then the tests or the command. A tool the
+// runner provides is checked on PATH, not fetched. The services are removed
+// whatever happens.
 func (r *Runner) suite(ctx context.Context, s config.E2ESuite, out io.Writer) (err error) {
 	env := slices.Clone(r.Env)
 	var dirs []string
 	for _, tool := range s.Tools {
+		if slices.Contains(config.E2ERunnerTools, tool) {
+			if _, lerr := r.LookPath(tool); lerr != nil {
+				return fmt.Errorf("e2e %s: %s is not on PATH; the runner must provide it (on CI the shared workflow installs it from the plan's needs, on a laptop install it): %w", s.Name, tool, lerr)
+			}
+			continue
+		}
 		dir, terr := r.Tools.Dir(ctx, tool)
 		if terr != nil {
 			return terr

@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **An `e2e` suite may list `node` and `bun` under `tools`.** The plan then
+  asks the pipeline to install them the way it does for the frontend gate, so
+  a suite that builds a Bun frontend runs on CI. lateregate does not fetch
+  them: it checks they are on `PATH` and fails the suite, naming the tool, when
+  they are not.
+
 ## v0.65.0 - 2026-11-05
 
 ### Added

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -413,6 +414,34 @@ func TestToolsComeFirstOnPath(t *testing.T) {
 	var out bytes.Buffer
 	r.Out = &out
 	if err := r.Run(context.Background(), []Item{{Suite: s}}); err == nil || !strings.Contains(out.String(), "no tool is called") {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+}
+
+// A tool the runner provides is looked up on PATH, not fetched; one that is
+// missing fails the suite naming the suite and the tool.
+func TestARunnerToolIsLookedUpNotFetched(t *testing.T) {
+	s := goSuite("spa")
+	s.Tools = []string{"bun"}
+
+	p := &procs{steps: []step{{stdout: stream(t, passing...)}}}
+	r := testRunner(p, io.Discard)
+	r.Tools = nil // a call to the fetcher would panic
+	var looked []string
+	r.LookPath = func(name string) (string, error) { looked = append(looked, name); return "/usr/bin/" + name, nil }
+	if err := r.Run(context.Background(), []Item{{Suite: s}}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(looked, []string{"bun"}) {
+		t.Errorf("looked up %v", looked)
+	}
+
+	var out bytes.Buffer
+	r = testRunner(&procs{}, &out)
+	r.Tools = nil
+	r.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
+	err := r.Run(context.Background(), []Item{{Suite: s}})
+	if err == nil || !strings.Contains(out.String(), "e2e spa: bun is not on PATH") || !strings.Contains(out.String(), "runner must provide it") {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
 }

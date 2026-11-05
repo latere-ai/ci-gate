@@ -47,8 +47,11 @@ func e2eApplies(c Ctx) (bool, string, error) {
 
 // e2eNeeds is what the suites that run on a push want installed: a container
 // engine when any starts a service, and each tool they name. lateregate
-// fetches the tools itself, so the names are for a pipeline that wants to
-// warm a cache; the engine is the one thing a runner must already have.
+// fetches kubectl, kind and helm itself, so their "tool:" names are for a
+// pipeline that wants to warm a cache; the engine is the one thing a runner
+// must already have. node and bun are listed by their bare names, which is
+// what the pipeline matches to install them before the gate, as it does for
+// the frontend gate.
 func e2eNeeds(cfg *config.Config) []string {
 	var needs []string
 	push := onPush(cfg)
@@ -58,6 +61,11 @@ func e2eNeeds(cfg *config.Config) []string {
 	for _, tool := range config.E2ETools {
 		if slices.ContainsFunc(push, func(s config.E2ESuite) bool { return slices.Contains(s.Tools, tool) }) {
 			needs = append(needs, "tool:"+tool)
+		}
+	}
+	for _, tool := range config.E2ERunnerTools {
+		if slices.ContainsFunc(push, func(s config.E2ESuite) bool { return slices.Contains(s.Tools, tool) }) {
+			needs = append(needs, tool)
 		}
 	}
 	return needs
