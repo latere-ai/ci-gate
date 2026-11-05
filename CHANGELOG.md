@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.64.0 - 2026-11-05
+
 ### Added
 
 - **CI can measure a change from the last green commit.** `check` and
