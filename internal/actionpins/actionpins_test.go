@@ -27,8 +27,8 @@ func TestEmbeddedList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) < 20 {
-		t.Fatalf("the list holds %d actions, want the organization's set", len(list))
+	if len(list) != 29 {
+		t.Fatalf("the list holds %d actions, want 29", len(list))
 	}
 	for k, p := range list {
 		if strings.Count(k, "/") != 1 {
