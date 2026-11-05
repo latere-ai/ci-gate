@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.67.0 - 2026-11-05
+
 ### Added
 
 - **`action-pins` holds every third-party action to the organization's one
