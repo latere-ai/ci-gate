@@ -65,6 +65,16 @@ type Scope struct {
 	// of them, directly or through another package of the module.
 	Reached []Package
 
+	// CI is set when the scope was measured for a CI run: the packages are
+	// never narrowed, and each gate either reads the whole tree or is
+	// skipped.
+	CI bool
+	// GoInert is set, on a CI scope, when no changed file can move the
+	// verdict of a gate that reads Go.
+	GoInert bool
+	// GoWhy is the changed file that makes a CI scope not inert, and why.
+	GoWhy string
+
 	// The module the change was measured in, as Resolve listed it.
 	root   string
 	module string
@@ -75,8 +85,17 @@ type Scope struct {
 // back to the whole tree, narrows nothing.
 func (s *Scope) Narrows() bool { return s != nil && s.Whole == "" }
 
-// Since names the base for a reader: the branch and the commit.
+// Packages reports whether gates narrow to the packages the change reaches:
+// the scope holds and was not measured for CI, where a gate reads the whole
+// tree or does not run.
+func (s *Scope) Packages() bool { return s.Narrows() && !s.CI }
+
+// Since names the base for a reader: the branch and the commit, or the
+// commit alone when it was named rather than found.
 func (s *Scope) Since() string {
+	if s.Ref == "" {
+		return short(s.Base)
+	}
 	return fmt.Sprintf("%s (%s)", s.Ref, short(s.Base))
 }
 
@@ -93,6 +112,10 @@ func (s *Scope) Touches(dir string) bool {
 
 // whole returns a scope that checks the whole tree, for the reason given.
 func whole(reason string) *Scope { return &Scope{Whole: reason} }
+
+// WholeTree is the scope of a run that has no base to measure from: it
+// checks the whole tree, for the reason given.
+func WholeTree(reason string) *Scope { return whole(reason) }
 
 // wholeTreeFiles are the files whose change can move any gate's verdict on
 // any package: the module's dependencies and the bar's own configuration.
@@ -122,7 +145,21 @@ func Resolve(root, goBin string, run gates.Exec) *Scope {
 		return whole(fmt.Sprintf("HEAD shares no commit with %s, so there is no base to measure a change from", ref))
 	}
 	s := &Scope{Ref: ref, Base: strings.TrimSpace(string(out))}
+	return measure(s, root, goBin, run)
+}
 
+// ResolveSince measures the change from base, a commit the caller already
+// resolved, instead of the merge base with the default branch.
+//
+// On a laptop it narrows to packages as Resolve does. With ci set it never
+// does: the scope instead says whether every changed file is inert to Go,
+// which is all a gate that reads the whole tree needs to know to be skipped.
+func ResolveSince(root, goBin string, run gates.Exec, base string, ci bool) *Scope {
+	return measure(&Scope{Base: base, CI: ci}, root, goBin, run)
+}
+
+// measure fills in what changed since s.Base.
+func measure(s *Scope, root, goBin string, run gates.Exec) *Scope {
 	files, err := changedFiles(run, s.Base)
 	if err != nil {
 		s.Whole = err.Error()
@@ -134,6 +171,10 @@ func Resolve(root, goBin string, run gates.Exec) *Scope {
 			s.Whole = f + " changed since " + s.Since()
 			return s
 		}
+	}
+	if s.CI {
+		s.GoInert, s.GoWhy = inert(root, files, run)
+		return s
 	}
 
 	module, pkgs, err := list(root, goBin, run)
