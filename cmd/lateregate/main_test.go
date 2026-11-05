@@ -256,6 +256,14 @@ func TestReleaseRefusesToCutOnARedBar(t *testing.T) {
 // tree holds a go.mod with only the tool pin, as such a repository does, and
 // shell and a package.json, none of which the Go gates have a subject in.
 func TestReleaseCutsARepositoryWithNoGo(t *testing.T) {
+	// The cut commits as whoever git says is committing, and a runner has no
+	// identity of its own.
+	for k, v := range map[string]string{
+		"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+		"GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com",
+	} {
+		t.Setenv(k, v)
+	}
 	dir := published(t, "release:\n  require_green: false\n  stamp:\n"+
 		"    - file: package.json\n      pattern: '\"version\": \"\\d+\\.\\d+\\.\\d+\"'\n"+
 		"    - file: SECURITY.md\n      pattern: 'v\\d+\\.\\d+\\.\\d+ is current'\n"+
