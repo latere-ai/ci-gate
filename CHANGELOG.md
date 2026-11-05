@@ -10,6 +10,19 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **`action-pins` holds every third-party action to the organization's one
+  commit.** It applies when git tracks a workflow under `.github/workflows` or
+  an `action.yml`, and it fails, one `file:line` per reference, on an action
+  that is not in the list, a ref that is a tag, a branch, a short commit or
+  another commit, and a trailing comment that is not `# <version>`.
+  Repositories of `latere-ai` itself, `./` paths and `docker://` images are
+  left out. Run `go tool lateregate action-pins -w` to move every listed
+  action to the list's commit and comment; an action missing from the list
+  needs it added to `internal/actionpins/action.yml` in latere-ai/ci-gate first.
+  A repository that is not ready waives the gate with a reason and a date.
+
 ## v0.66.0 - 2026-11-05
 
 ### Added

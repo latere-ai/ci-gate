@@ -28,7 +28,7 @@ Flags every command accepts:
 | `-go PATH` | the Go toolchain to run; default `go` |
 | `-json` | `list` only: print the plan as JSON |
 | `-profile FILE` | `cover` only: read this profile instead of collecting one; repeat it per test tier |
-| `-w` | `license` only: write the declared notice on every file that has none |
+| `-w` | `license`: write the declared notice on every file that has none. `action-pins`: move every listed third-party action to the organization's commit and version comment, and print each file changed |
 | `-since green\|REV` | `check`, `list` and `base`: measure the change from the newest commit on the default branch that the calling workflow passed on a push and HEAD contains (`green`), or from a git revision, instead of the merge base with the default branch |
 | `-all` | `check` only: read the whole tree rather than what changed since the default branch |
 | `-force-red` | `release` only: cut over a red CI, printing every finding it overrides |
@@ -39,6 +39,7 @@ Flags every command accepts:
 go tool lateregate cover -profile=out/unit.out -profile=out/integration.out
 go tool lateregate tempdir -- go test -tags corpus ./...
 go tool lateregate license -w
+go tool lateregate action-pins -w
 ```
 
 ## What a check reads

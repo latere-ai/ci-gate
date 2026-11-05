@@ -27,6 +27,7 @@ another. `go tool lateregate <gate>` runs one.
 | `enum-typescript` | declared TypeScript domains use native enums, named members and exhaustive switches | `enums.typescript` names a project |
 | `tidy` | `go mod tidy` would change no tracked module | git tracks a `go.mod` |
 | `actionlint` | actionlint at the pinned version finds nothing in the workflows | git tracks a workflow under `.github/workflows` |
+| `action-pins` | every third-party action is the organization's one commit, with its version in the comment | git tracks a workflow under `.github/workflows` or an `action.yml` or `action.yaml` |
 | `manifests` | every kustomization renders with kustomize at the pinned version | git tracks a kustomization that is not a Component |
 | `rules` | every PrometheusRule passes promtool at the pinned version | a tracked YAML file holds a `kind: PrometheusRule` document |
 | `frontend` | every named Bun package installs from its lockfile, then typechecks, tests, builds and runs its `e2e` script | `frontend.projects` names a package |
@@ -1333,6 +1334,52 @@ rules unchecked. Darwin and Linux on arm64 and amd64 are pinned.
 
 None of the four has a configuration key; a repository that cannot meet one
 yet waives it with a reason and a date.
+
+## `action-pins`: every third-party action is one commit
+
+Every Latere repository pins each third-party GitHub Action to a commit, and
+the commit is the same in all of them. The list lives in this binary, in
+`internal/actionpins/action.yml`: one row per action, an owner and
+repository, a 40-character commit and the version it is, written as a
+composite action that is never run so Dependabot keeps it current. The gate
+reads the list offline, so it runs the same on a laptop and on a runner.
+
+It reads every tracked workflow directly under `.github/workflows` and every
+tracked `action.yml` or `action.yaml`, outside `testdata/`, and finds each
+`uses:` of a job (a reusable workflow), of a job's step, and of a composite
+action's step. A reference is keyed by its owner and repository, so
+`github/codeql-action/analyze` follows the `github/codeql-action` row. Local
+references (`./`), `docker://` images and anything owned by `latere-ai` are
+left alone. Every other reference fails, one line each as `file:line:
+message`, all in one run, when:
+
+- its action is not in the list: add it to `internal/actionpins/action.yml`
+  in latere-ai/ci-gate first, then pin it here;
+- its ref is not the list's commit: a tag, a branch, a short commit or
+  another commit, named as what it is, with the commit the list has;
+- the commit is right and the trailing comment is not exactly
+  `# <version>` from the list.
+
+The fix for everything the list covers is one command:
+
+```sh
+go tool lateregate action-pins -w
+```
+
+It rewrites each listed action's ref to the list's commit and sets the
+comment to `# <version>`, line by line, so indentation, a leading `- ` and
+quotes stay, and any other comment on that line is replaced. It prints each
+file it changed. An action the list does not hold is left as it is and still
+fails the run. GitHub's job token cannot push changes to `.github/workflows`,
+so no workflow can do this for a repository; the check fails the push and
+`-w` fixes the tree.
+
+The gate has no configuration key. It takes the same dated waiver every gate
+does, and nothing more.
+
+A change to the list ships with its sweep: the release that changes it is
+followed by one commit per repository that pins ci-gate, moving the gate pin
+and running `action-pins -w`.
 
 ## `frontend`: the page a release ships still builds
 

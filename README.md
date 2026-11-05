@@ -95,6 +95,7 @@ lateregate: 1 of 13 gates failed: suite
 | `otel-client` | no outbound HTTP client is built without a tracing transport |
 | `container-labels` | every package that imports testcontainers-go imports `reap`, which labels its containers |
 | `license` | every source file carries the declared SPDX notice |
+| `action-pins` | every third-party action is the organization's one commit |
 | `spec-lint` | the spec tree agrees with itself and with its index |
 | `depcheck` | no build reaches a dependency nobody admitted |
 | `registers` | no developer sentence in a string handed to a user-facing function |
