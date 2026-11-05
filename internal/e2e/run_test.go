@@ -504,3 +504,18 @@ func needShell(t *testing.T) {
 		t.Skip(err)
 	}
 }
+
+// A long list of failures is cut short in the summary; each was printed where
+// it failed.
+func TestAHundredFailuresAreCountedNotListed(t *testing.T) {
+	var events []map[string]any
+	for i := range 20 {
+		events = append(events, ev("fail", "p/x", "Test"+strings.Repeat("x", i), "", 0))
+	}
+	p := &procs{steps: []step{{stdout: stream(t, events...), err: errors.New("exit status 1")}}}
+	var out bytes.Buffer
+	err := testRunner(p, &out).Run(context.Background(), []Item{{Suite: goSuite("a")}})
+	if err == nil || !strings.Contains(out.String(), "20 tests failed: ") || !strings.Contains(out.String(), "and 12 more") {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+}

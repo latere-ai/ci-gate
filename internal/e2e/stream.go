@@ -189,6 +189,16 @@ func (k *testSink) end(ev event, key string) {
 // sourcePrefix is the file and line t.Log puts before a message.
 var sourcePrefix = regexp.MustCompile(`^\S+\.go:\d+: `)
 
+// listed joins the first few names of a long list and counts the rest, so
+// one failure in a hundred subtests does not bury the summary.
+func listed(names []string, sep string) string {
+	const most = 8
+	if len(names) <= most {
+		return strings.Join(names, sep)
+	}
+	return fmt.Sprintf("%s%sand %d more", strings.Join(names[:most], sep), sep, len(names)-most)
+}
+
 // skipMessage is what a test printed before it skipped, less the lines the
 // test runner prints around every test.
 func skipMessage(out []string) string {
@@ -211,7 +221,7 @@ func (k *testSink) verdict(ctx context.Context, s config.E2ESuite, runErr error,
 	}
 	var problems []string
 	if len(k.failed) > 0 {
-		problems = append(problems, fmt.Sprintf("%s failed: %s", count(len(k.failed), "test"), strings.Join(k.failed, ", ")))
+		problems = append(problems, fmt.Sprintf("%s failed: %s", count(len(k.failed), "test"), listed(k.failed, ", ")))
 	}
 	if runErr != nil && len(k.failed) == 0 {
 		why := ""
@@ -229,7 +239,7 @@ func (k *testSink) verdict(ctx context.Context, s config.E2ESuite, runErr error,
 				list[i] = sk.String()
 			}
 			problems = append(problems, fmt.Sprintf("%s skipped, and a skipped test proves nothing; set allow_skip with the reason one may:\n  %s",
-				count(len(k.skipped), "test"), strings.Join(list, "\n  ")))
+				count(len(k.skipped), "test"), listed(list, "\n  ")))
 		}
 	}
 	if k.passed+len(k.failed)+len(k.skipped) == 0 && len(problems) == 0 {
