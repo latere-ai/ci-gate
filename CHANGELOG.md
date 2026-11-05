@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.66.0 - 2026-11-05
+
 ### Added
 
 - **An `e2e` suite may list `node` and `bun` under `tools`.** The plan then
