@@ -58,6 +58,10 @@ type Ctx struct {
 	// branch. Nil reads the whole tree, as CI, a release and a gate run by
 	// name always do.
 	Scope *scope.Scope
+	// ExecIn runs commands in a directory below Root, a slash path, for the
+	// gates that run in each module the configuration lists. Nil runs them
+	// for real.
+	ExecIn func(dir string) gates.Exec
 }
 
 // Gate is one check in the set.
@@ -229,10 +233,12 @@ var Gates = []Gate{
 	{Name: "lint", Doc: "golangci-lint " + golangci.Version + " against the shared config",
 		Applies: tracksGo,
 		Run: func(c Ctx) error {
-			if c.Scope.Packages() {
-				return golangci.LintPackages(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec, patterns(c.Scope.Reached))
-			}
-			return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec)
+			return inModules(c, func() error {
+				if c.Scope.Packages() {
+					return golangci.LintPackages(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec, patterns(c.Scope.Reached))
+				}
+				return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec)
+			}, func(dir string) error { return lintModule(c, dir) })
 		}},
 	{Name: "vuln", Doc: "govulncheck " + gates.VulnVersion + " finds no reachable vulnerability",
 		Applies: tracksGo,
@@ -345,7 +351,9 @@ func runSuite(c Ctx) error {
 	for _, n := range notes {
 		_, _ = fmt.Fprintln(c.Out, "suite runs "+n)
 	}
-	return gates.Suite(run, c.Root, c.GoBin, c.Out, c.Exec)
+	return inModules(c, func() error {
+		return gates.Suite(run, c.Root, c.GoBin, c.Out, c.Exec)
+	}, func(dir string) error { return suiteInModule(c, run, dir) })
 }
 
 // runCover collects a profile unless the caller supplied one.

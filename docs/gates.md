@@ -83,6 +83,15 @@ had at the base: the floor runs the same tests over the base, rebuilt
 with `go test -overlay`, and measures in full any package that lost a
 block. [`commands.md`](commands.md#untouched-packages) has the rule.
 
+The suite also runs in each module `modules` lists, after the root
+module's run and from that module's directory, with the same flags,
+`PATH`, sandbox and waivers and the floor applied to that module's
+packages. A module that fails does not stop the next, and the gate fails
+if any did. `lint` runs in each too. A module is read whole: on a laptop it
+runs when a changed file lies inside it, and its floor is the plain floor
+over its packages. [`configuration.md`](configuration.md) has the
+rules.
+
 The first line of a failure names the property: `the suite is not
 race-clean`, `the suite reached for docker, which is not on the stripped
 PATH`, `the suite left 2 entries under TMPDIR`, `the suite left 3
