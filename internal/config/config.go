@@ -61,6 +61,7 @@ type Config struct {
 	Frontend       Frontend       `yaml:"frontend"`
 	Test           Test           `yaml:"test"`
 	Image          Image          `yaml:"image"`
+	E2E            []E2ESuite     `yaml:"e2e"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
@@ -855,6 +856,9 @@ func (c *Config) validate(path string) error {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	if err := c.Image.validate(); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if err := validateE2E(c.E2E); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	if err := c.Identity.validate(path); err != nil {

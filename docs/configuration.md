@@ -209,6 +209,9 @@ image:
   images: []               # entries: {name, dockerfile, context, build_args, version_args, version_expect,
                            #   max_mib, allow_shell, start_args, env, port, probe, wait_seconds, skip_start};
                            #   empty skips the image gate
+
+e2e: []                    # entries: {name, why, test | command, services, buckets, env, tools, reads,
+                           #   timeout, allow_skip, on}; empty skips the e2e gate
 ```
 
 `frontend.reads` is for a project whose tests read files that live outside
@@ -225,5 +228,50 @@ Each key is a project named in `frontend.projects`. Each directory must be
 inside the repository and is named once. When a run is measured against a
 change, on a laptop or on CI with `-since`, a changed file under one of
 them runs the frontend gate as a change under the project does.
+
+`e2e` names the suites that run against real services, each by name:
+
+```yaml
+e2e:
+  - name: lux-policy
+    why: platform's policy holds against the pinned Lux core
+    test: {tags: [integration], packages: [./test/luxe2e]}
+  - name: store
+    why: the Postgres store keeps the contract the memory store keeps
+    test: {tags: [postgres], packages: [./internal/store/postgres/...], race: true}
+    services: [postgres]
+    env: {DATABASE_URL: "${postgres.url}"}
+  - name: install
+    why: the install document, run block by block, brings up a working cluster
+    command: make install-walk
+    tools: [kind, helm, kubectl]
+    reads: [docs/install.md, deploy]
+    timeout: 50m
+```
+
+- `name` is required, lowercase letters, digits and hyphens, and unique.
+  `lateregate e2e -only NAME` runs that suite.
+- `why` is required and says what the suite proves. An empty one is refused.
+- Exactly one of `test` and `command`. `test` takes `packages` (required Go
+  package patterns), `tags`, `run` (a `-run` expression), `race` and
+  `count` (default 1). `command` is run with `sh -c` from the repository
+  root.
+- `services` is a subset of `postgres` and `minio`. `buckets` lists the
+  MinIO buckets to create first and needs `minio`.
+- `env` maps a variable to a value, and a value may write `${postgres.url}`,
+  `${minio.endpoint}`, `${minio.access_key}`, `${minio.secret_key}` or
+  `${minio.region}`. Any other reference is refused, as is one to a service
+  the entry does not list. `minio.endpoint` is a URL such as
+  `http://127.0.0.1:49153`.
+- `tools` is a subset of `kubectl`, `kind` and `helm`, fetched at pinned
+  versions and put first on the suite's `PATH`.
+- `reads` lists the directories or files a `command` suite reads. A change
+  under one of them runs the suite when the run is measured against a
+  change; a `test` suite reads the packages it names.
+- `timeout` is a Go duration, 20m when unset.
+- `allow_skip` is the reason a skipped test does not fail the suite.
+  Unset, a skipped test fails it.
+- `on` is a subset of `push` and `tag`, `[push]` when unset. `lateregate e2e`
+  runs the `push` suites; `lateregate e2e -on tag` runs the `tag` ones.
 
 [`gates.md`](gates.md) explains what each gate does with these keys.
