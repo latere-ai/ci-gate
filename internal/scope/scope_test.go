@@ -271,8 +271,14 @@ func TestADependencyOrTheBarsConfigChecksTheWholeTree(t *testing.T) {
 		}
 	}
 	// A go.mod below the root is a nested module's, not this one's.
-	if s := Resolve(tree(t, "tools/go.mod"), "go", newRepo("tools/go.mod").exec); !s.Narrows() {
-		t.Errorf("a nested module's go.mod must not widen the scope: %s", s.Whole)
+	// Only the root's paths name the whole tree: a nested module's go.mod,
+	// go.sum and linter configuration are that module's change, which the
+	// root's packages do not read.
+	for _, f := range []string{"tools/go.mod", "tools/go.sum", "tools/.golangci.yml", "tools/vendor/modules.txt"} {
+		s := Resolve(tree(t, "tools/go.mod"), "go", newRepo(f).exec)
+		if !s.Narrows() || len(s.Changed) != 0 || !s.Touches("tools") {
+			t.Errorf("%s must not widen the scope: %s %v", f, s.Whole, s.Changed)
+		}
 	}
 }
 

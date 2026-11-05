@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -62,6 +63,11 @@ type Config struct {
 	Test           Test           `yaml:"test"`
 	Image          Image          `yaml:"image"`
 	E2E            []E2ESuite     `yaml:"e2e"`
+
+	// Modules lists the directories of the Go modules beside the root, each
+	// holding a tracked go.mod. The root module is always tested and is not
+	// listed. The suite and the linter run in each as they run in the root.
+	Modules []string `yaml:"modules"`
 
 	// Waive maps a gate name to the decision not to run it yet. It is the
 	// only way a gate that applies to this repository does not run, and
@@ -275,6 +281,12 @@ type Cover struct {
 	// TrimPrefix is dropped from package paths in the report so the output
 	// fits a terminal. Defaults to the module path.
 	TrimPrefix string `yaml:"trim_prefix"`
+
+	// Module and Dir place a nested module's packages for ExemptFor: the
+	// module's import path and its directory below the root. They are set
+	// by the suite for each listed module and are not configuration.
+	Module string `yaml:"-"`
+	Dir    string `yaml:"-"`
 }
 
 // Spec configures the spec-tree linter.
@@ -861,6 +873,9 @@ func (c *Config) validate(path string) error {
 	if err := validateE2E(c.E2E); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
+	if err := validateModules(c.Modules); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
 	if err := c.Identity.validate(path); err != nil {
 		return err
 	}
@@ -1088,11 +1103,23 @@ func (w Words) validate(path string) error {
 //
 // The longest matching suffix wins, for the reason AllowedFor gives: a
 // package two entries exempt has to name the same reason on every run.
+//
+// A package of a nested module is also known by its path below the root,
+// the module's directory and the package's place in the module, so an entry
+// can name it without knowing the module's import path: a module that
+// lives at tools/specindex exempts its cmd/gen package with
+// "tools/specindex/cmd/gen" whatever the module is called.
 func (c Cover) ExemptFor(pkg string) (string, bool) {
+	names := []string{pkg}
+	if rest, ok := strings.CutPrefix(pkg, c.Module); ok && c.Module != "" && (rest == "" || rest[0] == '/') {
+		names = append(names, c.Dir+rest)
+	}
 	best, why, found := "", "", false
 	for suffix, reason := range c.Exempt {
-		if strings.HasSuffix(pkg, suffix) && (!found || len(suffix) > len(best)) {
-			best, why, found = suffix, reason, true
+		for _, name := range names {
+			if strings.HasSuffix(name, suffix) && (!found || len(suffix) > len(best)) {
+				best, why, found = suffix, reason, true
+			}
 		}
 	}
 	return why, found
@@ -1150,6 +1177,22 @@ func (f Frontend) validate() error {
 		}
 	}
 	return nil
+}
+
+// validateModules checks that each entry of modules names a directory below
+// the root, written as its clean slash path, once. The root is not a
+// listed module: it is always tested.
+func validateModules(modules []string) error {
+	for _, m := range modules {
+		if m != "" && filepath.Clean(m) == "." {
+			return fmt.Errorf("modules: %q is the root module, which is always tested and is not listed", m)
+		}
+		if m != "" && filepath.IsLocal(m) && (m != path.Clean(m) || strings.Contains(m, `\`)) {
+			return fmt.Errorf("modules: %q must be written as a clean slash path, such as %q", m, path.Clean(filepath.ToSlash(m)))
+		}
+	}
+	_, err := localDirs("modules", modules)
+	return err
 }
 
 // localDirs checks that each entry of a list names a directory inside the
