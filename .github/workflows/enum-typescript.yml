@@ -1,0 +1,38 @@
+name: enum-typescript
+
+# The TypeScript enum analyzer is a Node program with its own tests, which the
+# Go bar does not run.
+
+# A push or pull request that changes only specs or markdown starts no run,
+# because no build or test here reads them.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "specs/**"
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "specs/**"
+      - "**.md"
+
+# A newer push to the same ref supersedes this run: its commit carries every
+# change this one would verify, and the runner is better spent on it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  enum-typescript-tests:
+    name: TypeScript enum analyzer tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+      - run: npm ci
+      - run: npm run test:enums

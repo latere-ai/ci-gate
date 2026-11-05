@@ -1,42 +1,26 @@
 name: ci
 
-# Every gate lives in lateregate, pinned in go.mod. The reusable workflow
-# asks the binary which gates apply and runs one job per gate.
-
-# A push or pull request that changes only specs or markdown starts no run,
-# because no build or test here reads them. `lateregate release` runs the whole
-# bar, the spec tree included, before every tag.
+# The bar lives in latere-ai/ci-gate, pinned in go.mod, and the shared
+# workflow runs it. What this repository decides is in .lateregate.yaml.
+# `lateregate init` writes this file, the same in every repository.
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "specs/**"
-      - "**.md"
   pull_request:
-    paths-ignore:
-      - "specs/**"
-      - "**.md"
+  workflow_dispatch:
 
 # A newer push to the same ref supersedes this run: its commit carries every
-# change this one would verify, and the runner is better spent on it.
+# change this one would verify.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+# actions: read lets the gate find the last commit whose CI passed, which it
+# measures the change from.
 permissions:
   contents: read
+  actions: read
 
 jobs:
   gate:
     uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
-
-  enum-typescript-tests:
-    name: TypeScript enum analyzer tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "26"
-      - run: npm ci
-      - run: npm run test:enums
