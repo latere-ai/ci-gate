@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.63.0 - 2026-11-05
+
 ### Changed
 
 - **`lateregate release` works in a repository with no Go.** The gates
