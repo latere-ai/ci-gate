@@ -54,6 +54,9 @@ func untracked(db string) gates.Exec {
 	return func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
 		switch name {
 		case "git":
+			if len(args) > 0 && args[0] == "ls-files" && slices.Contains(args, "go.mod") {
+				return nil, nil
+			}
 			if len(args) > 0 && args[0] == "ls-files" && args[len(args)-1] != changelog.Name {
 				return nil, errors.New("exit 1")
 			}
@@ -62,6 +65,17 @@ func untracked(db string) gates.Exec {
 			return []byte(db), nil
 		}
 		return nil, nil
+	}
+}
+
+// withModules answers the listing of tracked go.mod files with mods and
+// leaves every other question to exec.
+func withModules(mods string, exec gates.Exec) gates.Exec {
+	return func(env []string, stream bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && slices.Contains(args, "go.mod") {
+			return []byte(mods), nil
+		}
+		return exec(env, stream, name, args...)
 	}
 }
 
@@ -527,6 +541,9 @@ func TestInitWritesTheWiringOnce(t *testing.T) {
 	if !strings.HasPrefix(string(body), "coverage.out\n") || !ignores(string(body), ".golangci.yml") {
 		t.Errorf("gitignore after init:\n%s", body)
 	}
+	if caller, _ := os.ReadFile(filepath.Join(dir, ".github", "workflows", "ci.yml")); string(caller) != Caller {
+		t.Errorf("init writes the shared caller, the same bytes everywhere:\n%s", caller)
+	}
 	hook, _ := os.Stat(filepath.Join(dir, ".githooks", "pre-commit"))
 	if hook.Mode()&0o111 == 0 {
 		t.Error("the hook must be executable")
@@ -733,5 +750,76 @@ func TestInitSeedsTheChangelogOnce(t *testing.T) {
 	body, _ = os.ReadFile(filepath.Join(dir, changelog.Name))
 	if string(body) != own || strings.Contains(sb.String(), "wrote CHANGELOG.md") {
 		t.Error("init must not overwrite a changelog that holds notes")
+	}
+}
+
+// The shared caller passes under either name, and says nothing about itself.
+func TestTheSharedCallerPassesUnderEitherName(t *testing.T) {
+	for _, name := range []string{"ci.yml", "verify.yml"} {
+		dir := repo(t)
+		must(t, os.Remove(filepath.Join(dir, ".github", "workflows", "ci.yml")))
+		write(t, dir, ".github/workflows/"+name, Caller)
+		out, err := check(t, dir, untracked(""))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if strings.Contains(out, "note:") {
+			t.Errorf("%s is the shared caller and needs no note:\n%s", name, out)
+		}
+	}
+}
+
+// A caller that is not the template still passes, with a note that names
+// the file and the command that writes the shared one.
+func TestACallerThatDiffersGetsANoteNotAFailure(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, ".github/workflows/ci.yml", strings.Replace(Caller, "  workflow_dispatch:\n", "", 1))
+	out, err := check(t, dir, untracked(""))
+	if err != nil {
+		t.Fatalf("a differing caller is not drift yet: %v", err)
+	}
+	if !strings.Contains(out, "note: .github/workflows/ci.yml differs from the shared caller; `lateregate init` writes the shared one") {
+		t.Errorf("want the note:\n%s", out)
+	}
+	// The note is printed beside the findings too.
+	write(t, dir, ".githooks/pre-commit", "#!/bin/sh\n")
+	out, err = check(t, dir, untracked(""))
+	if err == nil || !strings.Contains(out, "note:") {
+		t.Errorf("a failing run still carries the note: %v\n%s", err, out)
+	}
+}
+
+// Without a gate_module the module that pins the tool is found: the root
+// when it pins, otherwise the one tracked go.mod that does.
+func TestThePinningModuleIsFoundWithoutAGateModule(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, "go.mod", "module example.com/m\n\ngo 1.27\n")
+	write(t, dir, "internal/gate/go.mod", "module g\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n")
+	write(t, dir, "other/go.mod", "module o\n\ngo 1.27\n")
+	out, err := check(t, dir, withModules("go.mod\ninternal/gate/go.mod\nother/go.mod\n", untracked("")))
+	if err != nil {
+		t.Fatalf("one nested module pins it: %v", err)
+	}
+	if !strings.Contains(out, "internal/gate/go.mod pins the tool") {
+		t.Errorf("the module found is named:\n%s", out)
+	}
+
+	write(t, dir, "other/go.mod", "module o\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n")
+	_, err = check(t, dir, withModules("go.mod\ninternal/gate/go.mod\nother/go.mod\n", untracked("")))
+	if err == nil || !strings.Contains(err.Error(), "2 go.mod files pin the tool (internal/gate/go.mod, other/go.mod)") {
+		t.Fatalf("several modules are a finding naming them: %v", err)
+	}
+
+	_, err = check(t, dir, withModules("go.mod\n", untracked("")))
+	if err == nil || !strings.Contains(err.Error(), "does not pin the tool") {
+		t.Fatalf("an untracked module does not count: %v", err)
+	}
+
+	failing := func(_ []string, _ bool, _ string, _ ...string) ([]byte, error) {
+		return nil, errors.New("not a repository")
+	}
+	_, err = check(t, dir, failing)
+	if err == nil || !strings.Contains(err.Error(), "git could not list the other modules") {
+		t.Fatalf("a git failure is a finding: %v", err)
 	}
 }
