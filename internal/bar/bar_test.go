@@ -629,3 +629,91 @@ func TestCheckRunsTheSuiteOnceInPlaceOfTheFive(t *testing.T) {
 		}
 	}
 }
+
+// The plan names what each running gate needs installed, and the systems the
+// test runs on, and leaves both out of the JSON when there is nothing to say.
+func TestPlanNamesWhatEachRunningGateNeeds(t *testing.T) {
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Frontend = config.Frontend{Projects: []string{"frontend", "web/app/"}, Browser: []string{"web/app/"}}
+	cfg.Test = config.Test{OS: []string{"macos-latest"}}
+	c, sb := ctx(t, cfg, withSpecs)
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := entry(plan, "frontend"); got.Status != Run || !slices.Equal(got.Needs, []string{"node", "bun", "chromium:web/app"}) {
+		t.Errorf("frontend: %+v", got)
+	}
+	if got := entry(plan, "test"); !slices.Equal(got.OS, []string{"macos-latest"}) {
+		t.Errorf("test: %+v", got)
+	}
+	if got := entry(plan, "fmt-check"); got.Needs != nil || got.OS != nil {
+		t.Errorf("fmt-check needs nothing: %+v", got)
+	}
+
+	// A waived gate installs nothing; the test keeps its systems anyway.
+	c.Cfg.Waive = map[string]config.Waiver{
+		"frontend": {Reason: "later", Until: "2026-12-01"},
+		"test":     {Reason: "later", Until: "2026-12-01"},
+	}
+	plan, err = Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := entry(plan, "frontend"); got.Status != Waived || got.Needs != nil {
+		t.Errorf("a waived frontend needs nothing: %+v", got)
+	}
+	if got := entry(plan, "test"); got.Status == Run || !slices.Equal(got.OS, []string{"macos-latest"}) {
+		t.Errorf("a waived test keeps its systems: %+v", got)
+	}
+
+	c.Cfg.Waive = nil
+	if err := List(c, true); err != nil {
+		t.Fatal(err)
+	}
+	var raw []map[string]any
+	if err := json.Unmarshal([]byte(sb.String()), &raw); err != nil {
+		t.Fatalf("list -json stays an array: %v", err)
+	}
+	for _, e := range raw {
+		_, hasNeeds := e["needs"]
+		_, hasOS := e["os"]
+		switch e["name"] {
+		case "frontend":
+			if !hasNeeds {
+				t.Errorf("frontend lacks needs: %v", e)
+			}
+		case "test":
+			if !hasOS {
+				t.Errorf("test lacks os: %v", e)
+			}
+		default:
+			if hasNeeds || hasOS {
+				t.Errorf("%v carries a field it has nothing for", e["name"])
+			}
+		}
+	}
+}
+
+// enum-typescript runs under node and bun, with no browser.
+func TestPlanEnumTypescriptNeedsNodeAndBun(t *testing.T) {
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Enums.TypeScript = []config.TypeScriptEnums{{Project: "web"}}
+	c, _ := ctx(t, cfg, withSpecs)
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := entry(plan, "enum-typescript"); got.Status == Run && !slices.Equal(got.Needs, []string{"node", "bun"}) {
+		t.Errorf("enum-typescript: %+v", got)
+	}
+	if got := needs(cfg, "enum-typescript"); !slices.Equal(got, []string{"node", "bun"}) {
+		t.Errorf("needs = %v", got)
+	}
+}

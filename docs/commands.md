@@ -169,8 +169,12 @@ FOLD test         into suite
 
 `list -json` is the same plan as an array of objects with `name`,
 `status` (`run`, `skip`, `waived`, `folded`), and `reason` or `into` where
-they apply. The reusable workflow in `latere-ai/ci` builds its job matrix
-from it.
+they apply. Two more fields appear only when they have something to say.
+`needs` is on a running gate that wants tools installed: `node` and `bun`
+for `frontend` and `enum-typescript`, and `chromium:<dir>` for each project
+`frontend.browser` lists. `os` is on the `test` entry, whatever its status,
+and holds the runner labels from `test.os`. The reusable workflow in
+`latere-ai/ci` builds its job matrix and installs its tools from it.
 
 ## The wiring: `contract` and `init`
 

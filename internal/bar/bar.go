@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -192,7 +193,7 @@ var Gates = []Gate{
 			return true, "", nil
 		},
 		Run: func(c Ctx) error { return gates.Rules(gates.DefaultPromtool(), c.Root, c.Out, c.Exec) }},
-	{Name: "frontend", Doc: "every named Bun package installs from its lockfile, then typechecks, tests and builds",
+	{Name: "frontend", Doc: "every named Bun package installs from its lockfile, then typechecks, tests, builds and runs its e2e script",
 		// After the static scans: an install and a build are minutes.
 		Applies: func(c Ctx) (bool, string, error) {
 			if len(c.Cfg.Frontend.Projects) == 0 {
@@ -513,6 +514,41 @@ type Entry struct {
 	Until  string `json:"until,omitempty"`
 	// Into is the gate a folded gate's property runs in.
 	Into string `json:"into,omitempty"`
+	// Needs names the tools a running gate wants installed before it runs:
+	// node, bun, and chromium:<dir> for a project whose tests drive Chromium.
+	// The pipeline installs from this list rather than from its caller.
+	Needs []string `json:"needs,omitempty"`
+	// OS lists the runner labels the plain test also runs on, from test.os.
+	// It is set on the test entry whatever its status.
+	OS []string `json:"os,omitempty"`
+}
+
+// needs names the tools gate g wants when it runs.
+func needs(cfg *config.Config, name string) []string {
+	switch name {
+	case "enum-typescript":
+		return []string{"node", "bun"}
+	case "frontend":
+		n := []string{"node", "bun"}
+		for _, p := range cfg.Frontend.Browser {
+			n = append(n, "chromium:"+path.Clean(filepath.ToSlash(p)))
+		}
+		return n
+	}
+	return nil
+}
+
+// annotate adds what the pipeline installs and the systems the test runs on.
+func annotate(cfg *config.Config, plan []Entry) {
+	for i := range plan {
+		e := &plan[i]
+		if e.Status == Run {
+			e.Needs = needs(cfg, e.Name)
+		}
+		if e.Name == "test" && len(cfg.Test.OS) > 0 {
+			e.OS = slices.Clone(cfg.Test.OS)
+		}
+	}
 }
 
 // Plan decides, for every gate, whether it runs.
@@ -604,6 +640,7 @@ func Plan(c Ctx) ([]Entry, error) {
 		}
 		plan = append(plan, e)
 	}
+	annotate(c.Cfg, plan)
 	return plan, nil
 }
 
