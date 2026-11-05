@@ -14,6 +14,26 @@ committed: the commit log already holds that.
 
 ### Added
 
+- **`e2e` runs the suites that need real services.** A repository lists
+  each in `e2e` with a `name`, a `why`, and either `test` (Go packages, tags,
+  `run`, `race`, `count`) or a `command`. `services` starts Postgres or MinIO
+  from images pinned by digest on ports the engine picks, with `buckets`
+  created first, and `env` receives their addresses as `${postgres.url}`,
+  `${minio.endpoint}`, `${minio.access_key}`, `${minio.secret_key}` and
+  `${minio.region}`. `tools` fetches `kubectl`, `kind` and `helm` at pinned,
+  checksum-verified versions onto the suite's `PATH`. Every container is
+  removed when the suite ends or the run is interrupted. A skipped test
+  fails its suite, named with its skip message, unless `allow_skip` gives the
+  reason; a suite in which no test ran fails too. `lateregate e2e` runs the
+  suites that run on a push, `-only NAME` runs one, and `-on tag` runs the
+  tag suites. Under `-since` or on a laptop a test suite follows the Go
+  rule, and a command suite runs when a change is under its `reads`. The
+  plan names `docker` and `tool:NAME` in `needs`.
+- **A gate run by name takes `-since`.** `lateregate <gate> -since green|REV`
+  measures the change as `check` does, so a gate that narrows reads only
+  what it reaches. Without `-since` a gate run by name reads the whole tree
+  as before.
+
 - **CI can measure a change from the last green commit.** `check` and
   `list` take `-since green` or `-since REV`. `green` is the newest commit
   on the default branch that the calling workflow passed on a push and that

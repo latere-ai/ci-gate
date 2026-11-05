@@ -35,6 +35,7 @@ another. `go tool lateregate <gate>` runs one.
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | git tracks a Go file |
 | `vuln` | govulncheck at the pinned version finds no reachable vulnerability | git tracks a Go file |
 | `suite` | `go vet`, then one run of the suite that holds the six properties below | git tracks a Go file; a waived `test` waives it |
+| `e2e` | every suite named in `e2e` that runs on a push passes against the Postgres, MinIO and tools lateregate starts, and no test in it skips | an `e2e` entry runs on a push |
 | `test` | `go vet` and the suite | folded into `suite`; skipped when git tracks no Go file |
 | `race` | the suite under the race detector | folded into `suite` |
 | `hermetic` | the suite passes with only the toolchain on `PATH` | folded into `suite` |
@@ -1413,6 +1414,57 @@ that writes `/tmp` would pass on podman alone. The gate is opt-in, since which i
 starts is the repository's decision. On a laptop it runs only when a file
 inside an image's build context changed, other than a Markdown file, or
 its Dockerfile did, since a build takes minutes.
+
+## `e2e`: the suites that need real services
+
+The `suite` gate runs `go test` with no build tags, a stripped `PATH` and no
+database, so a test that needs more than that has had to run in a job of
+its own, in each repository, with its own service block and its own pins.
+`e2e` declares those suites in `.lateregate.yaml` (the keys are in
+[`configuration.md`](configuration.md#reference)) and runs them the same way
+on a laptop and on a runner.
+
+```
+lateregate e2e                 # every suite that runs on a push, in order
+lateregate e2e -only store     # the one named, whatever it runs on
+lateregate e2e -on tag         # the suites that run on a tag
+```
+
+Each suite is reported by name. One that fails does not stop the ones after
+it, and the run fails if any did.
+
+**Services.** A suite lists `postgres`, `minio` or both. lateregate starts
+each from an image pinned by digest, with Docker or podman from `PATH`, on a
+port the engine picks on `127.0.0.1`, and waits until it answers. Postgres
+gets a random password, the user and database `lateregate`, and a URL with
+`sslmode=disable`. MinIO gets random keys, the region `us-east-1` and the
+`buckets` the entry lists. A value in `env` writes `${postgres.url}`,
+`${minio.endpoint}`, `${minio.access_key}`, `${minio.secret_key}` or
+`${minio.region}` to receive them. Every container is removed when the suite
+ends, passed or failed, and when the run is interrupted. Each carries the
+owner label the `containers` gate sweeps, so a run that was killed outright
+leaves nothing the next run does not remove.
+
+**Tools.** `kubectl`, `kind` and `helm` are downloaded once at a pinned
+version, checked against a SHA-256 recorded in lateregate, cached beside its
+other tools and put first on the suite's `PATH`. Unlike the `suite` gate, a
+suite runs with the machine's full `PATH` and environment.
+
+**A skipped test fails the suite.** A test suite runs `go test -json`, prints
+a line for each test and the output of each one that failed, and fails on a
+test whose action is `skip`, naming it with the message it printed. A suite
+in which no test ran fails too. A command suite fails on a non-zero exit and
+on any output line that begins with `--- SKIP`. A suite that expects skips
+sets `allow_skip` to the reason. Both kinds stop at their `timeout`.
+
+**On a change.** Measured against a change, on a laptop or on CI with
+`-since`, a test suite follows the rule the Go gates follow: on CI it is
+skipped when every changed file is inert to Go, and on a laptop when no Go
+package changed. A command suite runs when a changed file is under one of its
+`reads`, and otherwise follows the same rule. Each suite left out is printed
+with its reason, and the gate is skipped in the plan only when every suite
+that runs on a push would be. The plan entry names `docker` when a suite
+starts a service and `tool:NAME` for each tool.
 
 ## `lean`: the proofs still check
 
