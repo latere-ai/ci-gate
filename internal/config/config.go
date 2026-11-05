@@ -17,6 +17,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1109,6 +1110,10 @@ func (s Spec) IsExcluded(name string) bool {
 // that need a browser, stays out by not being named.
 type Frontend struct {
 	Projects []string `yaml:"projects"`
+	// Reads maps a project named in Projects to the directories of the
+	// repository, outside it, that its tests read. A change under one runs
+	// the gate as a change to the project does.
+	Reads map[string][]string `yaml:"reads"`
 }
 
 func (f Frontend) validate() error {
@@ -1122,6 +1127,22 @@ func (f Frontend) validate() error {
 			return fmt.Errorf("frontend.projects: %q is named twice", p)
 		}
 		seen[clean] = true
+	}
+	for _, p := range slices.Sorted(maps.Keys(f.Reads)) {
+		if !slices.ContainsFunc(f.Projects, func(q string) bool { return filepath.Clean(q) == filepath.Clean(p) }) {
+			return fmt.Errorf("frontend.reads: %q is not a project named in frontend.projects", p)
+		}
+		dirs := map[string]bool{}
+		for _, d := range f.Reads[p] {
+			clean := filepath.Clean(d)
+			if d == "" || !filepath.IsLocal(clean) {
+				return fmt.Errorf("frontend.reads.%s: %q must be a directory inside the repository", p, d)
+			}
+			if dirs[clean] {
+				return fmt.Errorf("frontend.reads.%s: %q is named twice", p, d)
+			}
+			dirs[clean] = true
+		}
 	}
 	return nil
 }

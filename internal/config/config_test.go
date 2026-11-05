@@ -830,6 +830,29 @@ func TestFrontendProjectsStayInsideAndAreNamedOnce(t *testing.T) {
 	}
 }
 
+// frontend.reads maps a named project to directories inside the repository,
+// each once.
+func TestFrontendReadsNameProjectsAndLocalDirectories(t *testing.T) {
+	c, err := Load(write(t, "frontend:\n  projects: [web]\n  reads:\n    web: [docs, i18n/zh]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Frontend.Reads["web"]; len(got) != 2 || got[1] != "i18n/zh" {
+		t.Fatalf("reads %v", c.Frontend.Reads)
+	}
+	for body, want := range map[string]string{
+		"frontend:\n  projects: [web]\n  reads:\n    app: [docs]\n":        "is not a project named in frontend.projects",
+		"frontend:\n  projects: [web]\n  reads:\n    web: [../docs]\n":     "must be a directory inside the repository",
+		"frontend:\n  projects: [web]\n  reads:\n    web: [\"\"]\n":        "must be a directory inside the repository",
+		"frontend:\n  projects: [web]\n  reads:\n    web: [docs, docs/]\n": "is named twice",
+		"frontend:\n  projects: [web]\n  reads:\n    web: [/etc]\n":        "must be a directory inside the repository",
+	} {
+		if _, err := Load(write(t, body)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+}
+
 func TestImagesAreNamedOnceProveTheirVersionAndStartOrSayWhy(t *testing.T) {
 	c, err := Load(write(t, `image:
   images:
