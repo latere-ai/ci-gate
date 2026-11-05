@@ -58,6 +58,10 @@ type Ctx struct {
 	// branch. Nil reads the whole tree, as CI, a release and a gate run by
 	// name always do.
 	Scope *scope.Scope
+	// Only names the one e2e suite to run, whatever it runs on, and On the
+	// event whose suites run: push when empty.
+	Only string
+	On   string
 }
 
 // Gate is one check in the set.
@@ -240,6 +244,11 @@ var Gates = []Gate{
 	{Name: "suite", Doc: "go vet, then one run of the suite that is race-clean, over the coverage floor, leaves nothing under TMPDIR and no container behind, and needs only the toolchain on PATH",
 		Applies: tracksGo,
 		Run:     runSuite},
+	{Name: E2E, Doc: "every e2e suite that runs on a push passes against the services and tools lateregate starts, and none skips a test",
+		// After the suite: it starts containers and fetches tools, which is
+		// minutes, and a failing suite is the cheaper answer.
+		Applies: e2eApplies,
+		Run:     runE2E},
 	{Name: "test", Doc: "go vet and the suite",
 		Applies: tracksGo,
 		Run:     func(c Ctx) error { return gates.Test(c.GoBin, c.Out, c.Exec) }},
@@ -526,6 +535,8 @@ type Entry struct {
 // needs names the tools gate g wants when it runs.
 func needs(cfg *config.Config, name string) []string {
 	switch name {
+	case E2E:
+		return e2eNeeds(cfg)
 	case "enum-typescript":
 		return []string{"node", "bun"}
 	case "frontend":

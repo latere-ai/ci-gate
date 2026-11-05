@@ -49,7 +49,11 @@ Usage:
 	lateregate base -since green|REV
 	                           print the commit a run measures its change from, or nothing and
 	                           the reason on stderr when the whole tree must be checked
-	lateregate <gate>          run one gate
+	lateregate <gate> [-since green|REV]
+	                           run one gate; with -since, a gate that narrows reads the change
+	lateregate e2e [-only NAME] [-on tag]
+	                           run the e2e suites that run on a push, or the one named, or
+	                           the ones that run on a tag
 	lateregate contract        report every way the wiring drifted from the shared shape
 	lateregate identity family -repos DIR [-expect FILE]
 	                           check the identity blocks of every repository under DIR against each other and the issuer's client registry, and print the layer table they derive
@@ -134,6 +138,8 @@ func run(argv []string, out io.Writer) error {
 		"measure the change from `green`, the last green commit of the calling workflow, or from a git revision (check, list, base)")
 	forceRed := fs.Bool("force-red", false,
 		"cut over a red CI, printing what it overrides (release); the maintainer's escape hatch, and in no pipeline")
+	only := fs.String("only", "", "run the one e2e suite of this name, whatever it runs on (e2e)")
+	on := fs.String("on", "", "run the e2e suites that run on this event, push or tag (e2e); push when unset")
 	var profiles profileList
 	fs.Var(&profiles, "profile",
 		"coverage profile to read (cover); repeat the flag for each test tier")
@@ -154,6 +160,8 @@ func run(argv []string, out io.Writer) error {
 		Profiles: profiles,
 		Args:     fs.Args(),
 		Now:      time.Now(),
+		Only:     *only,
+		On:       *on,
 	}
 
 	switch cmd {
@@ -294,6 +302,11 @@ func run(argv []string, out io.Writer) error {
 	if g, ok := bar.Find(cmd); ok {
 		if err := bar.ValidateWaivers(cfg); err != nil {
 			return err
+		}
+		// A gate run by name reads the whole tree unless it was given a base,
+		// as list does.
+		if *since != "" {
+			ctx.Scope = measureFrom(ctx, *since, *all)
 		}
 		return g.Run(ctx)
 	}
