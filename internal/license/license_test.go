@@ -622,3 +622,32 @@ func TestFilesHonorsTheSkipList(t *testing.T) {
 		t.Fatalf("findings = %v, want only internal/x.go", bad)
 	}
 }
+
+// The gate has a subject only when a tracked file is of a type it checks, and
+// outside the directories it skips.
+func TestTracksNeedsACheckedFileOutsideTheSkippedDirectories(t *testing.T) {
+	goOnly := config.License{}
+	shell := config.License{Extensions: []string{".sh"}, Names: []string{"Dockerfile"}, Skip: []string{"dist"}}
+	tests := []struct {
+		name string
+		cfg  config.License
+		rels []string
+		want bool
+	}{
+		{"nothing tracked", goOnly, nil, false},
+		{"blank entries", goOnly, []string{"", ""}, false},
+		{"no Go", goOnly, []string{"go.mod", "install.sh", "package.json"}, false},
+		{"a Go file", goOnly, []string{"README.md", "cmd/x/main.go"}, true},
+		{"a declared extension", shell, []string{"scripts/run.sh"}, true},
+		{"a declared whole name", shell, []string{"images/base/Dockerfile"}, true},
+		{"an undeclared type", shell, []string{"main.go"}, false},
+		{"only under a skipped directory", shell, []string{"dist/run.sh"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Tracks(tt.cfg, tt.rels); got != tt.want {
+				t.Errorf("Tracks = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

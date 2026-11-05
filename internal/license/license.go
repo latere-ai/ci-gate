@@ -174,6 +174,22 @@ func Run(cfg config.License, root string, out io.Writer) error {
 	return nil
 }
 
+// Tracks reports whether any of the repository's tracked files, as slash
+// paths relative to the root, is of a type the gate checks and outside the
+// directories it skips. A repository with none has no notice to assert, which
+// is different from a scan that found nothing where files were expected.
+func Tracks(cfg config.License, rels []string) bool {
+	for _, rel := range rels {
+		if rel == "" {
+			continue
+		}
+		if _, ok := cfg.CommentFor(filepath.Base(rel)); ok && !underSkipped(cfg.Skip, rel) {
+			return true
+		}
+	}
+	return false
+}
+
 // Files checks just the named files, relative to root, and returns one
 // "path: why" line per wrong notice. It is what the pre-commit hook runs
 // over the staged files: the same check as Run, so the hook and the gate

@@ -479,10 +479,39 @@ func short(sha string) string {
 // unlike releaseTag which matches a whole tag string.
 var versionInText = regexp.MustCompile(`v\d+\.\d+\.\d+`)
 
+// bareVersionInText finds an X.Y.Z with no leading v inside a stamp's matched
+// span, for the files that keep the version without one: a package.json
+// "version", a Go const. The word boundaries keep it off a longer dotted
+// number.
+var bareVersionInText = regexp.MustCompile(`\b\d+\.\d+\.\d+\b`)
+
 // stampPlan is one file's stamped content, computed but not yet written.
 type stampPlan struct {
 	file    string
 	content []byte
+}
+
+// stampMove picks what a stamp's matched span moves and what it moves to: the
+// vX.Y.Z form when the span holds one, else a bare X.Y.Z, written without the
+// v. The placeholder, when declared, moves in either form. It returns nil when
+// the span holds nothing to move.
+func stampMove(span []byte, placeholder, version string) (*regexp.Regexp, string) {
+	for _, form := range []struct {
+		re *regexp.Regexp
+		to string
+	}{
+		{versionInText, version},
+		{bareVersionInText, strings.TrimPrefix(version, "v")},
+	} {
+		re := form.re
+		if placeholder != "" {
+			re = regexp.MustCompile(re.String() + "|" + regexp.QuoteMeta(placeholder))
+		}
+		if re.Match(span) {
+			return re, form.to
+		}
+	}
+	return nil, ""
 }
 
 // planStamps rewrites the version inside each configured file's marker to the
@@ -518,22 +547,22 @@ func planStamps(root, version string, stamps []config.Stamp) ([]stampPlan, error
 		if len(locs) != 1 {
 			return nil, fmt.Errorf("release stamp %s: pattern %q matched %d times, want exactly one", s.File, s.Pattern, len(locs))
 		}
-		// A declared placeholder moves as a version does: the first release
-		// replaces it, and every release after finds a version in its place.
-		move := versionInText
-		if s.Placeholder != "" {
-			move = regexp.MustCompile(versionInText.String() + "|" + regexp.QuoteMeta(s.Placeholder))
-		}
+		// The span's own form decides what moves: a vX.Y.Z is rewritten to the
+		// release's tag, and a span that holds none but holds a bare X.Y.Z is
+		// rewritten to the tag without its v. A declared placeholder moves as
+		// a version does: the first release replaces it, and every release
+		// after finds a version in its place.
 		lo, hi := locs[0][0], locs[0][1]
-		if !move.Match(b[lo:hi]) {
+		move, to := stampMove(b[lo:hi], s.Placeholder, version)
+		if move == nil {
 			if s.Placeholder != "" {
-				return nil, fmt.Errorf("release stamp %s: pattern %q holds neither a vX.Y.Z nor the placeholder %q to move", s.File, s.Pattern, s.Placeholder)
+				return nil, fmt.Errorf("release stamp %s: pattern %q holds neither a version (vX.Y.Z or X.Y.Z) nor the placeholder %q to move", s.File, s.Pattern, s.Placeholder)
 			}
-			return nil, fmt.Errorf("release stamp %s: pattern %q holds no vX.Y.Z to move", s.File, s.Pattern)
+			return nil, fmt.Errorf("release stamp %s: pattern %q holds no vX.Y.Z or X.Y.Z to move", s.File, s.Pattern)
 		}
 		content := make([]byte, 0, len(b))
 		content = append(content, b[:lo]...)
-		content = append(content, move.ReplaceAll(b[lo:hi], []byte(version))...)
+		content = append(content, move.ReplaceAll(b[lo:hi], []byte(to))...)
 		content = append(content, b[hi:]...)
 		contents[file] = content
 	}

@@ -75,13 +75,17 @@ type Gate struct {
 // a formatting failure should not wait for them.
 var Gates = []Gate{
 	{Name: "fmt-check", Doc: "no tracked Go source is unformatted",
-		Run: func(c Ctx) error { return gates.FmtCheck(c.Out, c.Exec) }},
+		Applies: tracksGo,
+		Run:     func(c Ctx) error { return gates.FmtCheck(c.Out, c.Exec) }},
 	{Name: "modernize", Doc: "no code a standard library call already covers",
-		Run: func(c Ctx) error { return gates.Modernize(c.Cfg.Modernize, c.GoBin, c.Out, c.Exec) }},
+		Applies: tracksGo,
+		Run:     func(c Ctx) error { return gates.Modernize(c.Cfg.Modernize, c.GoBin, c.Out, c.Exec) }},
 	{Name: "cgo-free", Doc: "no Go file imports \"C\"",
-		Run: func(c Ctx) error { return gates.CgoFree(c.Root, c.Out, c.Cfg.CgoFree.Skip) }},
+		Applies: tracksGo,
+		Run:     func(c Ctx) error { return gates.CgoFree(c.Root, c.Out, c.Cfg.CgoFree.Skip) }},
 	{Name: "otel-client", Doc: "no outbound HTTP client without a tracing transport",
-		Run: func(c Ctx) error { return gates.OtelClient(c.Root, c.Out, c.Cfg.OtelClient.Skip) }},
+		Applies: tracksGo,
+		Run:     func(c Ctx) error { return gates.OtelClient(c.Root, c.Out, c.Cfg.OtelClient.Skip) }},
 	{Name: "container-labels", Doc: "every package that imports testcontainers-go imports reap, which labels its containers",
 		// The subject is read from the tree, as spec-lint's is from git: a
 		// repository whose first test starts a container is gated that day.
@@ -91,7 +95,8 @@ var Gates = []Gate{
 		},
 		Run: func(c Ctx) error { return gates.ContainerLabels(c.Root, c.Out) }},
 	{Name: "license", Doc: "every source file carries the declared SPDX notice",
-		Run: func(c Ctx) error { return license.Run(c.Cfg.License, c.Root, c.Out) }},
+		Applies: tracksLicensed,
+		Run:     func(c Ctx) error { return license.Run(c.Cfg.License, c.Root, c.Out) }},
 	{Name: "spec-lint", Doc: "the spec tree agrees with itself and its index",
 		Applies: tracksSpecs,
 		Run:     func(c Ctx) error { return speclint.Run(c.Cfg.Spec, c.Root, c.Out) }},
@@ -221,6 +226,7 @@ var Gates = []Gate{
 			})
 		}},
 	{Name: "lint", Doc: "golangci-lint " + golangci.Version + " against the shared config",
+		Applies: tracksGo,
 		Run: func(c Ctx) error {
 			if c.Scope.Narrows() {
 				return golangci.LintPackages(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec, patterns(c.Scope.Reached))
@@ -228,21 +234,36 @@ var Gates = []Gate{
 			return golangci.Lint(c.Root, c.Cfg, c.GoBin, c.Out, c.Exec)
 		}},
 	{Name: "vuln", Doc: "govulncheck " + gates.VulnVersion + " finds no reachable vulnerability",
-		Run: func(c Ctx) error { return gates.Vuln(c.GoBin, c.Out, c.Exec) }},
+		Applies: tracksGo,
+		Run:     func(c Ctx) error { return gates.Vuln(c.GoBin, c.Out, c.Exec) }},
 	{Name: "suite", Doc: "go vet, then one run of the suite that is race-clean, over the coverage floor, leaves nothing under TMPDIR and no container behind, and needs only the toolchain on PATH",
-		Run: runSuite},
+		Applies: tracksGo,
+		Run:     runSuite},
 	{Name: "test", Doc: "go vet and the suite",
-		Run: func(c Ctx) error { return gates.Test(c.GoBin, c.Out, c.Exec) }},
+		Applies: tracksGo,
+		Run:     func(c Ctx) error { return gates.Test(c.GoBin, c.Out, c.Exec) }},
 	{Name: "race", Doc: "the suite under the race detector",
-		Run: func(c Ctx) error { return gates.Race(c.Cfg.Race, c.GoBin, c.Out, c.Exec) }},
+		Applies: tracksGo,
+		Run:     func(c Ctx) error { return gates.Race(c.Cfg.Race, c.GoBin, c.Out, c.Exec) }},
 	{Name: "hermetic", Doc: "the suite with only the toolchain on PATH",
-		Run: func(c Ctx) error { return gates.Hermetic(c.Cfg.Hermetic, c.GoBin, c.Out, c.Exec) }},
+		Applies: tracksGo,
+		Run:     func(c Ctx) error { return gates.Hermetic(c.Cfg.Hermetic, c.GoBin, c.Out, c.Exec) }},
 	{Name: "tempdir", Doc: "the suite leaves nothing under TMPDIR",
+		// A repository that names its own runner watches that runner, Go or
+		// not; only the go test run it folds into needs Go to exist.
+		Applies: func(c Ctx) (bool, string, error) {
+			if len(c.Cfg.TempDir.Command) > 0 {
+				return true, "", nil
+			}
+			return tracksGo(c)
+		},
 		Run: func(c Ctx) error { return gates.TempDir(c.Cfg.TempDir, c.Root, c.Args, c.Out, c.Exec) }},
 	{Name: "containers", Doc: "the suite leaves no container behind",
-		Run: func(c Ctx) error { return gates.Containers(c.GoBin, c.Out, c.Exec) }},
+		Applies: tracksGo,
+		Run:     func(c Ctx) error { return gates.Containers(c.GoBin, c.Out, c.Exec) }},
 	{Name: "cover", Doc: "every package clears the floor",
-		Run: runCover},
+		Applies: tracksGo,
+		Run:     runCover},
 }
 
 // Suite is the gate the suite gates fold into.
@@ -337,6 +358,45 @@ func runCover(c Ctx) error {
 		profiles = []string{p}
 	}
 	return cover.Run(c.Cfg.Cover, profiles, c.Out, cover.GoLister(c.GoBin, c.Root))
+}
+
+// tracksGo asks git whether the repository has any Go to check. The gates
+// that read Go code (formatting, fixers, imports, the linter, the
+// vulnerability scan, the suite) have no subject in a repository whose code
+// is TypeScript, Dockerfiles or shell, and a repository that carries only a
+// go.mod to pin this tool has no Go either. The answer is the tracked set, as
+// for fmt-check, so an untracked scratch file does not give a gate a subject.
+func tracksGo(c Ctx) (bool, string, error) {
+	out, err := c.Exec(nil, false, "git", "ls-files", "-z", "--", "*.go")
+	if err != nil {
+		// Applicability that cannot be determined must not resolve to "does
+		// not apply": that is the vacuous pass this package exists to refuse.
+		return false, "", fmt.Errorf("cannot list tracked Go files with git: %w\n"+
+			"whether a repository has Go to check is asked of git, so this "+
+			"needs to run inside a git repository", err)
+	}
+	if strings.TrimSpace(strings.ReplaceAll(string(out), "\x00", "")) == "" {
+		return false, "tracks no Go file", nil
+	}
+	return true, "", nil
+}
+
+// tracksLicensed asks git whether any tracked file is of a type the license
+// gate checks. The types are the repository's to declare and default to Go,
+// so a repository that declares shell and Dockerfiles is gated on those
+// whether or not it has Go, and one that declares nothing is gated on Go
+// alone.
+func tracksLicensed(c Ctx) (bool, string, error) {
+	out, err := c.Exec(nil, false, "git", "ls-files", "-z")
+	if err != nil {
+		return false, "", fmt.Errorf("cannot list tracked files with git: %w\n"+
+			"whether a repository has files to carry a notice is asked of git, so this "+
+			"needs to run inside a git repository", err)
+	}
+	if !license.Tracks(c.Cfg.License, strings.Split(string(out), "\x00")) {
+		return false, "tracks no " + strings.Join(c.Cfg.License.Checked(), "/") + " file", nil
+	}
+	return true, "", nil
 }
 
 // tracksSpecs asks git, not the config. Deriving this from spec.dir would
@@ -470,6 +530,18 @@ func Plan(c Ctx) ([]Entry, error) {
 	for _, g := range Gates {
 		if fold[g.Name] {
 			e := Entry{Name: g.Name, Status: Folded, Into: Suite}
+			// A property of a run that has no subject is not folded into
+			// anything: it is skipped with the suite's reason.
+			if g.Applies != nil {
+				ok, why, err := g.Applies(c)
+				if err != nil {
+					return nil, err
+				}
+				if !ok {
+					plan = append(plan, Entry{Name: g.Name, Status: Skip, Reason: why})
+					continue
+				}
+			}
 			if w, ok := c.Cfg.Waive[g.Name]; ok {
 				e.Until, e.Reason = w.Until, "waived until "+w.Until+": "+w.Reason
 				if !w.Live(c.Now) {

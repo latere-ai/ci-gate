@@ -90,19 +90,24 @@ type Release struct {
 // Green reports whether `lateregate release` reads CI before it tags.
 func (r Release) Green() bool { return r.RequireGreen == nil || *r.RequireGreen }
 
-// Stamp is one file whose `vX.Y.Z` the release rewrites. Pattern is a
-// regular expression that must match the file exactly once and hold exactly
-// one `vX.Y.Z`; the cut replaces that version and nothing else, so the
-// pattern is the marker's context (`newTag: vX.Y.Z`), not the bare version,
-// which would match every version the file mentions. Several stamps may name
-// one file, one per marker; they apply in the order listed.
+// Stamp is one file whose version the release rewrites. Pattern is a
+// regular expression that must match the file exactly once and hold a
+// version; the cut replaces that version and nothing else, so the pattern is
+// the marker's context (`newTag: vX.Y.Z`), not the bare version, which would
+// match every version the file mentions. The version is a `vX.Y.Z`, replaced
+// by the release's tag, or, in a match that holds no `vX.Y.Z`, a bare
+// `X.Y.Z` such as a package.json `"version": "2.2.3"`, replaced by the tag
+// without its v. Several stamps may name one file, one per marker; they apply
+// in the order listed.
 //
 // Placeholder names a literal that stands for no release yet, such as
 // `unreleased` in a deploy overlay no tag has pinned. When it is set, the
 // cut also replaces that literal inside the match, so the first release
 // pins itself. The pattern must then match the marker in both states
-// (`newTag: (v\d+\.\d+\.\d+|unreleased)`). Unset, a match with no `vX.Y.Z`
-// refuses the cut, as a match holding neither refuses it when set.
+// (`newTag: (v\d+\.\d+\.\d+|unreleased)`). The placeholder becomes the
+// tag with its v, so a file that keeps the version without one does not use
+// it. Unset, a match with no version refuses the cut, as a match holding
+// neither a version nor the placeholder refuses it when set.
 type Stamp struct {
 	File        string `yaml:"file"`
 	Pattern     string `yaml:"pattern"`

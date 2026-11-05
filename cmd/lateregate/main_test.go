@@ -165,7 +165,8 @@ func TestSpecLintFailsOnATreeWithNoSpecs(t *testing.T) {
 }
 
 // A fresh checkout: git answers, so the plan can be made, and it says
-// spec-lint has no subject here.
+// spec-lint has no subject here. Neither has fmt-check, since the checkout
+// tracks no Go.
 func TestListPlansAgainstACheckout(t *testing.T) {
 	dir := checkout(t)
 	s, err := out(t, "list", "-C", dir, "-json")
@@ -176,7 +177,7 @@ func TestListPlansAgainstACheckout(t *testing.T) {
 		t.Errorf("plan:\n%s", s)
 	}
 	s, err = out(t, "list", "-C", dir)
-	if err != nil || !strings.Contains(s, "RUN  fmt-check") {
+	if err != nil || !strings.Contains(s, "RUN  identity") || !strings.Contains(s, "SKIP fmt-check    tracks no Go file") {
 		t.Errorf("text plan: %v\n%s", err, s)
 	}
 }
@@ -246,6 +247,61 @@ func TestReleaseRefusesToCutOnARedBar(t *testing.T) {
 	}
 	if tags := gitIn(t, dir, "ls-remote", "--tags", "origin") + gitIn(t, dir, "tag"); tags != "" {
 		t.Errorf("the refusal must tag nothing, got %q", tags)
+	}
+}
+
+// A repository with no Go file reaches the cut: every gate that reads Go
+// skips itself, the gates that read the tree still run, and the release moves
+// the changelog, stamps a bare version and a v version, tags and pushes. The
+// tree holds a go.mod with only the tool pin, as such a repository does, and
+// shell and a package.json, none of which the Go gates have a subject in.
+func TestReleaseCutsARepositoryWithNoGo(t *testing.T) {
+	dir := published(t, "release:\n  require_green: false\n  stamp:\n"+
+		"    - file: package.json\n      pattern: '\"version\": \"\\d+\\.\\d+\\.\\d+\"'\n"+
+		"    - file: SECURITY.md\n      pattern: 'v\\d+\\.\\d+\\.\\d+ is current'\n"+
+		"identity:\n  role: none\n")
+	for name, body := range map[string]string{
+		"go.mod":       "module example.com/pin\n\ngo 1.25\n",
+		"package.json": "{\n  \"version\": \"2.2.3\"\n}\n",
+		"SECURITY.md":  "v1.0.0 is current\n",
+		"install.sh":   "#!/bin/sh\necho hi\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, dir, "add", name)
+	}
+	gitIn(t, dir, "commit", "-q", "-m", "a repository with no Go")
+	gitIn(t, dir, "push", "-q", "origin", "main")
+
+	s, err := out(t, "release", "-C", dir, "v1.1.0")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, s)
+	}
+	for _, gate := range []string{"fmt-check", "modernize", "cgo-free", "otel-client", "license", "lint", "vuln", "suite"} {
+		if want := "SKIP " + gate; !strings.Contains(s, want) {
+			t.Errorf("output lacks %q:\n%s", want, s)
+		}
+		if strings.Contains(s, "FAIL "+gate) || strings.Contains(s, "== "+gate+"\n") {
+			t.Errorf("%s ran in a repository with no Go:\n%s", gate, s)
+		}
+	}
+	if !strings.Contains(s, "tracks no Go file") {
+		t.Errorf("a skip must say why:\n%s", s)
+	}
+	if tags := gitIn(t, dir, "ls-remote", "--tags", "origin"); !strings.Contains(tags, "refs/tags/v1.1.0") {
+		t.Errorf("the cut did not push the tag: %q", tags)
+	}
+	for name, want := range map[string]string{
+		"package.json": `"version": "1.1.0"`,
+		"SECURITY.md":  "v1.1.0 is current",
+	} {
+		if b, _ := os.ReadFile(filepath.Join(dir, name)); !strings.Contains(string(b), want) {
+			t.Errorf("%s: %q lacks %q", name, b, want)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "CHANGELOG.md")); !strings.Contains(string(b), "## v1.1.0 - ") {
+		t.Errorf("the changelog was not cut: %s", b)
 	}
 }
 

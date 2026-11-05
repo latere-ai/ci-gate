@@ -482,6 +482,75 @@ func TestCutStampsADeclaredPlaceholder(t *testing.T) {
 	}
 }
 
+// A file that keeps the version without a leading v is stamped with the tag
+// without its v, and a file that keeps a vX.Y.Z is stamped with the tag as it
+// is, in the one commit. Text around the marker, and other versions in the
+// file, stay as they were.
+func TestCutStampsABareVersionAndAVVersion(t *testing.T) {
+	dir := clone(t)
+	files := map[string]string{
+		"package.json":  "{\n  \"name\": \"ui\",\n  \"version\": \"2.2.3\",\n  \"dependencies\": {\"react\": \"19.1.0\"}\n}\n",
+		"config.go":     "package latere\n\n// Version is the SDK release.\nconst Version = \"0.32.0\"\n\nconst Min = \"0.1.0\"\n",
+		"SECURITY.md":   "v0.0.4 is the current release; v0.0.3 is the last.\n",
+		"overlay.yaml":  "newTag: unreleased\n",
+		"unreleased.go": "package latere\n\nconst Next = \"unreleased\"\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		git(t, dir, "add", name)
+	}
+	git(t, dir, "commit", "-q", "-m", "seed the markers")
+	publish(t, dir)
+
+	stamps := []config.Stamp{
+		{File: "package.json", Pattern: `"version": "\d+\.\d+\.\d+"`},
+		{File: "config.go", Pattern: `const Version = "\d+\.\d+\.\d+"`},
+		{File: "SECURITY.md", Pattern: `v\d+\.\d+\.\d+ is the current release`},
+		{File: "overlay.yaml", Pattern: `newTag: (v\d+\.\d+\.\d+|unreleased|\d+\.\d+\.\d+)`, Placeholder: "unreleased"},
+	}
+	var sb strings.Builder
+	if err := Cut(dir, "v1.4.0", time.Now(), &sb, realExec(t, dir), stamps); err != nil {
+		t.Fatalf("%v\n%s", err, sb.String())
+	}
+	want := map[string]string{
+		"package.json": "{\n  \"name\": \"ui\",\n  \"version\": \"1.4.0\",\n  \"dependencies\": {\"react\": \"19.1.0\"}\n}\n",
+		"config.go":    "package latere\n\n// Version is the SDK release.\nconst Version = \"1.4.0\"\n\nconst Min = \"0.1.0\"\n",
+		"SECURITY.md":  "v1.4.0 is the current release; v0.0.3 is the last.\n",
+		"overlay.yaml": "newTag: v1.4.0\n",
+	}
+	for name, body := range want {
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != body {
+			t.Errorf("%s:\n%s\nwant:\n%s", name, got, body)
+		}
+	}
+	if strings.TrimSpace(git(t, dir, "status", "--porcelain")) != "" {
+		t.Error("the stamps belong in the release commit, which leaves the tree clean")
+	}
+	if files := git(t, dir, "show", "--name-only", "--format=", "v1.4.0"); !strings.Contains(files, "package.json") || !strings.Contains(files, "config.go") {
+		t.Errorf("the release commit lacks the stamped files:\n%s", files)
+	}
+
+	// A bare version moves on the next cut as it did on this one.
+	body := strings.Replace(mustRead(t, dir), "## Unreleased\n", "## Unreleased\n\nAnother note.\n", 1)
+	if err := os.WriteFile(filepath.Join(dir, Name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "commit", "-q", "-am", "notes")
+	publish(t, dir)
+	if err := Cut(dir, "v1.5.0", time.Now(), &sb, realExec(t, dir), stamps[:2]); err != nil {
+		t.Fatalf("%v\n%s", err, sb.String())
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "package.json")); !strings.Contains(string(got), `"version": "1.5.0"`) {
+		t.Errorf("package.json after the second cut: %s", got)
+	}
+}
+
 // A stamp that does not match exactly once, or whose match holds nothing to
 // move, refuses the cut. A placeholder moves only where the stamp declares
 // it, so a match holding an undeclared one still refuses.
@@ -491,9 +560,9 @@ func TestCutRefusesABadStampAndWritesNothing(t *testing.T) {
 	}{
 		{"twice", "v0.0.1 here and v0.0.2 there\n", `v\d+\.\d+\.\d+`, "", "want exactly one"},
 		{"never", "no version at all\n", `newTag: v\d+\.\d+\.\d+`, "", "want exactly one"},
-		{"no version", "newTag: unreleased\n", `newTag: \S+`, "", "holds no vX.Y.Z to move"},
+		{"no version", "newTag: unreleased\n", `newTag: \S+`, "", "holds no vX.Y.Z or X.Y.Z to move"},
 		{"neither version nor placeholder", "newTag: latest\n", `newTag: \S+`, "unreleased",
-			`holds neither a vX.Y.Z nor the placeholder "unreleased"`},
+			`holds neither a version (vX.Y.Z or X.Y.Z) nor the placeholder "unreleased"`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

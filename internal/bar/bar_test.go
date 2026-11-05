@@ -31,7 +31,28 @@ func noSpecs(_ []string, _ bool, name string, _ ...string) ([]byte, error) {
 	return nil, nil
 }
 
+// withGo answers the questions "does git track Go" and "does git track a file
+// the license gate checks" as a repository that holds main.go, and leaves every
+// other question to exec. Most tests are about a Go repository.
+func withGo(exec gates.Exec) gates.Exec {
+	return func(env []string, stream bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && len(args) > 0 && args[0] == "ls-files" {
+			if slices.Contains(args, "*.go") || slices.Equal(args, []string{"ls-files", "-z"}) {
+				return []byte("main.go\x00"), nil
+			}
+		}
+		return exec(env, stream, name, args...)
+	}
+}
+
 func ctx(t *testing.T, cfg *config.Config, exec gates.Exec) (Ctx, *strings.Builder) {
+	t.Helper()
+	return ctxOver(t, cfg, withGo(exec))
+}
+
+// ctxOver is ctx with exec as the whole of what git says, so a test can
+// describe a repository that tracks no Go.
+func ctxOver(t *testing.T, cfg *config.Config, exec gates.Exec) (Ctx, *strings.Builder) {
 	t.Helper()
 	if cfg == nil {
 		var err error
@@ -164,6 +185,59 @@ func TestPlanFailsWhenGitCannotAnswer(t *testing.T) {
 	c, _ := ctx(t, nil, broken)
 	if _, err := Plan(c); err == nil || !strings.Contains(err.Error(), "cannot list specs/") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// A repository that tracks no Go file has no subject for any gate that reads
+// Go code, so each skips itself and says why, the suite's folded properties
+// with it. The gates that read other things still run.
+func TestPlanSkipsEveryGoGateInARepositoryWithNoGo(t *testing.T) {
+	tracked := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && slices.Contains(args, "ls-files") && !slices.Contains(args, "*.go") && !slices.Contains(args, "specs") {
+			// The tree holds a workflow, a go.mod that only pins the tool, and
+			// shell, but the license types are Go alone.
+			return []byte("go.mod\x00install.sh\x00.github/workflows/ci.yml\x00"), nil
+		}
+		return nil, nil
+	}
+	c, _ := ctxOver(t, nil, tracked)
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"fmt-check", "modernize", "cgo-free", "otel-client", "lint", "vuln", "suite",
+		"test", "race", "hermetic", "tempdir", "containers", "cover"} {
+		if e := entry(plan, name); e.Status != Skip || e.Reason != "tracks no Go file" {
+			t.Errorf("%s: %s %q, want skip \"tracks no Go file\"", name, e.Status, e.Reason)
+		}
+	}
+	if e := entry(plan, "license"); e.Status != Skip || e.Reason != "tracks no .go file" {
+		t.Errorf("license: %s %q, want skip \"tracks no .go file\"", e.Status, e.Reason)
+	}
+	for _, name := range []string{"identity", "postgres"} {
+		if e := entry(plan, name); e.Status != Run {
+			t.Errorf("%s reads the tree, not Go alone, and must run: %s %q", name, e.Status, e.Reason)
+		}
+	}
+
+	// The license gate follows the types the repository declares, not Go.
+	c.Cfg.License = config.License{SPDX: "MIT", Holder: "Latere AI", Extensions: []string{".sh"}}
+	plan, err = Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, "license"); e.Status != Run {
+		t.Errorf("license with a tracked .sh it checks: %s %q", e.Status, e.Reason)
+	}
+
+	// A tempdir command is another runner's, whatever the language.
+	c.Cfg.TempDir.Command = []string{"bun", "test"}
+	plan, err = Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, "tempdir"); e.Status != Run {
+		t.Errorf("tempdir with its own command: %s %q", e.Status, e.Reason)
 	}
 }
 

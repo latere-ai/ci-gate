@@ -38,12 +38,30 @@ In order, it:
 4. checks step 2 again, because the bar takes minutes and another
    checkout can push in that time;
 5. writes `## v1.4.0 - <today>` under a fresh `## Unreleased`, and
-   rewrites each `release.stamp` file's version marker to `v1.4.0`;
+   rewrites each `release.stamp` file's version marker to `v1.4.0`, or to
+   `1.4.0` where the marker holds the version without a `v`;
 6. commits `changelog: v1.4.0`, creates an annotated tag, and pushes the
    commit to the default branch and the tag in one atomic push, so the
    release workflow runs once and either both land or neither does. The
    pre-push checks the tag's section and lints what the push sends to the
    branch, as it does for any push.
+
+### A repository with no Go
+
+`release` runs in any repository that has a `CHANGELOG.md` and a git
+remote. The gates that check Go code apply only when git tracks a Go file,
+so a repository of TypeScript, Dockerfiles or shell skips them, each with
+`tracks no Go file`, and the bar the cut runs has nothing Go to fail on.
+Such a repository keeps a root `go.mod` that holds only the tool pin and
+runs `go tool lateregate release vX.Y.Z` as every Go repository does:
+
+```
+tool latere.ai/x/ci-gate/cmd/lateregate
+```
+
+[`gates.md`](gates.md) lists which gates skip and which still run. `license`
+follows the file types it is configured to check, so it runs on a repository
+that declares shell or Dockerfiles.
 
 ### The default branch is the lock
 
@@ -103,10 +121,29 @@ release:
 ```
 
 `pattern` is a regular expression that must match the file exactly once
-and hold exactly one `vX.Y.Z`; the cut replaces that version and nothing
-else. The pattern is the marker's context, not the bare version, which
+and hold a version; the cut replaces that version and nothing else. The pattern is the marker's context, not the bare version, which
 would match every version the file mentions. A stamp that matches zero or
 several times refuses the cut before anything is written.
+
+A file that keeps the version without a leading `v` is stamped the same
+way. When the match holds no `vX.Y.Z` but does hold a bare `X.Y.Z`, the cut
+replaces it with the release without its `v`, so `v2.3.0` writes `2.3.0`.
+The pattern still carries the marker's context, which is what keeps it off
+every other version in the file:
+
+```yaml
+release:
+  stamp:
+    # package.json: "version": "2.2.3"
+    - file: package.json
+      pattern: '"version": "\d+\.\d+\.\d+"'
+    # latere/config.go: const Version = "0.32.0"
+    - file: latere/config.go
+      pattern: 'const Version = "\d+\.\d+\.\d+"'
+```
+
+A match that holds both forms is stamped as a `vX.Y.Z`, so a bare version
+and a `v` version are stamped by separate entries.
 
 Several entries may name one file, one per marker, such as two image lines
 in a compose file. They apply in the order listed, each to the file as the
@@ -127,8 +164,10 @@ release:
       placeholder: unreleased
 ```
 
-Without `placeholder`, a match that holds no `vX.Y.Z` refuses the cut. With
-it, a match that holds neither a `vX.Y.Z` nor the placeholder refuses it.
+Without `placeholder`, a match that holds no version refuses the cut. With
+it, a match that holds neither a version nor the placeholder refuses it. The
+placeholder is replaced by the release with its `v`, so a marker that keeps
+the version without one starts from a version, not a placeholder.
 
 ### The CI guard
 

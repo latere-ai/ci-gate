@@ -10,12 +10,12 @@ another. `go tool lateregate <gate>` runs one.
 
 | Gate | What it asserts | Applies when |
 | --- | --- | --- |
-| `fmt-check` | no tracked Go source is unformatted | always |
-| `modernize` | no code that a standard library call already covers | always |
-| `cgo-free` | no Go file imports `"C"` | always |
-| `otel-client` | no outbound HTTP client is built without a tracing transport | always |
+| `fmt-check` | no tracked Go source is unformatted | git tracks a Go file |
+| `modernize` | no code that a standard library call already covers | git tracks a Go file |
+| `cgo-free` | no Go file imports `"C"` | git tracks a Go file |
+| `otel-client` | no outbound HTTP client is built without a tracing transport | git tracks a Go file |
 | `container-labels` | every package that imports testcontainers-go imports `reap`, which labels its containers | a package imports testcontainers-go |
-| `license` | every source file carries the SPDX notice the repository declared | always; needs `license.spdx` |
+| `license` | every source file carries the SPDX notice the repository declared | git tracks a file of a type the gate checks (`.go` unless `license.extensions` or `license.names` say otherwise); needs `license.spdx` |
 | `spec-lint` | the spec tree agrees with itself and with its index | git tracks `specs/` |
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
 | `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
@@ -32,15 +32,27 @@ another. `go tool lateregate <gate>` runs one.
 | `frontend` | every named Bun package installs from its lockfile, then typechecks, tests and builds | `frontend.projects` names a package |
 | `image` | every named container image builds, reports its version, stays under its size cap, holds no shell, and starts read-only and answers its probe | `image.images` names an image |
 | `lean` | every Lake project builds with `lake build --wfail`, so no proof uses `sorry` | git tracks a `lakefile.toml` or `lakefile.lean` |
-| `lint` | golangci-lint at the pinned version, against the shared config it renders first | always |
-| `vuln` | govulncheck at the pinned version finds no reachable vulnerability | always |
-| `suite` | `go vet`, then one run of the suite that holds the six properties below | always; a waived `test` waives it |
-| `test` | `go vet` and the suite | folded into `suite` |
+| `lint` | golangci-lint at the pinned version, against the shared config it renders first | git tracks a Go file |
+| `vuln` | govulncheck at the pinned version finds no reachable vulnerability | git tracks a Go file |
+| `suite` | `go vet`, then one run of the suite that holds the six properties below | git tracks a Go file; a waived `test` waives it |
+| `test` | `go vet` and the suite | folded into `suite`; skipped when git tracks no Go file |
 | `race` | the suite under the race detector | folded into `suite` |
 | `hermetic` | the suite passes with only the toolchain on `PATH` | folded into `suite` |
 | `tempdir` | the suite leaves nothing behind under `TMPDIR` | folded into `suite`, unless `tempdir.command` names another runner |
 | `containers` | the suite leaves no container behind | folded into `suite` |
 | `cover` | every package clears the floor, not the repository average | folded into `suite` |
+
+A gate that checks Go code has a subject only in a repository that tracks
+Go. With no tracked `.go` file, `fmt-check`, `modernize`, `cgo-free`,
+`otel-client`, `lint`, `vuln`, `suite` and the six properties it folds skip
+themselves with `tracks no Go file`, the way `tidy` skips with no `go.mod`,
+and `check` passes over them. That is the shape of a repository whose code is
+TypeScript, Dockerfiles or shell and whose only Go is the `go.mod` that pins
+`lateregate`. `license` follows the file types it is told to check, so it
+runs on a repository that declares `.sh` or `Dockerfile` whether or not it
+has Go, and skips with `tracks no .go file` when it checks the default and
+finds none. A `tempdir.command` for another runner keeps `tempdir` a gate of
+its own in any language. Running a skipped gate by name still runs it.
 
 The recipes are in the binary, so no repository carries its own copy of
 one. `test` is `go vet ./...` then `go test ./...`; `race` sets

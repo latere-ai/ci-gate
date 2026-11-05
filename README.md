@@ -108,7 +108,13 @@ lateregate: 1 of 13 gates failed: suite
 | `vuln` | govulncheck at a pinned version finds no reachable vulnerability |
 | `suite` | `go vet`, then one run of the test suite that is race-clean, over a per-package coverage floor, leaves nothing under `TMPDIR` and no container behind, and needs only the Go toolchain on `PATH` |
 
-A gate that does not apply is skipped with the reason: `spec-lint` needs a
+A gate that does not apply is skipped with the reason. The gates that read
+Go code (`fmt-check`, `modernize`, `cgo-free`, `otel-client`, `lint`, `vuln`
+and `suite`, with the properties it folds) apply only when git tracks a
+Go file, and `license` only when git tracks a file of a type it checks. A
+repository with no Go, such as a TypeScript or Dockerfile repository that
+keeps a `go.mod` only to pin this tool, skips them and can run `go tool
+lateregate release` like any other. `spec-lint` needs a
 `specs/` directory, `container-labels` a package that imports
 testcontainers-go, `depcheck`, `registers` and the enum gates a key
 naming what to check, `platform-via-sdk` its

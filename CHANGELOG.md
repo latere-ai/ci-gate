@@ -10,6 +10,24 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- **`lateregate release` works in a repository with no Go.** The gates
+  that check Go code (`fmt-check`, `modernize`, `cgo-free`, `otel-client`,
+  `lint`, `vuln` and `suite`, with the properties `suite` folds) now apply
+  only when git tracks a Go file. With none, each skips itself and says
+  `tracks no Go file`, as `tidy` does with no `go.mod`, so a TypeScript,
+  Dockerfile or shell repository that keeps a `go.mod` only to pin
+  `lateregate` passes the bar and can cut a release. `license` applies when
+  git tracks a file of a type it is configured to check, and `tempdir` with
+  its own `tempdir.command` still runs in any language.
+- **A `release.stamp` can move a version written without a leading `v`.** A
+  match that holds no `vX.Y.Z` but holds a bare `X.Y.Z`, such as a
+  package.json `"version": "2.2.3"` or a Go `const Version = "0.32.0"`, is
+  rewritten to the release without its `v`. A match that holds a `vX.Y.Z`
+  behaves as before. The refusal for a match with nothing to move now reads
+  `holds no vX.Y.Z or X.Y.Z to move`.
+
 ## v0.62.1 - 2026-11-01
 
 ### Fixed
