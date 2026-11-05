@@ -64,6 +64,10 @@ type Config struct {
 	Image          Image          `yaml:"image"`
 	E2E            []E2ESuite     `yaml:"e2e"`
 
+	// Ship, when present, says this repository builds, publishes and deploys
+	// its release from a workstation, not from GitHub Actions.
+	Ship *Ship `yaml:"ship"`
+
 	// Modules lists the directories of the Go modules beside the root, each
 	// holding a tracked go.mod. The root module is always tested and is not
 	// listed. The suite and the linter run in each as they run in the root.
@@ -831,6 +835,9 @@ func defaults(c *Config, dir string) *Config {
 	if c.Release.RequireGreen != nil && *c.Release.RequireGreen {
 		c.Restated = append(c.Restated, "release.require_green")
 	}
+	if c.Ship != nil {
+		c.Ship.defaults(&c.Restated)
+	}
 	if c.Identity.Registry == DefaultRegistry {
 		c.Restated = append(c.Restated, "identity.registry")
 	}
@@ -875,6 +882,11 @@ func (c *Config) validate(path string) error {
 	}
 	if err := validateModules(c.Modules); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
+	}
+	if c.Ship != nil {
+		if err := c.Ship.validate(); err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
 	}
 	if err := c.Identity.validate(path); err != nil {
 		return err
