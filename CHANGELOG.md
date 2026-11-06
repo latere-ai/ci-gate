@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.70.1 - 2026-11-06
+
 ### Fixed
 
 - **`deploy` with podman rolls out the digest the registry has.** Podman
