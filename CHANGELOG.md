@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.70.0 - 2026-11-06
+
 ### Changed
 
 - **`lint` refuses `encoding/json` (v1).** The shared depguard rule now
