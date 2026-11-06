@@ -82,6 +82,22 @@ func TestDeployRunsEveryStepInOrderAsTheRolloutIdentity(t *testing.T) {
 	if !ro.has("--timeout=300s") || !ro.has("deployment/auth") {
 		t.Errorf("rollout: %s", ro)
 	}
+	for _, step := range []string{"./tools/check.sh", "kubectl wait things"} {
+		var c call
+		for _, x := range r.calls {
+			if x.name == "bash" && strings.HasSuffix(strings.Join(x.args, " "), step) {
+				c = x
+			}
+		}
+		if c.name == "" {
+			t.Fatalf("no bash call ending in %s", step)
+		}
+		for k, v := range map[string]string{"TAG": "v1.10.0", "COMMIT": testCommit, "IMAGE": "ghcr.io/latere-ai/auth@" + testDigest} {
+			if got := envOf(c.env, k); got != v {
+				t.Errorf("%s ran with %s=%q, want %q", step, k, got, v)
+			}
+		}
+	}
 	smoke, _ := r.find("./tools/smoke/release.sh")
 	for k, v := range map[string]string{"BASE_URL": "https://auth.latere.ai", "TAG": "v1.10.0", "COMMIT": testCommit, "KUBECONFIG": r.kube} {
 		if got := envOf(smoke.env, k); got != v {

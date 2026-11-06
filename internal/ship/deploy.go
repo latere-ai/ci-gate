@@ -289,7 +289,9 @@ func Deploy(d Deps, tagArg string) (err error) {
 	if err := d.readKubeconfig(dep.Kubeconfig, kubeconfig); err != nil {
 		return err
 	}
-	env := withEnv(d.Environ(), "KUBECONFIG="+kubeconfig)
+	// The steps know what they deploy: a preflight that checks the tag's pins
+	// or an after_roll that applies something tagged reads it here.
+	env := withEnv(d.Environ(), "KUBECONFIG="+kubeconfig, "TAG="+tag, "COMMIT="+commit, "IMAGE="+image)
 	run := d.In(tree)
 	kubectl := func(args ...string) error {
 		_, err := run(env, true, "kubectl", append([]string{"--kubeconfig", kubeconfig}, args...)...)

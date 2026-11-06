@@ -370,4 +370,5 @@ the deploy: a release with no live check is refused, not skipped. `prepare`,
 `preflight` and `after_roll` commands run under `bash` with `set -euo
 pipefail`. `prepare` runs with `VERSION`, `COMMIT`, `GOOS` and `GOARCH` in
 its environment; `preflight` and `after_roll` run with `KUBECONFIG` set to
-the rollout identity's file.
+the rollout identity's file, `TAG` and `COMMIT` set to the version being
+deployed, and `IMAGE` set to the image pinned by digest.

@@ -10,6 +10,12 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- `lateregate deploy` runs `preflight` and `after_roll` with `TAG`,
+  `COMMIT` and `IMAGE` (the image pinned by digest) in their environment,
+  so a step can check or apply what the tag carries.
+
 ## v0.68.0 - 2026-11-06
 
 ### Added
