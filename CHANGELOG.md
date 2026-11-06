@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.69.0 - 2026-11-06
+
 ### Changed
 
 - `ship.image` and `ship.deploy` are optional. A private repository that
