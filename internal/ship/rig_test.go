@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
@@ -53,6 +54,9 @@ type rig struct {
 	tree   map[string]string
 	kube   string // the kubeconfig named in the environment of the last call
 	tmp    string
+	// clock is the time the code under test sees, and slept the waits it asked for.
+	clock time.Time
+	slept []time.Duration
 }
 
 func newRig(t *testing.T, shipYAML string) *rig {
@@ -95,6 +99,9 @@ func newRig(t *testing.T, shipYAML string) *rig {
 			return []string{"PATH=/bin", "SERVICE_TOKEN=inherited", "KUBECONFIG=/operator/default"}
 		},
 		Exit: func(int) {},
+		// The clock moves only when the code waits.
+		Now:   func() time.Time { return r.clock },
+		Sleep: func(w time.Duration) { r.clock = r.clock.Add(w); r.slept = append(r.slept, w) },
 	}
 	return r
 }

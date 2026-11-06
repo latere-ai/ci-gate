@@ -20,6 +20,11 @@ committed: the commit log already holds that.
   and `deploy-credential` refuse without a deploy block. A `deploy` with no
   `image`, and a `ship:` or `image:` or `deploy:` key written with no value,
   are refused.
+- `lateregate deploy` runs the live check again when it fails, every 5
+  seconds until it passes or 2 minutes have passed since the first attempt,
+  instead of failing the deploy on the first answer from an old pod or a
+  cache. The final failure says how many attempts ran. A smoke file missing
+  from the tag is still refused at once.
 
 ## v0.68.1 - 2026-11-06
 

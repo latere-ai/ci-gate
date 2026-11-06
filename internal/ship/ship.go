@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"golang.org/x/mod/semver"
 
@@ -41,7 +42,20 @@ type Deps struct {
 	// deploy listens for, and Exit replaces os.Exit; both exist for tests.
 	Signals chan os.Signal
 	Exit    func(int)
+	// Now and Sleep are the clock and the wait the live check's retries use;
+	// tests replace them so no test sleeps.
+	Now   func() time.Time
+	Sleep func(time.Duration)
 }
+
+// The live check runs again every LiveCheckInterval after a failure, until it
+// passes or LiveCheckWindow has passed since the first attempt. A terminating
+// old pod or a cache in front of the service can answer right after the
+// rollout reports done.
+const (
+	LiveCheckWindow   = 2 * time.Minute
+	LiveCheckInterval = 5 * time.Second
+)
 
 // New wires Deps to the real machine.
 func New(root string, cfg *config.Config, out io.Writer) Deps {
@@ -54,6 +68,8 @@ func New(root string, cfg *config.Config, out io.Writer) Deps {
 		LookPath: exec.LookPath,
 		Environ:  os.Environ,
 		Exit:     os.Exit,
+		Now:      time.Now,
+		Sleep:    time.Sleep,
 	}
 }
 

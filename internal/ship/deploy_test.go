@@ -7,12 +7,14 @@ import (
 	"archive/tar"
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 const lsRemote = `aaa	refs/tags/v1.9.0
@@ -491,5 +493,69 @@ func TestExtractKeepsDirectoriesLinksAndModes(t *testing.T) {
 	info, err := os.Stat(filepath.Join(dir, "a", "link"))
 	if err != nil || info.Mode().Perm()&0o100 == 0 {
 		t.Errorf("link to the script: %v %v", info, err)
+	}
+}
+
+func TestLiveCheckRetriesUntilItPasses(t *testing.T) {
+	r := newRig(t, "")
+	smokes := 0
+	r.answer = func(c call) ([]byte, error, bool) {
+		if c.name != "./tools/smoke/release.sh" {
+			return nil, nil, false
+		}
+		smokes++
+		if smokes < 3 {
+			return []byte("old pod answered\n"), errors.New("exit 1"), true
+		}
+		return nil, nil, true
+	}
+	if err := Deploy(r.d, "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	if smokes != 3 {
+		t.Errorf("attempts = %d, want 3", smokes)
+	}
+	if len(r.slept) != 2 || r.slept[0] != LiveCheckInterval {
+		t.Errorf("waits = %v", r.slept)
+	}
+}
+
+func TestLiveCheckFailsAfterTheWindowNamingTheAttempts(t *testing.T) {
+	r := newRig(t, "")
+	smokes := 0
+	r.answer = func(c call) ([]byte, error, bool) {
+		if c.name != "./tools/smoke/release.sh" {
+			return nil, nil, false
+		}
+		smokes++
+		return []byte("503 from the site\n"), errors.New("exit 1"), true
+	}
+	err := Deploy(r.d, "v1.2.3")
+	want := fmt.Sprintf("failed %d times", smokes)
+	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "503 from the site") {
+		t.Fatalf("error: %v, want it to say %q and carry the last output", err, want)
+	}
+	if smokes != int(LiveCheckWindow/LiveCheckInterval)+1 {
+		t.Errorf("attempts = %d over a %s window every %s", smokes, LiveCheckWindow, LiveCheckInterval)
+	}
+	if total := time.Duration(len(r.slept)) * LiveCheckInterval; total > LiveCheckWindow {
+		t.Errorf("waited %s, past the window", total)
+	}
+	if _, ok := r.find("gh release"); ok {
+		t.Error("a failed live check published the release")
+	}
+}
+
+func TestMissingLiveCheckIsNotRetried(t *testing.T) {
+	r := newRig(t, "")
+	delete(r.tree, "tools/smoke/release.sh")
+	if err := Deploy(r.d, "v1.2.3"); err == nil {
+		t.Fatal("deployed without a live check")
+	}
+	if len(r.slept) != 0 {
+		t.Errorf("a missing script was waited on: %v", r.slept)
+	}
+	if _, ok := r.find("./tools/smoke/release.sh"); ok {
+		t.Error("ran a script that is not there")
 	}
 }

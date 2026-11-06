@@ -63,7 +63,8 @@ func TestEveryCommandFailureStopsTheCommand(t *testing.T) {
 				err := tc.run(r)
 				// A tag that is not local is fetched, so failing the first
 				// look for it is not a failure.
-				retried := failed.name == "git" && slices.Contains(failed.args, "--verify")
+				retried := failed.name == "git" && slices.Contains(failed.args, "--verify") ||
+					failed.name == "./tools/smoke/release.sh"
 				if err == nil && !retried {
 					t.Errorf("failing call %d (%s) was swallowed", i, failed)
 				}

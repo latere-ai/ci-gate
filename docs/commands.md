@@ -305,7 +305,11 @@ when it fails:
 4. `kubectl rollout status` with `ship.deploy.rollout_timeout`
 5. `ship.deploy.after_roll`
 6. the live check, `ship.deploy.smoke`, with `BASE_URL`, `TAG`, `COMMIT` and
-   `OUTPUT_MD` in its environment and no token
+   `OUTPUT_MD` in its environment and no token. Right after the rollout an
+   old pod or a cache can still answer, so a failing check runs again every
+   5 seconds until it passes or 2 minutes have passed since the first
+   attempt. Every attempt prints as it runs, and the final failure names how
+   many attempts ran. A smoke file missing from the tag is refused at once.
 
 It prints one line, the tag, digest, namespace and deployment, and that the
 live check passed. Then, if the tag has no GitHub release, it creates one

@@ -382,7 +382,11 @@ kubeconfig itself never belongs in this file), when `deploy.url` is not
 https, or when `version_arg` is also a `build_args` key.
 
 `deploy.smoke` is read from the tag being deployed, and a missing file stops
-the deploy: a release with no live check is refused, not skipped. `prepare`,
+the deploy: a release with no live check is refused, not skipped. A smoke
+that exits non-zero is run again every 5 seconds until it passes or 2 minutes
+have passed since the first attempt, because an old pod or a cache can still
+answer right after the rollout; it must be safe to run more than once.
+`prepare`,
 `preflight` and `after_roll` commands run under `bash` with `set -euo
 pipefail`. `prepare` runs with `VERSION`, `COMMIT`, `GOOS` and `GOARCH` in
 its environment; `preflight` and `after_roll` run with `KUBECONFIG` set to

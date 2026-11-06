@@ -18,6 +18,8 @@ import (
 	"syscall"
 
 	"golang.org/x/mod/semver"
+
+	"latere.ai/x/ci-gate/internal/gates"
 )
 
 func semverLess(a, b string) bool { return semver.Compare(a, b) < 0 }
@@ -336,8 +338,7 @@ func Deploy(d Deps, tagArg string) (err error) {
 		smokeEnv := withEnv(without(env, "SERVICE_TOKEN"),
 			"BASE_URL="+dep.URL, "TAG="+tag, "COMMIT="+commit,
 			"OUTPUT_MD="+filepath.Join(dir, "smoke.md"))
-		_, err := run(smokeEnv, true, "./"+filepath.ToSlash(dep.Smoke))
-		return err
+		return d.liveCheck(run, smokeEnv, "./"+filepath.ToSlash(dep.Smoke))
 	}); err != nil {
 		return err
 	}
@@ -388,4 +389,27 @@ func PublishRelease(d Deps, tag string) error {
 	}
 	d.printf("published the GitHub release %s\n", tag)
 	return nil
+}
+
+// liveCheck runs the smoke script, and again after each failure every
+// LiveCheckInterval until it passes or LiveCheckWindow has passed since the
+// first attempt. Every attempt streams to the operator. The error carries the
+// last attempt's output and how many attempts ran.
+func (d Deps) liveCheck(run gates.Exec, env []string, script string) error {
+	start := d.Now()
+	for attempt := 1; ; attempt++ {
+		out, err := run(env, true, script)
+		if err == nil {
+			return nil
+		}
+		if d.Now().Sub(start)+LiveCheckInterval > LiveCheckWindow {
+			msg := fmt.Sprintf("the live check failed %d times over %s: %v", attempt, LiveCheckWindow, err)
+			if last := strings.TrimSpace(string(out)); last != "" {
+				msg += "\nlast attempt:\n" + last
+			}
+			return errors.New(msg)
+		}
+		d.printf("live check attempt %d failed: %v; trying again in %s\n", attempt, err, LiveCheckInterval)
+		d.Sleep(LiveCheckInterval)
+	}
 }
