@@ -158,9 +158,11 @@ func (r *rig) run(where string, env []string, name string, args []string) ([]byt
 				return nil, os.WriteFile(args[i+1], []byte(testDigest), 0o644)
 			}
 		case "image":
-			// Another name's digest comes first, as podman lists it for an
-			// image it also knows under a second name.
-			return []byte("localhost/auth@sha256:" + strings.Repeat("b", 64) + "\nghcr.io/latere-ai/auth@" + testDigest + "\n"), nil
+			// The pulled digest, then every digest podman lists: another
+			// name's first, as for an image it also knows under a second
+			// name, and a digest computed at build time under the image's
+			// own name that the registry never had.
+			return []byte(testDigest + "\nlocalhost/auth@sha256:" + strings.Repeat("b", 64) + "\nghcr.io/latere-ai/auth@sha256:" + strings.Repeat("c", 64) + "\nghcr.io/latere-ai/auth@" + testDigest + "\n"), nil
 		}
 	case "docker":
 		if args[0] == "buildx" {

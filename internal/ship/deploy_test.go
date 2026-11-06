@@ -210,6 +210,40 @@ func TestDeployRefusesAnImageNotInTheRegistry(t *testing.T) {
 	}
 }
 
+// Podman lists every digest it knows for an image, and one under the
+// image's own name can be the digest computed at build time, which the
+// registry never had; the deploy sets the digest the pull fetched.
+func TestDeploySetsTheDigestPodmanPulled(t *testing.T) {
+	r := newRig(t, "")
+	if err := Deploy(r.d, "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	set, ok := r.find("kubectl")
+	for _, c := range r.calls {
+		if c.name == "kubectl" && slices.Contains(c.args, "set") {
+			set, ok = c, true
+		}
+	}
+	if !ok || !strings.Contains(set.String(), "ghcr.io/latere-ai/auth@"+testDigest) {
+		t.Fatalf("set image without the pulled digest: %v", set)
+	}
+
+	r = newRig(t, "")
+	r.answer = func(c call) ([]byte, error, bool) {
+		if c.name == "podman" && c.args[0] == "image" {
+			return []byte(testDigest + "\nghcr.io/latere-ai/auth@sha256:" + strings.Repeat("c", 64) + "\n"), nil, true
+		}
+		return nil, nil, false
+	}
+	err := Deploy(r.d, "v1.2.3")
+	if err == nil || !strings.Contains(err.Error(), "which it does not list under ghcr.io/latere-ai/auth") {
+		t.Fatalf("a pulled digest not under the image's name: %v", err)
+	}
+	if _, ok := r.find("kubectl"); ok {
+		t.Error("the cluster was touched")
+	}
+}
+
 func TestDeployResolvesTheDigestWithDocker(t *testing.T) {
 	r := newRig(t, "")
 	r.have["docker"] = true

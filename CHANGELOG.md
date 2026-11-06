@@ -10,6 +10,16 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- **`deploy` with podman rolls out the digest the registry has.** Podman
+  lists every digest it knows for an image, and one under the image's own
+  name can be the digest it computed at build time, which the registry
+  never had; `deploy` took the first listed, so the rollout could not pull
+  its image. It now sets the digest of the manifest it just pulled, and
+  refuses before touching the cluster when podman does not list that digest
+  under the image's name.
+
 ## v0.70.0 - 2026-11-06
 
 ### Changed

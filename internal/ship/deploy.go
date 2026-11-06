@@ -66,7 +66,7 @@ var notFound = regexp.MustCompile(`(?i)not found|manifest unknown|name unknown|n
 
 // Digest resolves the digest of ref in the registry with the engine's own
 // commands: docker reads the manifest, podman pulls the image and reads the
-// digest it recorded. No other tool is needed.
+// digest of the manifest it pulled. No other tool is needed.
 func (d Deps) digest(engine, ref string) (string, error) {
 	s, err := d.image()
 	if err != nil {
@@ -86,18 +86,26 @@ func (d Deps) digest(engine, ref string) (string, error) {
 		out, err = combined(d.Exec, nil, engine, "pull", "--quiet", "--platform", s.Image.Platform, ref)
 		if err == nil {
 			var ins []byte
-			// An image the engine also knows under other names lists a
-			// digest per name, so the one kept is the digest recorded for
-			// this image's own name.
-			ins, err = combined(d.Exec, nil, engine, "image", "inspect", "--format", "{{range .RepoDigests}}{{println .}}{{end}}", ref)
+			// The first line is the digest of the manifest the pull just
+			// fetched from the registry. The lines after it are every
+			// digest the engine lists for the image, which can include one
+			// computed locally at build time under the same name that the
+			// registry does not have, so the pulled digest is the one used,
+			// and only when it is listed under this image's own name.
+			ins, err = combined(d.Exec, nil, engine, "image", "inspect", "--format", "{{.Digest}}\n{{range .RepoDigests}}{{println .}}{{end}}", ref)
 			out = ins
 			if err == nil {
-				for line := range strings.SplitSeq(string(ins), "\n") {
-					if rest, ok := strings.CutPrefix(strings.TrimSpace(line), s.Image.Name+"@"); ok && digestIn.MatchString(rest) {
-						return digestIn.FindString(rest), nil
+				first, rest, _ := strings.Cut(string(ins), "\n")
+				pulled := strings.TrimSpace(first)
+				if !digestIn.MatchString(pulled) || digestIn.FindString(pulled) != pulled {
+					return "", fmt.Errorf("%s reported no digest for the pull of %s", engine, ref)
+				}
+				for line := range strings.SplitSeq(rest, "\n") {
+					if strings.TrimSpace(line) == s.Image.Name+"@"+pulled {
+						return pulled, nil
 					}
 				}
-				return "", fmt.Errorf("%s recorded no digest for %s under %s", engine, ref, s.Image.Name)
+				return "", fmt.Errorf("%s pulled %s as %s, which it does not list under %s", engine, ref, pulled, s.Image.Name)
 			}
 		}
 	}
