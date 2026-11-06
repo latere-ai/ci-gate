@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.68.0 - 2026-11-06
+
 ### Added
 
 - **A `ship` block makes a repository build, publish and deploy from a
