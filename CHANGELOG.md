@@ -10,6 +10,15 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- **`lint` refuses `encoding/json` (v1).** The shared depguard rule now
+  denies the v1 package and allows `encoding/json/v2` and
+  `encoding/json/jsontext` by name. v1 keeps legacy behavior that v2 makes
+  explicit: case-insensitive field names, duplicate object keys, and invalid
+  UTF-8 silently replaced. `json.RawMessage` is an alias of
+  `jsontext.Value`, so no exported type needs the v1 import.
+
 ### Fixed
 
 - **The pre-push lint skips a directory no build compiles.** A push that

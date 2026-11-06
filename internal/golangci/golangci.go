@@ -212,15 +212,24 @@ func stdlibRule() map[string]any {
 	return map[string]any{
 		"list-mode": "lax",
 		"files":     []any{"$all"},
-		// depguard matches a denied package by prefix, so the structured
-		// logging package is allowed by name to keep the "log" denial below
-		// from reaching it.
-		"allow": []any{"log/slog", "math/rand/v2"},
+		// depguard matches a denied package by prefix, so each successor is
+		// allowed by name to keep its predecessor's denial below from
+		// reaching it: log/slog past "log", math/rand/v2 past "math/rand",
+		// and encoding/json/v2 with jsontext past "encoding/json".
+		"allow": []any{
+			"log/slog", "math/rand/v2",
+			"encoding/json/v2", "encoding/json/jsontext",
+		},
 		"deny": []any{
 			map[string]any{"pkg": "io/ioutil", "desc": "deprecated; use io and os"},
 			map[string]any{"pkg": "math/rand", "desc": "use math/rand/v2"},
 			map[string]any{"pkg": "log",
 				"desc": "use log/slog; slog.NewLogLogger adapts it for http.Server.ErrorLog"},
+			// v1 keeps legacy semantics (case-insensitive names, duplicate
+			// keys, silent U+FFFD) that v2 makes explicit options. RawMessage
+			// is an alias of jsontext.Value, so no exported type needs v1.
+			map[string]any{"pkg": "encoding/json",
+				"desc": "use encoding/json/v2 and encoding/json/jsontext; RawMessage is jsontext.Value"},
 			map[string]any{"pkg": "github.com/pkg/errors",
 				"desc": "use the standard errors package with %w"},
 		},

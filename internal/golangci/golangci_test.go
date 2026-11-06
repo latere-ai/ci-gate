@@ -99,6 +99,21 @@ func TestTheStructuredLoggerSurvivesTheLogDenial(t *testing.T) {
 	}
 }
 
+// encoding/json is denied by prefix, which would reach its own successor
+// packages too, so both must be allowed by name for the denial to mean
+// "v1 only".
+func TestJSONv2SurvivesTheJSONv1Denial(t *testing.T) {
+	got := mustRender(t, "m", nil, nil)
+	for _, allowed := range []string{"- encoding/json/v2\n", "- encoding/json/jsontext\n"} {
+		if !strings.Contains(got, allowed) {
+			t.Errorf("%q must be allowed by name:\n%s", strings.TrimSpace(allowed), got)
+		}
+	}
+	if !strings.Contains(got, "pkg: encoding/json\n") {
+		t.Errorf("encoding/json (v1) must be denied:\n%s", got)
+	}
+}
+
 func repo(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
