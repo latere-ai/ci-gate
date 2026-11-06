@@ -151,7 +151,9 @@ func (r *rig) run(where string, env []string, name string, args []string) ([]byt
 				return nil, os.WriteFile(args[i+1], []byte(testDigest), 0o644)
 			}
 		case "image":
-			return []byte("ghcr.io/latere-ai/auth@" + testDigest + "\n"), nil
+			// Another name's digest comes first, as podman lists it for an
+			// image it also knows under a second name.
+			return []byte("localhost/auth@sha256:" + strings.Repeat("b", 64) + "\nghcr.io/latere-ai/auth@" + testDigest + "\n"), nil
 		}
 	case "docker":
 		if args[0] == "buildx" {

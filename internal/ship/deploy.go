@@ -84,13 +84,18 @@ func (d Deps) digest(engine, ref string) (string, error) {
 		out, err = combined(d.Exec, nil, engine, "pull", "--quiet", "--platform", s.Image.Platform, ref)
 		if err == nil {
 			var ins []byte
-			ins, err = combined(d.Exec, nil, engine, "image", "inspect", "--format", "{{index .RepoDigests 0}}", ref)
+			// An image the engine also knows under other names lists a
+			// digest per name, so the one kept is the digest recorded for
+			// this image's own name.
+			ins, err = combined(d.Exec, nil, engine, "image", "inspect", "--format", "{{range .RepoDigests}}{{println .}}{{end}}", ref)
 			out = ins
 			if err == nil {
-				if got := digestIn.FindString(string(ins)); got != "" {
-					return got, nil
+				for line := range strings.SplitSeq(string(ins), "\n") {
+					if rest, ok := strings.CutPrefix(strings.TrimSpace(line), s.Image.Name+"@"); ok && digestIn.MatchString(rest) {
+						return digestIn.FindString(rest), nil
+					}
 				}
-				return "", fmt.Errorf("%s recorded no digest for %s", engine, ref)
+				return "", fmt.Errorf("%s recorded no digest for %s under %s", engine, ref, s.Image.Name)
 			}
 		}
 	}
