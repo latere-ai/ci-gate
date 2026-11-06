@@ -20,6 +20,8 @@ import (
 const shipConfig = "identity:\n  role: none\nship:\n  image:\n    name: ghcr.io/latere-ai/x\n" +
 	"  deploy:\n    kubeconfig: op://V/I/F\n    namespace: n\n    deployment: x\n    url: https://x.example\n"
 
+const emptyShipConfig = "identity:\n  role: none\nship: {}\n"
+
 // stubGH runs git for real and answers gh and the container engine from a
 // record, so a command that reaches GitHub or a registry is seen, not run.
 func stubGH(t *testing.T, calls *[]string) {
@@ -46,6 +48,13 @@ func stubGH(t *testing.T, calls *[]string) {
 // A ship repository's release reads no CI: the API is never asked. The cut
 // pushes the tag, and the GitHub release is published from the changelog.
 func TestReleaseOfAShipRepositoryReadsNoCIAndPublishesTheRelease(t *testing.T) {
+	for name, cfg := range map[string]string{"full": shipConfig, "empty ship block": emptyShipConfig} {
+		t.Run(name, func(t *testing.T) { releaseReadsNoCI(t, cfg) })
+	}
+}
+
+func releaseReadsNoCI(t *testing.T, config string) {
+	t.Helper()
 	for k, v := range map[string]string{
 		"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
 		"GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com",
@@ -59,7 +68,7 @@ func TestReleaseOfAShipRepositoryReadsNoCIAndPublishesTheRelease(t *testing.T) {
 	defer api.Close()
 	t.Setenv("GITHUB_API_URL", api.URL)
 
-	dir := published(t, shipConfig)
+	dir := published(t, config)
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/pin\n\ngo 1.25\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -171,5 +180,51 @@ func TestShipCommandsReachTheirImplementation(t *testing.T) {
 		if _, err := out(t, append([]string{argv[0], "-C", dir}, argv[1:]...)...); err == nil {
 			t.Errorf("%v succeeded", argv)
 		}
+	}
+}
+
+// `ship: {}` is the workstation flow with nothing to publish: build runs the
+// whole bar and says it builds no image, and the commands that act on an image
+// or a deployment refuse.
+func TestEmptyShipBlockBuildsNoImageAndRefusesPushAndDeploy(t *testing.T) {
+	dir := published(t, emptyShipConfig)
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/pin\n\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", "go.mod")
+	gitIn(t, dir, "commit", "-q", "-m", "a module")
+	s, err := out(t, "build", "-C", dir)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, s)
+	}
+	if !strings.Contains(s, "this repository builds no image") {
+		t.Errorf("build does not say it builds nothing:\n%s", s)
+	}
+	for argv, want := range map[string]string{
+		"push":              "publishes no image",
+		"deploy":            "deploys nothing",
+		"deploy-credential": "deploys nothing",
+	} {
+		args := []string{argv, "-C", dir}
+		if argv == "deploy-credential" {
+			args = append(args, "-context", "x")
+		}
+		_, err := out(t, args...)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v, want it to say %q", argv, err, want)
+		}
+	}
+}
+
+// The bar still gates a build that has no image to build.
+func TestBuildOfAnEmptyShipBlockRunsTheBar(t *testing.T) {
+	dir := t.TempDir()
+	body := emptyShipConfig + "waive:\n  nosuch:\n    reason: r\n    until: 2099-01-01\n"
+	if err := os.WriteFile(filepath.Join(dir, config.Name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := out(t, "build", "-C", dir)
+	if err == nil || !strings.Contains(err.Error(), "not building") {
+		t.Fatalf("a red bar passed: %v", err)
 	}
 }

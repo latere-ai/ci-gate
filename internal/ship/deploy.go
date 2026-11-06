@@ -66,7 +66,7 @@ var notFound = regexp.MustCompile(`(?i)not found|manifest unknown|name unknown|n
 // commands: docker reads the manifest, podman pulls the image and reads the
 // digest it recorded. No other tool is needed.
 func (d Deps) digest(engine, ref string) (string, error) {
-	s, err := d.ship()
+	s, err := d.image()
 	if err != nil {
 		return "", err
 	}
@@ -228,7 +228,7 @@ func (d Deps) readKubeconfig(ref, path string) error {
 // Deploy rolls the tag out to the cluster and proves it live. tagArg is a
 // vX.Y.Z, or empty for the newest stable tag on origin.
 func Deploy(d Deps, tagArg string) (err error) {
-	s, err := d.ship()
+	s, err := d.deployment()
 	if err != nil {
 		return err
 	}

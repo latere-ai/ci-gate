@@ -10,6 +10,17 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- `ship.image` and `ship.deploy` are optional. A private repository that
+  publishes no image and deploys nothing declares `ship: {}` and still
+  stops running push CI on GitHub: `release` reads no CI, `contract` asks
+  for no push workflow and `init` writes none. `build` runs the whole bar
+  and says it builds no image; `push` refuses without an image, and `deploy`
+  and `deploy-credential` refuse without a deploy block. A `deploy` with no
+  `image`, and a `ship:` or `image:` or `deploy:` key written with no value,
+  are refused.
+
 ## v0.68.1 - 2026-11-06
 
 ### Changed

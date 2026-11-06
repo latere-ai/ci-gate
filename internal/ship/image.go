@@ -14,7 +14,7 @@ import (
 // prepare runs the commands that put the image's inputs in place, from the
 // repository root.
 func (d Deps) prepare(version string) error {
-	s, err := d.ship()
+	s, err := d.image()
 	if err != nil {
 		return err
 	}
@@ -32,7 +32,7 @@ func (d Deps) prepare(version string) error {
 
 // buildImage prepares and builds one image carrying every tag given.
 func (d Deps) buildImage(engine, version string, tags []string) error {
-	s, err := d.ship()
+	s, err := d.image()
 	if err != nil {
 		return err
 	}
@@ -65,6 +65,10 @@ func Build(d Deps) error {
 	s, err := d.ship()
 	if err != nil {
 		return err
+	}
+	if !s.Builds() {
+		d.printf("this repository builds no image\n")
+		return nil
 	}
 	engine, err := d.engine()
 	if err != nil {
@@ -110,7 +114,7 @@ var digestIn = regexp.MustCompile(`sha256:[0-9a-f]{64}`)
 // exactly a release tag on a clean tree: no bar runs, because the release that
 // cut the tag ran it on this tree.
 func Push(d Deps) error {
-	s, err := d.ship()
+	s, err := d.image()
 	if err != nil {
 		return err
 	}

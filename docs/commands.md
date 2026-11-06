@@ -18,10 +18,10 @@ is the one `go.mod` names.
 | `lateregate enum-typescript-prepare` | installs the configured frontend projects' dependencies from their tracked lockfiles |
 | `lateregate identity family -repos DIR [-expect FILE]` | checks the identity blocks of every checkout under `DIR` against each other and the issuer's client registry |
 | `lateregate release-notes TAG [REF]` | prints the `CHANGELOG.md` section for `TAG`, or fails |
-| `lateregate build` | for a [`ship`](configuration.md#ship-a-repository-that-releases-from-a-workstation) repository: runs the whole bar, then builds the deploy image for the cluster's platform |
-| `lateregate push` | builds the image from the release tag HEAD sits on and publishes it |
-| `lateregate deploy [vX.Y.Z]` | rolls the newest stable tag, or the one named, out to the cluster and runs the live check |
-| `lateregate deploy-credential -context NAME` | the one-time step that stores the rollout identity's kubeconfig where `deploy` reads it |
+| `lateregate build` | for a [`ship`](configuration.md#ship-a-repository-that-releases-from-a-workstation) repository: runs the whole bar, then builds the deploy image for the cluster's platform when `ship.image` is set |
+| `lateregate push` | builds the image from the release tag HEAD sits on and publishes it; refuses without `ship.image` |
+| `lateregate deploy [vX.Y.Z]` | rolls the newest stable tag, or the one named, out to the cluster and runs the live check; refuses without `ship.deploy` |
+| `lateregate deploy-credential -context NAME` | the one-time step that stores the rollout identity's kubeconfig where `deploy` reads it; refuses without `ship.deploy` |
 | `lateregate release [-force-red] vX.Y.Z` | refuses while CI is red or the checkout is not origin's default branch at its tip, runs the bar, moves the notes into the tag's section, commits, tags and pushes both in one atomic push; see [`releasing.md`](releasing.md) |
 
 Flags every command accepts:
@@ -263,9 +263,16 @@ Container commands use `docker` when it is on `PATH` and `podman` otherwise.
 The cluster is reached only through the kubeconfig `deploy` reads from
 1Password; no command uses the operator's default kubectl context.
 
+`ship.image` and `ship.deploy` are each optional. A repository with `ship: {}`
+publishes no image and deploys nothing: `build` still runs the whole bar and
+prints `this repository builds no image`, `push` stops with `this repository
+publishes no image`, and `deploy` and `deploy-credential` stop with `this
+repository deploys nothing`. `release` and `contract` treat it as any other
+`ship` block.
+
 **`build`** runs the whole bar over the whole tree, the same call `release`
-makes, then runs `ship.image.prepare` and builds the image with `--platform`
-set to `ship.image.platform`. The image stays in the local engine, tagged
+makes, then, when `ship.image` is set, runs `ship.image.prepare` and builds the
+image with `--platform` set to `ship.image.platform`. The image stays in the local engine, tagged
 `<name>:dev-<short sha>`, and nothing is pushed. The version it carries is
 `git describe --tags --always --dirty`.
 

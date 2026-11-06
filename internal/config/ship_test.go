@@ -91,7 +91,7 @@ func TestShipValidation(t *testing.T) {
 		extra string
 		want  string
 	}{
-		{"missing name", map[string]string{"name": "-"}, "", "ship.image.name is required"},
+		{"missing name", map[string]string{"name": "-"}, "    context: .\n", "ship.image.name is required"},
 		{"name with a tag", map[string]string{"name": "ghcr.io/latere-ai/auth:v1"}, "", "no tag or digest"},
 		{"missing namespace", map[string]string{"ns": "-"}, "", "ship.deploy.namespace is required"},
 		{"missing deployment", map[string]string{"dep": "-"}, "", "ship.deploy.deployment is required"},
@@ -122,6 +122,62 @@ func TestShipValidation(t *testing.T) {
 		body := goodShip + "    rollout_timeout: " + bad + "\n"
 		if _, err := Load(write(t, body)); err == nil || !strings.Contains(err.Error(), "rollout_timeout") {
 			t.Errorf("timeout %q: %v", bad, err)
+		}
+	}
+}
+
+func TestEmptyShipBlockShipsAndPublishesNothing(t *testing.T) {
+	c, err := Load(write(t, "ship: {}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Ships() {
+		t.Fatal("`ship: {}` declares the workstation flow")
+	}
+	if c.Ship.Builds() || c.Ship.Deploys() {
+		t.Errorf("an empty block publishes and deploys nothing: %+v", c.Ship)
+	}
+	if len(c.Restated) != 0 {
+		t.Errorf("nothing was restated: %v", c.Restated)
+	}
+}
+
+func TestShipWithNoValueIsRefused(t *testing.T) {
+	for name, body := range map[string]string{
+		"ship":   "ship:\n",
+		"image":  "ship:\n  image:\n",
+		"deploy": "ship:\n  deploy:\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(write(t, body))
+			if err == nil || !strings.Contains(err.Error(), "has no value") {
+				t.Fatalf("error %v, want it to say the key has no value", err)
+			}
+		})
+	}
+}
+
+func TestShipDeployNeedsAnImage(t *testing.T) {
+	body := "ship:\n  deploy:\n    kubeconfig: op://V/I/F\n    namespace: n\n    deployment: x\n    url: https://x.example\n"
+	if _, err := Load(write(t, body)); err == nil || !strings.Contains(err.Error(), "nothing to deploy") {
+		t.Fatalf("error: %v", err)
+	}
+}
+
+func TestShipImageAloneIsValid(t *testing.T) {
+	c, err := Load(write(t, "ship:\n  image:\n    name: ghcr.io/latere-ai/x\n    context: .\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Ship.Builds() || c.Ship.Deploys() || c.Ship.Image.Dockerfile != "Dockerfile" {
+		t.Errorf("image-only block: %+v", c.Ship)
+	}
+	if !slices.Contains(c.Restated, "ship.image.context") {
+		t.Errorf("a restated image default is reported: %v", c.Restated)
+	}
+	for _, k := range c.Restated {
+		if strings.HasPrefix(k, "ship.deploy.") {
+			t.Errorf("%s is reported for a deploy block that is absent", k)
 		}
 	}
 }

@@ -64,6 +64,31 @@ func (d Deps) ship() (*config.Ship, error) {
 	return d.Cfg.Ship, nil
 }
 
+// image is the ship block when it publishes an image.
+func (d Deps) image() (*config.Ship, error) {
+	s, err := d.ship()
+	if err != nil {
+		return nil, err
+	}
+	if !s.Builds() {
+		return nil, errors.New("this repository publishes no image: ship declares no image")
+	}
+	return s, nil
+}
+
+// deployment is the ship block when it deploys. A deploy block cannot exist
+// without an image, so the image is there too.
+func (d Deps) deployment() (*config.Ship, error) {
+	s, err := d.ship()
+	if err != nil {
+		return nil, err
+	}
+	if !s.Deploys() {
+		return nil, errors.New("this repository deploys nothing: ship declares no deploy")
+	}
+	return s, nil
+}
+
 func (d Deps) printf(format string, a ...any) {
 	_, _ = fmt.Fprintf(d.Out, format, a...)
 }

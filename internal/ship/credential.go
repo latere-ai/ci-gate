@@ -132,7 +132,7 @@ var opRef = regexp.MustCompile(`^op://([^/]+)/([^/]+)/([^/]+)$`)
 // the operator's own admin context, the only cluster access it uses besides
 // the identity it is storing.
 func DeployCredential(d Deps, kubeContext string) (err error) {
-	s, err := d.ship()
+	s, err := d.deployment()
 	if err != nil {
 		return err
 	}

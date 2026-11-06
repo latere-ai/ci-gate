@@ -258,10 +258,16 @@ releasing runs four commands, each a thin call to `lateregate`, usually as
 
 | Step | Command | What it does |
 | --- | --- | --- |
-| build | `make build` | the whole bar, then the deploy image built for the cluster's platform and left in the local engine |
+| build | `make build` | the whole bar, then the deploy image built for the cluster's platform and left in the local engine (no image when `ship.image` is not set) |
 | release | `make release VERSION=v1.4.0` | `lateregate release`: the bar, the changelog cut, the commit and tag pushed, then the GitHub release created from the changelog |
 | push | `make push` | builds the image from the tagged commit and publishes it |
 | deploy | `make deploy` | rolls the newest stable tag out to the cluster and runs the live check |
+
+`ship.image` and `ship.deploy` are each optional. A repository with nothing to
+publish writes `ship: {}`: it still releases from a workstation with no CI
+read, `build` runs the bar and builds no image, and `push`, `deploy` and
+`deploy-credential` stop saying this repository publishes no image or
+deploys nothing.
 
 `release` behaves as above with two differences. It reads no CI, since there
 is none, and it creates the GitHub release for the tag with the changelog

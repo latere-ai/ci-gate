@@ -780,6 +780,9 @@ func Load(dir string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := shipNotNull(data); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	c.Identity.Present = raw.Identity != nil
 	c.Postgres.Present = raw.Postgres != nil
 	c.Identity.Settled = c.Spec.Settled

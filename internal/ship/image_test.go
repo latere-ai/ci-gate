@@ -192,3 +192,58 @@ func TestPushAuthFailureSaysHowToLogIn(t *testing.T) {
 		t.Errorf("a network failure: %v", err)
 	}
 }
+
+const emptyShip = "ship: {}\n"
+
+func TestBuildWithNoImageBuildsNothing(t *testing.T) {
+	r := newRig(t, emptyShip)
+	if err := Build(r.d); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.calls) != 0 {
+		t.Errorf("a repository with no image ran commands: %v", r.calls)
+	}
+	if !strings.Contains(r.out.String(), "this repository builds no image") {
+		t.Errorf("output: %q", r.out.String())
+	}
+}
+
+func TestPushWithNoImageRefuses(t *testing.T) {
+	r := newRig(t, emptyShip)
+	if err := Push(r.d); err == nil || !strings.Contains(err.Error(), "publishes no image") {
+		t.Errorf("error: %v", err)
+	}
+	if len(r.calls) != 0 {
+		t.Errorf("a refused push ran commands: %v", r.calls)
+	}
+}
+
+func TestDeployAndCredentialWithNoDeployRefuse(t *testing.T) {
+	for name, yaml := range map[string]string{
+		"empty":      emptyShip,
+		"image only": "ship:\n  image:\n    name: ghcr.io/latere-ai/auth\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t, yaml)
+			if err := Deploy(r.d, "v1.2.3"); err == nil || !strings.Contains(err.Error(), "deploys nothing") {
+				t.Errorf("deploy: %v", err)
+			}
+			if err := DeployCredential(r.d, "admin"); err == nil || !strings.Contains(err.Error(), "deploys nothing") {
+				t.Errorf("deploy-credential: %v", err)
+			}
+			if len(r.calls) != 0 {
+				t.Errorf("a refused command ran commands: %v", r.calls)
+			}
+		})
+	}
+}
+
+func TestBuildOfAnImageOnlyBlockStillBuilds(t *testing.T) {
+	r := newRig(t, "ship:\n  image:\n    name: ghcr.io/latere-ai/auth\n")
+	if err := Build(r.d); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.find("podman build"); !ok {
+		t.Errorf("no build: %v", r.calls)
+	}
+}

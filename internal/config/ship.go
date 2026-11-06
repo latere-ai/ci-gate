@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/goccy/go-yaml"
 )
 
 // Defaults of the ship block.
@@ -27,9 +29,15 @@ const (
 // declaration: `lateregate release` then reads no CI, the wiring check asks
 // for no push workflow, and `build`, `push` and `deploy` have what they act
 // on.
+//
+// Image and Deploy are each optional: `ship: {}` declares the workstation
+// flow for a repository that publishes no image and deploys nothing. A nil
+// Image means no image is built or pushed; a nil Deploy means nothing is
+// rolled out. Deploy without Image is refused, because there is nothing to
+// deploy.
 type Ship struct {
-	Image  ShipImage  `yaml:"image"`
-	Deploy ShipDeploy `yaml:"deploy"`
+	Image  *ShipImage  `yaml:"image"`
+	Deploy *ShipDeploy `yaml:"deploy"`
 }
 
 // ShipImage is the image a release publishes.
@@ -69,6 +77,12 @@ type ShipDeploy struct {
 	Preflight []string `yaml:"preflight"`
 	AfterRoll []string `yaml:"after_roll"`
 }
+
+// Builds reports whether the repository publishes an image.
+func (s *Ship) Builds() bool { return s != nil && s.Image != nil }
+
+// Deploys reports whether the repository rolls a release out.
+func (s *Ship) Deploys() bool { return s != nil && s.Deploy != nil }
 
 // Ships reports whether the repository builds and ships from a workstation.
 func (c *Config) Ships() bool { return c.Ship != nil }
@@ -110,23 +124,41 @@ func (s *Ship) defaults(restated *[]string) {
 			*restated = append(*restated, key)
 		}
 	}
-	fill(&s.Image.Dockerfile, DefaultShipDockerfile, "ship.image.dockerfile")
-	fill(&s.Image.Context, DefaultShipContext, "ship.image.context")
-	fill(&s.Image.Platform, DefaultShipPlatform, "ship.image.platform")
-	fill(&s.Deploy.RolloutTimeout, DefaultShipTimeout, "ship.deploy.rollout_timeout")
-	fill(&s.Deploy.Smoke, DefaultShipSmoke, "ship.deploy.smoke")
+	if s.Image != nil {
+		fill(&s.Image.Dockerfile, DefaultShipDockerfile, "ship.image.dockerfile")
+		fill(&s.Image.Context, DefaultShipContext, "ship.image.context")
+		fill(&s.Image.Platform, DefaultShipPlatform, "ship.image.platform")
+	}
+	if s.Deploy != nil {
+		fill(&s.Deploy.RolloutTimeout, DefaultShipTimeout, "ship.deploy.rollout_timeout")
+		fill(&s.Deploy.Smoke, DefaultShipSmoke, "ship.deploy.smoke")
+	}
 }
 
 // validate rejects a block that could not build, push or deploy.
 func (s *Ship) validate() error {
-	i, d := s.Image, s.Deploy
+	if s.Deploy != nil && s.Image == nil {
+		return errors.New("ship.deploy needs ship.image: there is nothing to deploy when this repository publishes no image")
+	}
+	if s.Image != nil {
+		if err := s.Image.validate(); err != nil {
+			return err
+		}
+	}
+	if s.Deploy != nil {
+		return s.Deploy.validate()
+	}
+	return nil
+}
+
+func (i ShipImage) validate() error {
 	if i.Name == "" {
 		return errors.New("ship.image.name is required: the registry path the release publishes, such as ghcr.io/latere-ai/auth")
 	}
 	if !shipName.MatchString(i.Name) {
 		return fmt.Errorf("ship.image.name %q must be a registry path with no tag or digest, such as ghcr.io/latere-ai/auth", i.Name)
 	}
-	for key, p := range map[string]string{"ship.image.dockerfile": i.Dockerfile, "ship.image.context": i.Context, "ship.deploy.smoke": d.Smoke} {
+	for key, p := range map[string]string{"ship.image.dockerfile": i.Dockerfile, "ship.image.context": i.Context} {
 		if p != "" && !filepath.IsLocal(filepath.Clean(p)) {
 			return fmt.Errorf("%s: %q must be a path inside the repository", key, p)
 		}
@@ -150,19 +182,19 @@ func (s *Ship) validate() error {
 	if err := commands("ship.image.prepare", i.Prepare); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (d ShipDeploy) validate() error {
+	if d.Smoke != "" && !filepath.IsLocal(filepath.Clean(d.Smoke)) {
+		return fmt.Errorf("ship.deploy.smoke: %q must be a path inside the repository", d.Smoke)
+	}
 	if err := commands("ship.deploy.preflight", d.Preflight); err != nil {
 		return err
 	}
 	if err := commands("ship.deploy.after_roll", d.AfterRoll); err != nil {
 		return err
 	}
-	if err := d.validate(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (d ShipDeploy) validate() error {
 	if d.Kubeconfig == "" {
 		return errors.New("ship.deploy.kubeconfig is required: a 1Password reference to the rollout identity's kubeconfig, op://VAULT/ITEM/FILE")
 	}
@@ -209,6 +241,30 @@ func commands(key string, list []string) error {
 	for i, c := range list {
 		if strings.TrimSpace(c) == "" {
 			return fmt.Errorf("%s[%d] is an empty command", key, i)
+		}
+	}
+	return nil
+}
+
+// shipNotNull refuses a ship key, or an image or deploy key under it, written
+// with no value. A null block unmarshals like an absent one, so a repository
+// that meant to declare the workstation flow would silently keep its push CI.
+func shipNotNull(data []byte) error {
+	var top map[string]any
+	if err := yaml.Unmarshal(data, &top); err != nil {
+		return err
+	}
+	v, ok := top["ship"]
+	if !ok {
+		return nil
+	}
+	if v == nil {
+		return errors.New("ship has no value: write `ship: {}` for a repository that builds and releases from a workstation and publishes nothing, or remove the key")
+	}
+	block, _ := v.(map[string]any)
+	for _, k := range []string{"image", "deploy"} {
+		if sub, ok := block[k]; ok && sub == nil {
+			return fmt.Errorf("ship.%s has no value: describe it, or remove the key when this repository has no %s", k, k)
 		}
 	}
 	return nil

@@ -879,3 +879,31 @@ func TestInitWritesNoCallerForAShipRepository(t *testing.T) {
 		t.Errorf("init still writes the hooks:\n%s", sb.String())
 	}
 }
+
+// `ship: {}` is a ship block like any other: no push workflow is required and
+// init writes none.
+func TestEmptyShipBlockInitWritesNoCaller(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, ".gitignore", "coverage.out")
+	write(t, dir, config.Name, "identity:\n  role: none\nship: {}\n")
+	var sb strings.Builder
+	if err := Init(dir, load(t, dir), &sb, untracked("")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".github", "workflows")); err == nil {
+		t.Errorf("init wrote a workflow:\n%s", sb.String())
+	}
+}
+
+func TestEmptyShipBlockNeedsNoCaller(t *testing.T) {
+	dir := repo(t)
+	write(t, dir, config.Name, "identity:\n  role: none\nship: {}\n")
+	must(t, os.Remove(filepath.Join(dir, ".github", "workflows", "ci.yml")))
+	out, err := check(t, dir, untracked(""))
+	if err != nil {
+		t.Fatalf("an empty ship block with no caller is in shape: %v", err)
+	}
+	if !strings.Contains(out, "no push workflow is required") {
+		t.Errorf("the report says why:\n%s", out)
+	}
+}

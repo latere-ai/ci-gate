@@ -43,6 +43,15 @@ as a 1Password reference, namespace, deployment, container, rollout timeout,
 the live-check URL and script, and `preflight` and `after_roll` commands).
 A repository without the block is unchanged.
 
+**The image and the deploy are each optional.** `ship: {}` declares the
+workstation flow for a repository with nothing to publish: it stops running
+push CI on GitHub, where a hosted minute for a private repository is billed,
+and ships no image. A `deploy` block needs an `image`, since there is nothing
+to deploy without one. `ship:` with no value is refused instead of read as
+absent, because absent means GitHub Actions. `build` always runs the whole bar
+and builds the image only when one is declared; `push` refuses without an
+image, and `deploy` and `deploy-credential` refuse without a deploy.
+
 **Four commands, each the whole of one step.** `build` runs the same bar a
 release runs over the whole tree, then builds the image tagged
 `dev-<short sha>` locally. `release` is the existing command. `push` builds
@@ -104,6 +113,11 @@ and signing a private image would publish a record of it to a public log.
 - A `ship` block parses with defaults, restated defaults are reported, and a
   missing name, namespace, deployment, URL or kubeconfig, a kubeconfig that
   is not an `op://` reference, and a platform that is not Linux are refused.
+- `ship: {}` parses and ships; `ship:` with no value, and a `deploy` with no
+  `image`, are refused. `build` runs the bar and builds no image, and `push`,
+  `deploy` and `deploy-credential` refuse with a message saying what the
+  repository does not do. `release` and `contract` treat `ship: {}` as any
+  ship block.
 - `release` of a ship repository reads no CI and creates the GitHub release;
   `contract` accepts it with no caller and `init` writes none.
 - `build` runs the bar and then builds for the configured platform without

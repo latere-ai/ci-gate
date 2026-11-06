@@ -219,22 +219,22 @@ image:
 e2e: []                    # entries: {name, why, test | command, services, buckets, env, tools, reads,
                            #   timeout, allow_skip, on}; empty skips the e2e gate
 
-ship:                      # absent: the repository releases through GitHub Actions
-  image:
-    name: ""               # required: the registry path without a tag, ghcr.io/latere-ai/auth
+ship:                      # absent: the repository releases through GitHub Actions; `ship: {}`: from a workstation, publishing nothing
+  image:                   # optional: leave it out when the repository publishes no image
+    name: ""               # required with image: the registry path without a tag, ghcr.io/latere-ai/auth
     dockerfile: Dockerfile
     context: .
     platform: linux/amd64  # the cluster's platform: linux/amd64, linux/arm64, ...
     build_args: {}         # extra --build-arg pairs
     version_arg: ""        # the build argument that receives the version, if the Dockerfile declares one
     prepare: []            # shell commands run from the root before the build, for a Dockerfile that copies a prebuilt binary
-  deploy:
-    kubeconfig: ""         # required: a 1Password reference to a Document, op://VAULT/ITEM/FILE
-    namespace: ""          # required
-    deployment: ""         # required
+  deploy:                  # optional: leave it out when nothing is deployed; needs image
+    kubeconfig: ""         # required with deploy: a 1Password reference to a Document, op://VAULT/ITEM/FILE
+    namespace: ""          # required with deploy
+    deployment: ""         # required with deploy
     container: ""          # the deployment's name when unset
     rollout_timeout: 300s
-    url: ""                # required: the address the live check runs against, https only
+    url: ""                # required with deploy: the address the live check runs against, https only
     smoke: tools/smoke/release.sh
     preflight: []          # shell commands run from the tag's tree before the apply
     after_roll: []         # shell commands run from the tag's tree after the rollout
@@ -344,8 +344,20 @@ Go, and a file inside a module is never inert.
 ## `ship`: a repository that releases from a workstation
 
 A `ship` block says the repository builds its image, publishes it and deploys
-it from a workstation instead of from GitHub Actions. Its presence changes
-three things:
+it from a workstation instead of from GitHub Actions. `image` and `deploy`
+are each optional. A repository that publishes no image and deploys nothing,
+but must stop running push CI on GitHub, declares the workflow with an empty
+block:
+
+```yaml
+ship: {}
+```
+
+`ship:` written with no value, and `image:` or `deploy:` written with no
+value under it, are refused rather than read as absent, so a block left empty
+by mistake cannot leave a repository on GitHub Actions without saying so.
+`deploy` needs `image`: with no image there is nothing to deploy, and the file
+is refused. Its presence changes three things:
 
 - `lateregate release` reads no CI, as `release.require_green: false` does,
   and publishes the GitHub release once the tag is pushed;
@@ -353,12 +365,16 @@ three things:
   `lateregate.yml`, and `init` does not write one. Everything else it
   checks stays, and a scheduled workflow such as the gate bump is
   unaffected;
-- `build`, `push`, `deploy` and `deploy-credential` have something to act on;
+- `build`, `push`, `deploy` and `deploy-credential` have something to act on:
+  `push` needs `image`, and `deploy` and `deploy-credential` need `deploy`;
   [`commands.md`](commands.md#shipping-from-a-workstation-build-push-deploy)
   describes them.
 
-`image.name`, `deploy.kubeconfig`, `deploy.namespace`, `deploy.deployment`
-and `deploy.url` have no default and are required. The file is refused,
+When `image` is present, `image.name` has no default and is required. When
+`deploy` is present, `deploy.kubeconfig`, `deploy.namespace`,
+`deploy.deployment` and `deploy.url` have no default and are required.
+Defaults fill only the blocks that are present, and a default restated in a
+present block is reported. The file is refused,
 naming the key, when one is missing, when `image.name` carries a tag,
 when `image.platform` is not a Linux platform, when `deploy.kubeconfig` is
 not an `op://` reference naming a vault, an item and a file (the
