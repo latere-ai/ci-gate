@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- **The pre-push lint skips a directory no build compiles.** A push that
+  changed a program tagged `//go:build ignore` (run as `go run file.go`)
+  named its directory to golangci-lint, which cannot type-check it, and the
+  push was refused with `build constraints exclude all Go files`. The full
+  gate never read that directory either, since `./...` leaves it out.
+
 ## v0.69.0 - 2026-11-06
 
 ### Changed

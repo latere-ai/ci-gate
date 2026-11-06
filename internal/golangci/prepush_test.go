@@ -362,3 +362,55 @@ func TestInNestedModuleWalksUpToTheRoot(t *testing.T) {
 		}
 	}
 }
+
+// A directory whose only Go file is tagged //go:build ignore is a program
+// run as go run file.go: outside ./..., and one golangci-lint cannot
+// type-check. The hook skips it.
+func TestPrepushSkipsADirectoryNoBuildCompiles(t *testing.T) {
+	var calls []call
+	dir := module(t)
+	if err := os.MkdirAll(filepath.Join(dir, "bench", "compare"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bench", "compare", "driver.go"), []byte("//go:build ignore\n\npackage main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	err = Prepush(dir, cfg, "go", strings.NewReader("refs/heads/main "+sha2+" refs/heads/main "+sha1+"\n"), &sb,
+		replay(&calls, nil, "bench/compare/driver.go\x00internal/a/a.go\x00"), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("ran %v", calls)
+	}
+	if got, want := joined(calls[1]), "go run "+Module+"@"+Version+" run --allow-parallel-runners ./internal/a"; got != want {
+		t.Errorf("linter ran as %q, want %q", got, want)
+	}
+}
+
+func TestOnlyExcludedFiles(t *testing.T) {
+	root := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("ignored/main.go", "//go:build ignore\n\npackage main\n")
+	write("plain/p.go", "package plain\n")
+	write("tests/p_test.go", "package tests\n")
+	write("empty/README.md", "no Go here\n")
+	for dir, want := range map[string]bool{"ignored": true, "plain": false, "tests": false, "empty": false, "gone": false} {
+		if got := onlyExcludedFiles(root, dir); got != want {
+			t.Errorf("onlyExcludedFiles(%q) = %v, want %v", dir, got, want)
+		}
+	}
+}

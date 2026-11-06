@@ -5,7 +5,9 @@ package golangci
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"go/build"
 	"io"
 	"os"
 	"path"
@@ -88,6 +90,12 @@ func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io
 			if inNestedModule(root, dir) {
 				continue
 			}
+			// A directory whose Go files no build compiles, such as a
+			// program tagged //go:build ignore and run as go run file.go,
+			// is outside ./... too, and the linter cannot type-check it.
+			if onlyExcludedFiles(root, dir) {
+				continue
+			}
 			if dir == "." {
 				pkgs["."] = true
 				continue
@@ -157,6 +165,16 @@ func goFiles(list string) []string {
 		}
 	}
 	return files
+}
+
+// onlyExcludedFiles reports whether dir, a slash path relative to root,
+// holds Go files and every one of them, tests included, is excluded from a
+// build on this host by its constraints or its name. A directory that does
+// not exist, or holds no Go file at all, is not one.
+func onlyExcludedFiles(root, dir string) bool {
+	p, err := build.ImportDir(filepath.Join(root, filepath.FromSlash(dir)), 0)
+	var none *build.NoGoError
+	return errors.As(err, &none) && p != nil && len(p.IgnoredGoFiles) > 0
 }
 
 // inNestedModule reports whether dir, a slash path relative to root, sits
