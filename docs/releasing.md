@@ -294,3 +294,26 @@ repository, before the first `deploy`. It stores the Document that
 `ship.deploy.kubeconfig` names; running it again stores the identity's
 current token over it. What each command does is in
 [`commands.md`](commands.md#shipping-from-a-workstation-build-push-deploy).
+
+### Moving the pin
+
+A repository takes a new ci-gate release by moving its `go.mod` pin. A
+public repository's pin moves every night on a hosted runner, through
+`ci-gate-bump.yml` in [`latere-ai/ci`](https://github.com/latere-ai/ci). A
+`ship` repository runs no GitHub Actions, so its pin moves from a
+workstation, after each ci-gate release:
+
+```sh
+scripts/bump-private.sh          # every private repository of latere-ai
+scripts/bump-private.sh -n       # what would move, changing nothing
+scripts/bump-private.sh auth     # one repository
+```
+
+Run from a checkout of this repository. For each private repository it
+clones a fresh copy, moves the pin with `go get -tool` and `go mod tidy`,
+runs the whole bar on it (`lateregate check -all`), and pushes
+`gate: ci-gate vX.Y.Z` to the default branch only when every gate passes.
+A repository whose bar fails is not pushed: its clone and log are kept and
+named in the summary, and the script exits non-zero after trying the rest.
+A move that would raise the `go` or `toolchain` line is refused, since a
+newer Go is a change of its own.

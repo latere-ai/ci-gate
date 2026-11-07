@@ -10,6 +10,14 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **`scripts/bump-private.sh` moves a private repository's pin from a
+  workstation.** It clones each private repository, moves the
+  `lateregate` pin to the latest release, runs the whole bar and pushes
+  only when every gate passes. A private repository no longer moves its
+  pin on GitHub Actions ([releasing guide](docs/releasing.md#moving-the-pin)).
+
 ## v0.70.1 - 2026-11-06
 
 ### Fixed
