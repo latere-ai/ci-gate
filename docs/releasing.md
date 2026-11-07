@@ -307,6 +307,7 @@ workstation, after each ci-gate release:
 scripts/bump-private.sh          # every private repository of latere-ai
 scripts/bump-private.sh -n       # what would move, changing nothing
 scripts/bump-private.sh auth     # one repository
+scripts/bump-private.sh -x demo   # every one but demo, whose pin is held
 ```
 
 Run from a checkout of this repository. For each private repository it

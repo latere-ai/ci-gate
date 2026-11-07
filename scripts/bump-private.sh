@@ -16,11 +16,13 @@
 # trying every repository.
 #
 # Usage:
-#   scripts/bump-private.sh [-n] [-o org] [repository...]
+#   scripts/bump-private.sh [-n] [-o org] [-x repository]... [repository...]
 #
 #   -n          report each pin and what would move; clone, change and push
 #               nothing beyond the clone
 #   -o org      the GitHub organization (default latere-ai)
+#   -x name     leave this repository out, for one whose pin is held back on
+#               purpose; repeat it for more than one
 #   repository  only these repositories, by name; default every private,
 #               unarchived repository of the organization
 #
@@ -30,10 +32,12 @@ set -euo pipefail
 
 org=latere-ai
 dry_run=false
-while getopts no: flag; do
+held=" "
+while getopts no:x: flag; do
   case "$flag" in
     n) dry_run=true ;;
     o) org=$OPTARG ;;
+    x) held="$held$OPTARG " ;;
     *) sed -n '/^# Usage:/,/^# Needs/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
   esac
 done
@@ -82,6 +86,9 @@ note() { summary+=("$(printf '%-24s %s' "$1" "$2")"); echo "$1: $2"; }
 fail() { note "$1" "FAILED: $2"; failed=$((failed + 1)); keep=true; }
 
 for repo in "${repos[@]}"; do
+  case "$held" in
+    *" $repo "*) note "$repo" "held back (-x); skipped"; continue ;;
+  esac
   dir="$work/$repo"
   log="$work/$repo.log"
   echo
