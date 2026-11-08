@@ -4,6 +4,8 @@
 package gates
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -209,11 +211,15 @@ func removeTree(dir string) error {
 	return nil
 }
 
-// sandboxName is the sandbox's name for the repository at root: the user and
-// the name of the repository's directory, reduced to characters every
-// filesystem takes. Checkouts of one repository in directories of one name get
-// one sandbox wherever each sits, which is what gives them one TMPDIR; the
-// user keeps a shared /tmp from handing one user's lock to another.
+// sandboxName is the sandbox's name for the checkout at root: the user, the
+// name of the checkout's directory reduced to characters every filesystem
+// takes, and a short hash of the checkout's absolute path. The path is the
+// same on every run of one checkout, which is what lets an unchanged package
+// replay its cached result; the hash keeps two checkouts whose directories
+// share a base name from sharing one sandbox and one lock, and keeps a
+// checkout named X.lock from putting its sandbox where another checkout's
+// lock file is. The user keeps a shared /tmp from handing one user's lock to
+// another.
 func sandboxName(root string) (string, error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -228,7 +234,8 @@ func sandboxName(root string) (string, error) {
 			base[i] = '_'
 		}
 	}
-	return fmt.Sprintf("lateregate-tempdir-%d-%s", os.Getuid(), base), nil
+	sum := sha256.Sum256([]byte(abs))
+	return fmt.Sprintf("lateregate-tempdir-%d-%s-%s", os.Getuid(), base, hex.EncodeToString(sum[:])[:8]), nil
 }
 
 // survivor is one entry left under the sandbox.

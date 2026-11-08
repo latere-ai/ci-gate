@@ -268,9 +268,10 @@ func isolated(t *testing.T) string {
 }
 
 // The go command keys a cached test result on the TMPDIR the test read. Only a
-// sandbox at one path for a repository, run after run and checkout after
-// checkout, lets an unchanged package replay its result.
-func TestTempDirUsesOnePathForARepository(t *testing.T) {
+// sandbox at one path for a checkout, run after run, lets an unchanged package
+// replay its result. Two checkouts get two sandboxes and two locks, even when
+// their directories share a name.
+func TestTempDirUsesOnePathForACheckout(t *testing.T) {
 	if !lockable {
 		t.Skip("without a file lock every run makes a directory of its own")
 	}
@@ -282,12 +283,37 @@ func TestTempDirUsesOnePathForARepository(t *testing.T) {
 		}
 		return tempDirOf(t, calls[0].env)
 	}
-	first := sandboxOf(filepath.Join(t.TempDir(), "slot-1", "repo"))
-	if again := sandboxOf(filepath.Join(t.TempDir(), "slot-2", "repo")); again != first {
-		t.Errorf("two checkouts of one repository ran against %s and %s, want one path", first, again)
+	slot := filepath.Join(t.TempDir(), "slot-1", "repo")
+	first := sandboxOf(slot)
+	if again := sandboxOf(slot); again != first {
+		t.Errorf("one checkout ran against %s and %s, want one path", first, again)
+	}
+	if same := sandboxOf(filepath.Join(t.TempDir(), "slot-2", "repo")); same == first {
+		t.Errorf("two checkouts named repo share %s", first)
 	}
 	if other := sandboxOf(filepath.Join(t.TempDir(), "other")); other == first {
 		t.Errorf("a different repository shares %s", first)
+	}
+}
+
+// A checkout named X.lock must not put its sandbox at the lock path of the
+// checkout named X.
+func TestSandboxNeverLandsOnAnotherCheckoutsLock(t *testing.T) {
+	parent := t.TempDir()
+	plain, err := sandboxName(filepath.Join(parent, "a", "repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lockNamed, err := sandboxName(filepath.Join(parent, "b", "repo.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lockNamed == plain+".lock" || plain == lockNamed+".lock" {
+		t.Errorf("%s collides with the lock file of %s", lockNamed, plain)
+	}
+	again, err := sandboxName(filepath.Join(parent, "a", "repo"))
+	if err != nil || again != plain {
+		t.Errorf("a checkout's sandbox name changed: %s then %s (%v)", plain, again, err)
 	}
 }
 
