@@ -475,15 +475,22 @@ func short(sha string) string {
 	return sha
 }
 
+// suffixes is the optional prerelease and build metadata that follow a
+// version's numbers. Dotted identifiers are matched one at a time so a
+// sentence's final dot is not taken as part of the version.
+const suffixes = `(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`
+
 // versionInText finds a vX.Y.Z inside a stamp's matched span, unanchored,
-// unlike releaseTag which matches a whole tag string.
-var versionInText = regexp.MustCompile(`v\d+\.\d+\.\d+`)
+// unlike releaseTag which matches a whole tag string. The prerelease and build
+// suffix are part of the match, so a span holding v1.3.0-rc.1 is replaced
+// whole and does not keep the old suffix.
+var versionInText = regexp.MustCompile(`v\d+\.\d+\.\d+` + suffixes)
 
 // bareVersionInText finds an X.Y.Z with no leading v inside a stamp's matched
 // span, for the files that keep the version without one: a package.json
 // "version", a Go const. The word boundaries keep it off a longer dotted
 // number.
-var bareVersionInText = regexp.MustCompile(`\b\d+\.\d+\.\d+\b`)
+var bareVersionInText = regexp.MustCompile(`\b\d+\.\d+\.\d+` + suffixes + `\b`)
 
 // stampPlan is one file's stamped content, computed but not yet written.
 type stampPlan struct {
@@ -512,6 +519,27 @@ func stampMove(span []byte, placeholder, version string) (*regexp.Regexp, string
 		}
 	}
 	return nil, ""
+}
+
+// suffixAtStart matches a prerelease or build suffix at the start of the bytes
+// after a stamp's span.
+var suffixAtStart = regexp.MustCompile(`^` + suffixes)
+
+// versionTail is how many bytes after a stamp's span still belong to the
+// version the span ends on. A pattern such as `newTag: v\d+\.\d+\.\d+` stops
+// at the numbers, so the -rc.1 behind them is outside what it matched; moving
+// only the numbers would leave the old suffix on the new version. Nothing
+// extends when the span does not end on a version, or ends on the placeholder.
+func versionTail(span, after []byte, move *regexp.Regexp, placeholder string) int {
+	matches := move.FindAllIndex(span, -1)
+	if len(matches) == 0 {
+		return 0
+	}
+	last := matches[len(matches)-1]
+	if last[1] != len(span) || (placeholder != "" && string(span[last[0]:last[1]]) == placeholder) {
+		return 0
+	}
+	return len(suffixAtStart.Find(after))
 }
 
 // planStamps rewrites the version inside each configured file's marker to the
@@ -560,6 +588,7 @@ func planStamps(root, version string, stamps []config.Stamp) ([]stampPlan, error
 			}
 			return nil, fmt.Errorf("release stamp %s: pattern %q holds no vX.Y.Z or X.Y.Z to move", s.File, s.Pattern)
 		}
+		hi += versionTail(b[lo:hi], b[hi:], move, s.Placeholder)
 		content := make([]byte, 0, len(b))
 		content = append(content, b[:lo]...)
 		content = append(content, move.ReplaceAll(b[lo:hi], []byte(to))...)
