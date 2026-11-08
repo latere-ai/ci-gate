@@ -172,6 +172,17 @@ func run(argv []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// A waiver names a gate. One that names nothing is a typo or a gate that
+	// was renamed, and every command refuses it. check, release and build
+	// refuse it when they plan the bar, under their own refusal line, and
+	// release checks the checkout against origin before that.
+	switch cmd {
+	case "check", "release", "build":
+	default:
+		if err := bar.ValidateWaivers(cfg); err != nil {
+			return err
+		}
+	}
 	ctx := bar.Ctx{
 		Cfg:      cfg,
 		Root:     *root,
@@ -369,9 +380,6 @@ func run(argv []string, out io.Writer) error {
 		return nil
 	}
 	if g, ok := bar.Find(cmd); ok {
-		if err := bar.ValidateWaivers(cfg); err != nil {
-			return err
-		}
 		// A gate run by name reads the whole tree unless it was given a base,
 		// as list does.
 		if *since != "" {

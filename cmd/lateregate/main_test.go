@@ -807,3 +807,20 @@ func TestE2EByNameHonorsSince(t *testing.T) {
 		t.Fatal("an unknown suite ran")
 	}
 }
+
+// A waiver keyed on a name that is not a gate is refused when the file is
+// read, whatever the command, so the hooks and contract do not run on a
+// configuration check would refuse.
+func TestEveryCommandRefusesAWaiverForAGateThatDoesNotExist(t *testing.T) {
+	dir := t.TempDir()
+	body := "waive:\n  no-such-gate:\n    reason: r\n    until: 2099-01-01\n"
+	if err := os.WriteFile(filepath.Join(dir, config.Name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range []string{"contract", "hook", "init"} {
+		s, err := out(t, cmd, "-C", dir)
+		if err == nil || !strings.Contains(err.Error(), "no-such-gate, which is not a gate") {
+			t.Errorf("%s: want the waiver refused, got %v\n%s", cmd, err, s)
+		}
+	}
+}
