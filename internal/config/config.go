@@ -724,7 +724,7 @@ type TempDir struct {
 func (t TempDir) AllowedFor(name string) (string, bool) {
 	best, why, found := "", "", false
 	for prefix, reason := range t.Allow {
-		if strings.HasPrefix(name, prefix) && (!found || len(prefix) > len(best)) {
+		if strings.TrimSpace(prefix) != "" && strings.HasPrefix(name, prefix) && (!found || len(prefix) > len(best)) {
 			best, why, found = prefix, reason, true
 		}
 	}
@@ -895,6 +895,12 @@ func (c *Config) validate(path string) error {
 		return err
 	}
 	if err := c.Postgres.validate(path); err != nil {
+		return err
+	}
+	if err := noBlankKeys(path, "cover.exempt", c.Cover.Exempt); err != nil {
+		return err
+	}
+	if err := noBlankKeys(path, "tempdir.allow", c.TempDir.Allow); err != nil {
 		return err
 	}
 	var bad []string
@@ -1113,8 +1119,30 @@ func (w Words) validate(path string) error {
 	return nil
 }
 
-// ExemptFor reports whether a package is exempt, and why. Matching is by
-// suffix so a config does not have to repeat the module path.
+// endsAt reports whether a package name is the key or ends in "/" and the
+// key. A key written with its own leading slash means the same.
+func endsAt(name, key string) bool {
+	key = strings.TrimPrefix(key, "/")
+	return name == key || strings.HasSuffix(name, "/"+key)
+}
+
+// noBlankKeys refuses a map key that is empty or only whitespace. Both maps
+// match by the key's text, and an empty key is a prefix or suffix of every
+// name, so one such entry would exempt or admit everything.
+func noBlankKeys(path, field string, m map[string]string) error {
+	for key := range m {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("%s: %s has an empty key (%q)\n"+
+				"an empty key would match everything: name the package or entry "+
+				"it is for, or delete the entry", path, field, key)
+		}
+	}
+	return nil
+}
+
+// ExemptFor reports whether a package is exempt, and why. A key matches a
+// package whose import path equals it or ends in "/" and the key, so a config
+// does not have to repeat the module path and "api" never reaches "grapi".
 //
 // The longest matching suffix wins, for the reason AllowedFor gives: a
 // package two entries exempt has to name the same reason on every run.
@@ -1132,7 +1160,7 @@ func (c Cover) ExemptFor(pkg string) (string, bool) {
 	best, why, found := "", "", false
 	for suffix, reason := range c.Exempt {
 		for _, name := range names {
-			if strings.HasSuffix(name, suffix) && (!found || len(suffix) > len(best)) {
+			if endsAt(name, suffix) && (!found || len(suffix) > len(best)) {
 				best, why, found = suffix, reason, true
 			}
 		}
