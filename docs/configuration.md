@@ -188,7 +188,7 @@ identity:                  # mandatory: a repository with no block fails the gat
 
 postgres:                  # optional: an absent block is decided from the imports
   role: ""                 # none | direct | pooled; direct needs a dated `waive: postgres` entry
-  prefix: ""               # pooled only: EVAL makes the names EVAL_DATABASE_POOL_URL and EVAL_DATABASE_URL
+  prefix: ""               # pooled only: APP makes the names APP_DATABASE_POOL_URL and APP_DATABASE_URL
   direct_env: ""           # pooled only, with pool_env and without prefix: the direct name, written out
   pool_env: ""             # pooled only, with direct_env and without prefix: the pooled name, written out
 
@@ -221,7 +221,7 @@ e2e: []                    # entries: {name, why, test | command, services, buck
 
 ship:                      # absent: the repository releases through GitHub Actions; `ship: {}`: from a workstation, publishing nothing
   image:                   # optional: leave it out when the repository publishes no image
-    name: ""               # required with image: the registry path without a tag, ghcr.io/latere-ai/auth
+    name: ""               # required with image: the registry path without a tag, ghcr.io/your-org/your-service
     dockerfile: Dockerfile
     context: .
     platform: linux/amd64  # the cluster's platform: linux/amd64, linux/arm64, ...

@@ -54,7 +54,7 @@ words:
 
 The list is `internal/words/do-not-use.yaml` in this repository,
 embedded in the binary. It is the one copy: the organization's
-vocabulary in `latere-ai/onboarding` points here rather than carrying the
+vocabulary, kept in a private repository, points here rather than carrying the
 words itself. Its `do_not_use` key is a list of items, each with:
 
 - `word`, the word as the list names it;
@@ -163,7 +163,7 @@ does: with the release a repository pins.
 
 ### Alternatives considered
 
-- **Read the list from the vocabulary in `latere-ai/onboarding`.** The
+- **Read the list from the organization's vocabulary.** The
   first version did, through a path each repository named. That
   repository is private, so a runner had no file and the gate failed on
   every push of a repository that turned it on.

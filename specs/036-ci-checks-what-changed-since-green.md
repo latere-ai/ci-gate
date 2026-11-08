@@ -39,9 +39,8 @@ ran the frontend gate for 566 s.
 Repositories worked around it in their own YAML. 21 callers carry a
 `paths` or `paths-ignore` filter, and each lists by hand the Markdown its
 tests read: lectio's specs, topos's `prompts/`, pkg's `specs/`, lux's
-`docs/`, `skills/` and `SECURITY.md`, auth's `INTEGRATION.md` and `docs/`,
-insula's `specs/029` and `docs/operating.md`, faber's and insula's
-`CHANGELOG.md`, replichai's `method/`, latere-ai's `content/`. A list that
+`docs/`, `skills/` and `SECURITY.md`, replichai's `method/`, and the
+documents and changelogs of four private repositories. A list that
 misses a file skips a test that reads it; a list that names too much runs
 for nothing. The shared workflow's inputs (`test_os`,
 `frontend_browser_package`, `gate_module`) are per-repository YAML too, and

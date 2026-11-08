@@ -24,8 +24,7 @@ dispatched_task_id: null
 
 ## The problem
 
-The family decided one way to do identity, recorded in latere-ai/specs
-as `infrastructure/identity.md` and `infrastructure/open-cores.md`:
+The family decided one way to do identity:
 auth issues identity and membership; an open core verifies one token,
 forwards every claim and asks one authorizer; a service verifies
 `aud = self` and decides from its own state; nobody calls auth on a
@@ -96,12 +95,12 @@ runs a service.
 | one contract (C3) | core | `latere.ai/x/pkg/authz` imported; no hand-rolled `POST` to a path named `authorize` outside it |
 | no auth on the request path (R2) | service, platform, bff | a string literal `/tokeninfo`, `/userinfo/permissions`, or `/orgs/` joined with `/members` in a non-test Go file outside the paths the block's `bff` names, which hold a browser frontend that forwards the person's own token to the issuer's API |
 | one hop, no delegation (R3) | all but none | `grantor_id`, `tokens/exchange`, `actor: true`, `RFC 8693` anywhere in a non-test Go file or a non-archived document; `act`, `agent_id` and `actor_id` only where they are a token claim, which is a struct tag in a type that also carries `sub`, `aud` or `exp`, or a bare occurrence outside every struct type in a file that imports the verifier or names `Claims`. A tag in a type that carries no registered claim is a column of that type wherever the file lives: one product carries an agent identity as an attribution column, which the 2026-09-06 decision allows, and a handler that verifies tokens also renders its audit rows |
-| roles, not flags (R9) | all but none | `is_superadmin`, `IsSuperadmin` or `isSuperadmin` anywhere outside tests and archives, in a Go file, a document, a manifest, or a frontend source (`.ts`, `.tsx`, `.jsx`, `.vue`, `.svelte`, `.js`, `.mjs`, `.cjs`), which is the one rule that reads a frontend because a page decides access as surely as a handler does; a bundler's output and a package manager's tree are read as nobody's decision, and a comment inside a file that is read is prose (the 2026-09-17 amendment); the rule is off until the family's id-09 ships and the block says `roles_only: true`, then it is on and cannot be turned off |
+| roles, not flags (R9) | all but none | `is_superadmin`, `IsSuperadmin` or `isSuperadmin` anywhere outside tests and archives, in a Go file, a document, a manifest, or a frontend source (`.ts`, `.tsx`, `.jsx`, `.vue`, `.svelte`, `.js`, `.mjs`, `.cjs`), which is the one rule that reads a frontend because a page decides access as surely as a handler does; a bundler's output and a package manager's tree are read as nobody's decision, and a comment inside a file that is read is prose (the 2026-09-17 amendment); the rule is off until the family's roles replace the flag and the block says `roles_only: true`, then it is on and cannot be turned off |
 | an explicit audience (D3) | core, service, platform | every container in `deploy/**` that runs the repository's binary sets the variable `audience` names, or `AUTH_AUDIENCE` for a service, to a non-empty value that is not the issuer URL. A container runs the binary when the name its image was built under is exactly a directory under `cmd/`; an `initContainers` entry is read when it also declares a variable of the repository's own prefix, which is how it says it runs with the workload's configuration (the 2026-09-16 amendment) |
 | per-endpoint bearers, internal stays internal (R8) | issuer, platform, core | two environment variables of one container reading one secret key; an ingress rule whose path is `/` or a prefix of `/internal/` on a host also serving `/internal/` |
 | no Latere value in a core (open-cores invariant 5) | core | `latere.ai` or `latere.svc` in a non-test Go file, a deploy manifest, or a user document (`specs/` is the contributor's record, holds the hosted deployment's history and examples, and is not read), outside an import path, the API group the block declares in `api_group`, wherever it appears, and the paths the block's `skip` names. `go.mod` is not scanned: every occurrence in it is a module path, which the import-path exemption already covers |
-| a client presents one audience per product (id-01) | client | a string literal that is a product audience the block's `audiences` names appears in exactly one non-test Go file, the one that mints for it. The second half, that a bearer read from a token file is never written to an `Authorization` header outside that file, is dataflow and is left to the client's own tests |
-| documents describe the current generation (id-02) | all but none | `pkg/oidclogin`, `pkg/jwtauth`, `pkg/oidc/` , `identity fabric`, `delegated token` in a non-archived `*.md` |
+| a client presents one audience per product | client | a string literal that is a product audience the block's `audiences` names appears in exactly one non-test Go file, the one that mints for it. The second half, that a bearer read from a token file is never written to an `Authorization` header outside that file, is dataflow and is left to the client's own tests |
+| documents describe the current generation | all but none | `pkg/oidclogin`, `pkg/jwtauth`, `pkg/oidc/` , `identity fabric`, `delegated token` in a non-archived `*.md` |
 
 A finding is one line: the rule, the file and line, and what to do,
 in the register the family's `registers` gate holds this repository
@@ -113,7 +112,7 @@ passes vacuously.
 
 Some of the shape is only visible with every repository in view. A
 subcommand, `lateregate identity family`, reads a list of repositories
-and their `identity` blocks, which the workflow in latere-ai/specs
+and their `identity` blocks, which a workflow of the family
 gathers by checkout, and fails when:
 
 - a repository has no block;
@@ -124,8 +123,8 @@ gathers by checkout, and fails when:
 - two repositories declare the same audience;
 - a `client` mints for an audience no repository verifies.
 
-It prints the layer table of `infrastructure/open-cores.md` from the
-blocks, so the document is derived from the tree and the workflow
+It prints the family's layer table from the
+blocks, so the document that holds it is derived from the tree and the workflow
 fails when the committed table differs from the derived one.
 
 ### What it does not check
@@ -150,7 +149,7 @@ as tests under the `suite` gate.
 | The family check fails on a missing block, an unregistered audience, a registered audience nobody verifies, a duplicate audience, and a client minting for nobody; it prints the layer table and fails when the committed one differs | `TestIdentityFamily`, table-driven, with `TestIdentityFamilyDerivesTheCommittedTable` and `TestIdentityFamilyNeedsTheRegistry` |
 | A waived rule with findings does not fail the gate and prints `WAIV` with its count; the same waiver past its date fails and names it; a waiver naming no rule or a rule the role does not run fails; an entry without a reason or a usable date fails the load | `TestWaivedRuleReportsAndHolds`, `TestExpiredWaiverFails`, `TestWaiverMustNameARuleTheRoleRuns`, `TestIdentityValidationRejects` |
 | The sentence of every finding, after its location, passes the `registers` gate's four tells | `TestIdentityFindingsAreUserRegister`, which reads the tells from that gate through `registers.Tells` rather than restating them |
-| Rolled to every repository of the family with the rules that hold today green and the rest waived with a dated reason | open: the family's id-10 closes it, at step 2 of its order |
+| Rolled to every repository of the family with the rules that hold today green and the rest waived with a dated reason | open: the family's roll-out closes it |
 
 ## Outcome
 
@@ -161,7 +160,7 @@ open and one is deliberately left to another test.
 
 **Open.** The roll-out row is the family's, not this repository's: the gate
 exists and this repository declares `role: none`, and the block reaches the
-other sixteen repositories at step 2 of [id-10's order](https://github.com/latere-ai/specs/blob/main/infrastructure/identity/id-10-guardrail.md).
+other sixteen repositories through the family's roll-out.
 
 **Left elsewhere.** The client rule's second half, that a bearer read from a
 token file never reaches an `Authorization` header outside the file that mints
@@ -188,8 +187,7 @@ used as an attribution column, and a core's own API group in its documents.
 ## Amendment, 2026-09-16: which containers are this repository's
 
 Shipped as the `audience` rule's workload detection, found while origo
-retired its `audience` waiver (the family's `id-10-guardrail.md`, "State
-on 2026-09-16").
+retired its `audience` waiver on 2026-09-16.
 
 The rule read three things wrong, and each was a guess standing in for
 the question "is this container this repository":
@@ -249,7 +247,7 @@ nothing about.
 ## Amendment, 2026-09-17: what a command is, what a string is, and the answering half
 
 Shipped as ci-gate v0.40.0, found by the family during the identity epic's
-close (the family's `id-10-guardrail.md` and `id-11-contract-2-authorizer.md`).
+close.
 
 **A command at the module root.** The 2026-09-16 amendment says a container
 runs this repository when its image names a directory under `cmd/`. A module
@@ -276,7 +274,7 @@ for this can go.
 
 **The `envelope` rule, every role but `none`.** The `authorizer` rule catches
 a repository that asks the authorizer in a shape of its own. The family's
-id-11 named the other half, a repository that answers in one, and no rule
+authorizer contract named the other half, a repository that answers in one, and no rule
 held it. A struct in a non-test Go file whose JSON tags name `action` beside
 `subject` or `resource`, or `allow` beside `ttl` and `reason`, outside the
 module the envelope is declared in, is that wire shape written a second
@@ -328,7 +326,7 @@ already made.
 before matching: `//` to end of line, `/* */`, and `<!-- -->` in a single-file
 component's template, each tracked across lines, with quotes tracked so a `//`
 inside a string is text. A file that says "the token carries `roles` since
-id-09 retired the `is_superadmin` flag" is describing the correction, not
+the `is_superadmin` flag was retired" is describing the correction, not
 making the decision. String contents stay, because a name quoted as a property
 or read out of a template still decides. This is the same distinction the
 document scan already makes with `record`, applied inside a file rather than

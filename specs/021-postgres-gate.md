@@ -29,8 +29,7 @@ share by opening a direct connection per pool entry and one more for its
 migrations at boot, and on 2026-09-16 that arrangement refused work four
 times in one evening with SQLSTATE 53300.
 
-The family's fix, recorded in latere-ai/specs as
-`infrastructure/database-pooling.md`, is a transaction-mode pooler per
+The family's fix is a transaction-mode pooler per
 service: serving traffic reaches the database through the pool, migrations
 stay on the direct endpoint because they hold a session-scoped advisory
 lock, and the pool sizes are a budget that must sum under the cap. The

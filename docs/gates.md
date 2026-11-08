@@ -677,7 +677,7 @@ in `latere.ai/x/pkg`. The leak that survives review most often is a
 developer sentence handed to the function that writes the user's error:
 
 ```go
-api.WriteError(w, "deploy_failed", "apply Deployment insula-p-3f2a/api: store.Deploy not found")
+api.WriteError(w, "deploy_failed", "apply Deployment tenant-p-3f2a/api: store.Deploy not found")
 ```
 
 The user cannot act on any of that, and the developer detail belongs in a
@@ -695,7 +695,7 @@ including one nested in a `fmt.Sprintf` or a concatenation. Four tells
 fail it: a Go import path (`latere.ai/x/pkg/httpjson`; a URL is a page and
 passes), a package-qualified identifier (`store.Deploy`, `pgx.ErrNoRows`),
 a Kubernetes kind followed by an object name (`Deployment
-insula-p-3f2a/api`, `pods "api-7d9c"`; `Service unavailable` is a sentence
+tenant-p-3f2a/api`, `pods "api-7d9c"`; `Service unavailable` is a sentence
 and passes), and a file path (`/etc/latere/config.yaml`,
 `~/.config/latere/token`, `handler.go:42`; a bare `latere.yaml` is the
 file the user edits and passes).
@@ -1081,8 +1081,8 @@ postgres:
 
 A repository whose names end in `DATABASE_URL` writes neither key and the
 gate reads `DATABASE_POOL_URL` and `DATABASE_URL`; one whose Secret
-carries a prefix may write `prefix: EVAL` instead, which derives
-`EVAL_DATABASE_POOL_URL` and `EVAL_DATABASE_URL`. `direct_env` and
+carries a prefix may write `prefix: APP` instead, which derives
+`APP_DATABASE_POOL_URL` and `APP_DATABASE_URL`. `direct_env` and
 `pool_env` are declared together, never beside `prefix`, never under any
 role but `pooled`, and they name two different variables. The gate asks
 whether both endpoints are read, not how a service spells them.

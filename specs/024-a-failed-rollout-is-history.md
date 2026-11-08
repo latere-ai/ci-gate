@@ -32,10 +32,10 @@ cut is very often the repair.
 
 Two instances, both real, both on 2026-09-19:
 
-| Repository | Run | Failed at | What the veto did |
-|---|---|---|---|
-| `auth` v0.37.0 | [35458476040](https://github.com/latere-ai/auth/actions/runs/35458476040) | `release / deploy` | v0.37.1 carried the repair for the crash-loop; `ci`, `codeql` and `Docker` were green on both commits in the window; the cut was refused and went out under `-force-red` |
-| `eval` v0.5.0 | [35344468893](https://github.com/latere-ai/eval/actions/runs/35344468893) | `release / smoke` | the deployment is held at `replicas: 0` by design, so the smoke against a live origin fails at every tag; the repository has been unreleasable since, and nobody overrode it |
+| Repository | Failed at | What the veto did |
+|---|---|---|
+| a service at v0.37.0 | `release / deploy` | v0.37.1 carried the repair for the crash-loop; `ci`, `codeql` and `Docker` were green on both commits in the window; the cut was refused and went out under `-force-red` |
+| a second service at v0.5.0 | `release / smoke` | the deployment is held at `replicas: 0` by design, so the smoke against a live origin fails at every tag; the repository has been unreleasable since, and nobody overrode it |
 
 The second row is the shape that matters. A veto on a rollout is not a
 delay, it is a permanent block wherever the rollout fails for a standing
