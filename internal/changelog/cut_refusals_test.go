@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -50,5 +51,28 @@ func TestReleaseRefusesAVersionThatIsNotSemver(t *testing.T) {
 			!strings.Contains(err.Error(), "no leading zeros") {
 			t.Errorf("Ready(%s) = %v, want a refusal that says what a valid version looks like", version, err)
 		}
+	}
+}
+
+// A changelog that already has a section for the version is refused before
+// anything is written, and the message names the line of that section.
+func TestCutRefusesAVersionTheChangelogAlreadyHas(t *testing.T) {
+	dir := clone(t)
+	body := "# Changelog\n\n## Unreleased\n\n- new\n\n## v1.2.3 - 2026-01-01\n\n- older notes\n"
+	if err := os.WriteFile(filepath.Join(dir, Name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "commit", "-q", "-am", "notes ahead of the tag")
+	publish(t, dir)
+
+	err := Cut(dir, "v1.2.3", time.Now(), &strings.Builder{}, realExec(t, dir), nil)
+	if err == nil || !strings.Contains(err.Error(), "CHANGELOG.md already has a section for v1.2.3 at line 7") {
+		t.Fatalf("Cut() = %v, want the existing section named at line 7", err)
+	}
+	if got := mustRead(t, dir); got != body {
+		t.Errorf("the changelog was written:\n%s", got)
+	}
+	if strings.Contains(git(t, dir, "tag"), "v1.2.3") {
+		t.Error("a refused cut creates no tag")
 	}
 }

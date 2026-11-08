@@ -328,10 +328,30 @@ func ready(root, version string, run gates.Exec) (release, error) {
 		return release{}, fmt.Errorf("no %s in the working tree; run `lateregate init` to write one", Name)
 	}
 	rel.body = string(b)
+	if n := headingLine(rel.body, version); n > 0 {
+		return release{}, fmt.Errorf("%s already has a section for %s at line %d; a tag has one section, so remove or rename that heading and run again", Name, version, n)
+	}
 	if _, err := Section(rel.body, Unreleased); err != nil {
 		return release{}, fmt.Errorf("nothing under `## %s` in %s; a release has notes", Unreleased, Name)
 	}
 	return rel, nil
+}
+
+// headingLine is the 1-based line of the first level-two heading whose second
+// word is tag, and 0 when no heading names it. It matches the headings Section
+// reads, so a section Section would return is a section found here.
+func headingLine(body, tag string) int {
+	n := 0
+	for line := range strings.SplitSeq(body, "\n") {
+		n++
+		if !strings.HasPrefix(line, "## ") {
+			continue
+		}
+		if fields := strings.Fields(line); len(fields) >= 2 && fields[1] == tag {
+			return n
+		}
+	}
+	return 0
 }
 
 // releaseBranch is origin's default branch, read from origin/HEAD, and main
