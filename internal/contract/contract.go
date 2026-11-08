@@ -695,8 +695,22 @@ func Init(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error
 	if len(written) == 0 {
 		_, _ = fmt.Fprintln(out, "nothing to write; the wiring is in shape")
 	}
-	_, _ = fmt.Fprintf(out, "next: `go get -tool %s`, then `lateregate contract`\n", ToolPath)
+	if toolPinned(root, exec) {
+		_, _ = fmt.Fprintln(out, "next: `lateregate contract`")
+	} else {
+		_, _ = fmt.Fprintf(out, "next: `go get -tool %s`, then `lateregate contract`\n", ToolPath)
+	}
 	return nil
+}
+
+// toolPinned reports whether the module that pins the tool already does.
+func toolPinned(root string, exec gates.Exec) bool {
+	module, explicit, _ := checkWorkflow(root, nil)
+	if explicit {
+		return checkPin(root, module) == ""
+	}
+	_, f := findPin(root, exec)
+	return f == ""
 }
 
 // ensureHook makes the hook at rel exist, delegate and be executable. A

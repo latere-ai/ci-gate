@@ -274,3 +274,51 @@ func TestInitReportsAFailingHooksPathWithNothingWritten(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// The closing line asks only for what is left to do.
+func TestInitNextStepsSkipAPinnedTool(t *testing.T) {
+	dir := gitRepo(t)
+	write(t, dir, "go.mod", "module example.com/m\n\ngo 1.27\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n")
+	out, err := runInit(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "go get") || !strings.Contains(out, "next: `lateregate contract`") {
+		t.Errorf("the tool is pinned, so only contract is left:\n%s", out)
+	}
+}
+
+func TestInitNextStepsAskForThePinWhenItIsMissing(t *testing.T) {
+	dir := gitRepo(t)
+	write(t, dir, "go.mod", "module example.com/m\n\ngo 1.27\n")
+	out, err := runInit(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "next: `go get -tool "+ToolPath+"`, then `lateregate contract`") {
+		t.Errorf("want both steps:\n%s", out)
+	}
+}
+
+// A caller that names gate_module is pinned in that module's go.mod.
+func TestInitNextStepsReadThePinInTheGateModule(t *testing.T) {
+	dir := gitRepo(t)
+	caller := strings.Replace(Caller, "    uses: "+Workflow+"\n", "    uses: "+Workflow+"\n    with:\n      gate_module: tools\n", 1)
+	write(t, dir, ".github/workflows/ci.yml", caller)
+	write(t, dir, "tools/go.mod", "module example.com/tools\n\ngo 1.27\n")
+	out, err := runInit(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "go get -tool") {
+		t.Errorf("the gate module does not pin the tool yet:\n%s", out)
+	}
+	write(t, dir, "tools/go.mod", "module example.com/tools\n\ngo 1.27\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n")
+	out, err = runInit(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "go get") {
+		t.Errorf("the gate module pins the tool:\n%s", out)
+	}
+}
