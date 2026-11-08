@@ -55,3 +55,20 @@ func TestAGitIgnoredFileIsNotChecked(t *testing.T) {
 		t.Fatalf("an ignored file failed the gate: %v", err)
 	}
 }
+
+// A vendored tree is other people's code and carries no notice of ours.
+func TestAVendorTreeIsNotChecked(t *testing.T) {
+	root := t.TempDir()
+	scopeGit(t, root, "init", "-q")
+	scopeFile(t, root, "LICENSE", scopeMIT)
+	scopeFile(t, root, "a.go", scopeGood)
+	scopeFile(t, root, "vendor/dep/dep.go", "package dep\n")
+	scopeGit(t, root, "add", ".")
+	if err := Run(scopeCfg(), root, io.Discard); err != nil {
+		t.Fatalf("vendor/ failed the gate: %v", err)
+	}
+	bad, err := Files(scopeCfg(), root, []string{"vendor/dep/dep.go"})
+	if err != nil || len(bad) != 0 {
+		t.Fatalf("the hook checked vendor/: %v %v", bad, err)
+	}
+}

@@ -133,7 +133,7 @@ func Run(cfg config.License, root string, out io.Writer) error {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if name == ".git" || name == "node_modules" || slices.Contains(cfg.Skip, name) || skipped(root, path, d, skip) {
+			if pruned(cfg, name) || skipped(root, path, d, skip) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -320,7 +320,7 @@ func Write(cfg config.License, root string, out io.Writer, now time.Time) error 
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if name == ".git" || name == "node_modules" || slices.Contains(cfg.Skip, name) || skipped(root, path, d, skip) {
+			if pruned(cfg, name) || skipped(root, path, d, skip) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -415,11 +415,18 @@ func skipped(root, path string, d os.DirEntry, tracked map[string]bool) bool {
 	return tracked != nil && !tracked[path]
 }
 
+// pruned reports whether the walk does not enter a directory of this name:
+// .git, node_modules and vendor are other people's code, and whatever the
+// repository lists under license.skip.
+func pruned(cfg config.License, name string) bool {
+	return name == ".git" || name == "node_modules" || name == "vendor" || slices.Contains(cfg.Skip, name)
+}
+
 // underSkipped reports whether rel, a slash path relative to the root, has
 // a directory in skip anywhere on its path, the way Run's walk prunes it.
 func underSkipped(skip []string, rel string) bool {
 	for part := range strings.SplitSeq(filepath.ToSlash(filepath.Dir(rel)), "/") {
-		if slices.Contains(skip, part) {
+		if part == "vendor" || slices.Contains(skip, part) {
 			return true
 		}
 	}
