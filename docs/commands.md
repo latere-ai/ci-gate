@@ -11,7 +11,7 @@ is the one `go.mod` names.
 | `lateregate list [-json]` | prints the plan: each gate with `RUN`, `SKIP`, `WAIV` or `FOLD` and why |
 | `lateregate <gate>` | runs one gate; [`gates.md`](gates.md) lists them |
 | `lateregate contract` | reports every way the repository's wiring drifted from the shared shape |
-| `lateregate init` | writes the wiring `contract` checks, where it is missing |
+| `lateregate init` | writes the wiring `contract` checks, where it is missing, inside a git repository |
 | `lateregate hook` | the pre-commit checks over the staged Go files |
 | `lateregate prepush` | the pre-push: refuses a release tag with no changelog section, then lints the packages the push changes |
 | `lateregate golangci` | renders the shared `.golangci.yml` without linting |
@@ -23,6 +23,12 @@ is the one `go.mod` names.
 | `lateregate deploy [vX.Y.Z]` | rolls the newest stable tag, or the one named, out to the cluster and runs the live check; refuses without `ship.deploy` |
 | `lateregate deploy-credential -context NAME` | the one-time step that stores the rollout identity's kubeconfig where `deploy` reads it; refuses without `ship.deploy` |
 | `lateregate release [-force-red] vX.Y.Z` | refuses while CI is red or the checkout is not origin's default branch at its tip, runs the bar, moves the notes into the tag's section, commits, tags and pushes both in one atomic push; see [`releasing.md`](releasing.md) |
+
+A command comes before its flags. `lateregate -C DIR release v1.2.3` is
+refused, because parsing stops at the first word that is not a flag and
+`check` takes no argument; the message shows the order that works,
+`lateregate release -C DIR v1.2.3`. `lateregate <command> -h` prints the
+usage.
 
 Flags every command accepts:
 
@@ -81,7 +87,8 @@ on this machine), when a changed file is inside a nested module the root
 module reaches through a local `replace` or a `go.work` `use` line, or when
 the change cannot be measured: no default branch, no merge base, or a
 module `go list` cannot list. `-all` checks
-the whole tree on request. A runner (`CI` set), `release`, a gate run by
+the whole tree on request. A runner (`CI` set to anything but empty,
+`false` or `0`), `release`, a gate run by
 name and `list` always read the whole tree, unless `-since` names a base.
 
 ### From the last green commit
@@ -217,12 +224,20 @@ difference in one run:
 Nothing here is waivable. A waiver says a repository is behind on a gate;
 wiring is fixed in the commit that notices it.
 
-`init` writes what `contract` checks, where it is missing:
+`init` writes what `contract` checks, where it is missing. It needs a git
+repository and writes nothing outside one: it says to run `git init` first.
+It writes:
 
 - `.github/workflows/ci.yml`, the caller, when no workflow calls the
-  reusable pipeline yet, and never in a repository with a `ship` block;
-- `.githooks/pre-commit`, and `.githooks/pre-push` when there is none;
-- `git config core.hooksPath .githooks`;
+  reusable pipeline at any ref, and never in a repository with a `ship`
+  block. When `ci.yml` exists and does not call it, `init` prints one line
+  saying so and leaves the file;
+- `.githooks/pre-commit`, and `.githooks/pre-push` when there is none. An
+  existing `pre-commit` or `pre-push` that is not executable is made
+  executable and keeps its content;
+- `core.hooksPath` set to `.githooks` when it is unset. When it is set to
+  something else, `init` leaves it and prints the command that switches it.
+  If `git config` fails, the error lists every file already written;
 - `.golangci.yml` and `coverage.out` in `.gitignore`;
 - `CHANGELOG.md` with an `## Unreleased` heading, when there is none.
 
@@ -230,7 +245,10 @@ It never touches `Makefile` or `.lateregate.yaml`, because those hold
 decisions, and it never overwrites a pre-push or a changelog that exists:
 a pre-push that does not delegate holds a check somebody wrote, and a
 changelog holds notes, so each is edited by hand and `contract` reports it
-until then. The caller it writes is:
+until then. `init` ends with a `next:` line that lists only the steps still
+left: `go get -tool latere.ai/x/ci-gate/cmd/lateregate` when the tool is not
+pinned, then `lateregate contract`, which alone remains when it is. The
+caller it writes is:
 
 ```yaml
 name: ci
