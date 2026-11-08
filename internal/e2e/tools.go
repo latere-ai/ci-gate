@@ -17,8 +17,9 @@ import (
 	"latere.ai/x/ci-gate/internal/gates"
 )
 
-// The versions a suite's tools are fetched at. kubectl is the version faber
-// pins; kind is the release helm/kind-action installs by default.
+// The versions a suite's tools are fetched at. kubectl is the version the
+// maintainers deploy with; kind is the release helm/kind-action installs by
+// default.
 const (
 	KubectlVersion = "v1.37.2"
 	KindVersion    = "v0.33.0"

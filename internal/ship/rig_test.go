@@ -21,7 +21,7 @@ import (
 const (
 	testCommit = "0123456789abcdef0123456789abcdef01234567"
 	testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	testRef    = "op://LatereAI/auth rollout kubeconfig/kubeconfig"
+	testRef    = "op://Vault/auth rollout kubeconfig/kubeconfig"
 	secretText = "SECRET-KUBECONFIG-CONTENT"
 )
 
@@ -108,7 +108,7 @@ func newRig(t *testing.T, shipYAML string) *rig {
 
 const goodShip = `ship:
   image:
-    name: ghcr.io/latere-ai/auth
+    name: ghcr.io/example/auth
     version_arg: VERSION
     build_args: {B: c}
   deploy:
@@ -162,11 +162,11 @@ func (r *rig) run(where string, env []string, name string, args []string) ([]byt
 			// name's first, as for an image it also knows under a second
 			// name, and a digest computed at build time under the image's
 			// own name that the registry never had.
-			return []byte(testDigest + "\nlocalhost/auth@sha256:" + strings.Repeat("b", 64) + "\nghcr.io/latere-ai/auth@sha256:" + strings.Repeat("c", 64) + "\nghcr.io/latere-ai/auth@" + testDigest + "\n"), nil
+			return []byte(testDigest + "\nlocalhost/auth@sha256:" + strings.Repeat("b", 64) + "\nghcr.io/example/auth@sha256:" + strings.Repeat("c", 64) + "\nghcr.io/example/auth@" + testDigest + "\n"), nil
 		}
 	case "docker":
 		if args[0] == "buildx" {
-			return []byte("Name:      ghcr.io/latere-ai/auth:v1.2.3\nMediaType: x\nDigest:    " + testDigest + "\n"), nil
+			return []byte("Name:      ghcr.io/example/auth:v1.2.3\nMediaType: x\nDigest:    " + testDigest + "\n"), nil
 		}
 		if args[0] == "push" {
 			return []byte("v1.2.3: digest: " + testDigest + " size: 1\n"), nil

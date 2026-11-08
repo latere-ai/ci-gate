@@ -18,7 +18,7 @@ func TestBuildTagsLocallyForTheClusterPlatform(t *testing.T) {
 	if !ok {
 		t.Fatalf("no build: %v", r.calls)
 	}
-	want := "build --platform linux/amd64 -f Dockerfile -t ghcr.io/latere-ai/auth:dev-abc1234 --build-arg B=c --build-arg VERSION=v1.2.3-4-gabc1234-dirty ."
+	want := "build --platform linux/amd64 -f Dockerfile -t ghcr.io/example/auth:dev-abc1234 --build-arg B=c --build-arg VERSION=v1.2.3-4-gabc1234-dirty ."
 	if strings.Join(c.args, " ") != want {
 		t.Errorf("build:\n%s\nwant\n%s", strings.Join(c.args, " "), want)
 	}
@@ -123,7 +123,7 @@ func TestPushBuildsOnceTagsThreeAndPrintsTheDigest(t *testing.T) {
 	}
 	b, _ := r.find("podman build")
 	line := strings.Join(b.args, " ")
-	for _, want := range []string{"-t ghcr.io/latere-ai/auth:v1.2.3", "-t ghcr.io/latere-ai/auth:sha-abc1234", "-t ghcr.io/latere-ai/auth:latest", "--build-arg VERSION=v1.2.3"} {
+	for _, want := range []string{"-t ghcr.io/example/auth:v1.2.3", "-t ghcr.io/example/auth:sha-abc1234", "-t ghcr.io/example/auth:latest", "--build-arg VERSION=v1.2.3"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("build lacks %q: %s", want, line)
 		}
@@ -224,7 +224,7 @@ func TestPushWithNoImageRefuses(t *testing.T) {
 func TestDeployAndCredentialWithNoDeployRefuse(t *testing.T) {
 	for name, yaml := range map[string]string{
 		"empty":      emptyShip,
-		"image only": "ship:\n  image:\n    name: ghcr.io/latere-ai/auth\n",
+		"image only": "ship:\n  image:\n    name: ghcr.io/example/auth\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := newRig(t, yaml)
@@ -242,7 +242,7 @@ func TestDeployAndCredentialWithNoDeployRefuse(t *testing.T) {
 }
 
 func TestBuildOfAnImageOnlyBlockStillBuilds(t *testing.T) {
-	r := newRig(t, "ship:\n  image:\n    name: ghcr.io/latere-ai/auth\n")
+	r := newRig(t, "ship:\n  image:\n    name: ghcr.io/example/auth\n")
 	if err := Build(r.d); err != nil {
 		t.Fatal(err)
 	}

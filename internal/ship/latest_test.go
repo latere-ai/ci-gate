@@ -34,7 +34,7 @@ func TestPushLeavesLatestWhereItIsForAnOlderTag(t *testing.T) {
 	if strings.Contains(line, ":latest") {
 		t.Errorf("an older tag moved latest: %s", line)
 	}
-	if !strings.Contains(line, "-t ghcr.io/latere-ai/auth:v1.2.0") {
+	if !strings.Contains(line, "-t ghcr.io/example/auth:v1.2.0") {
 		t.Errorf("the version tag is not published: %s", line)
 	}
 	for _, want := range []string{"latest stays where it is", "v1.4.0"} {
@@ -51,7 +51,7 @@ func TestPushMovesLatestForTheNewestTagOnOrigin(t *testing.T) {
 	if err := Push(r.d); err != nil {
 		t.Fatal(err)
 	}
-	if line := pushedTags(t, r); !strings.Contains(line, "-t ghcr.io/latere-ai/auth:latest") {
+	if line := pushedTags(t, r); !strings.Contains(line, "-t ghcr.io/example/auth:latest") {
 		t.Errorf("the newest tag did not move latest: %s", line)
 	}
 }

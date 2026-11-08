@@ -12,9 +12,9 @@ import (
 
 const goodShip = `ship:
   image:
-    name: ghcr.io/latere-ai/auth
+    name: ghcr.io/example/auth
   deploy:
-    kubeconfig: op://LatereAI/auth rollout kubeconfig/kubeconfig
+    kubeconfig: op://Vault/auth rollout kubeconfig/kubeconfig
     namespace: latere
     deployment: auth
     url: https://auth.latere.ai
@@ -64,7 +64,7 @@ func TestShipArch(t *testing.T) {
 
 func TestShipValidation(t *testing.T) {
 	good := map[string]string{
-		"name": "ghcr.io/latere-ai/auth", "kc": "op://LatereAI/auth rollout kubeconfig/kubeconfig",
+		"name": "ghcr.io/example/auth", "kc": "op://Vault/auth rollout kubeconfig/kubeconfig",
 		"ns": "latere", "dep": "auth", "url": "https://auth.latere.ai",
 	}
 	build := func(over map[string]string, extra string) string {
@@ -92,7 +92,7 @@ func TestShipValidation(t *testing.T) {
 		want  string
 	}{
 		{"missing name", map[string]string{"name": "-"}, "    context: .\n", "ship.image.name is required"},
-		{"name with a tag", map[string]string{"name": "ghcr.io/latere-ai/auth:v1"}, "", "no tag or digest"},
+		{"name with a tag", map[string]string{"name": "ghcr.io/example/auth:v1"}, "", "no tag or digest"},
 		{"missing namespace", map[string]string{"ns": "-"}, "", "ship.deploy.namespace is required"},
 		{"missing deployment", map[string]string{"dep": "-"}, "", "ship.deploy.deployment is required"},
 		{"missing url", map[string]string{"url": "-"}, "", "ship.deploy.url is required"},

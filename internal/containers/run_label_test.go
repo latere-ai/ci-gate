@@ -101,7 +101,7 @@ func TestLeftoversRemovesOnlyWhatCarriesTheRunLabel(t *testing.T) {
 	all := []Container{
 		owned("mine", "1@box", "r1"),
 		owned("other-run", "2@box", "r2"),
-		{ID: "unlabelled", Labels: map[string]string{}},
+		{ID: "unlabeled", Labels: map[string]string{}},
 	}
 	nets := []Network{
 		{ID: "my-net", Labels: owned("", "1@box", "r1").Labels},

@@ -68,7 +68,7 @@ func credRig(t *testing.T) (*rig, *string) {
 		case "op":
 			switch c.args[0] {
 			case "item":
-				return []byte("[ERROR] \"auth rollout kubeconfig\" isn't an item in the \"LatereAI\" vault.\n"), errors.New("exit 1"), true
+				return []byte("[ERROR] \"auth rollout kubeconfig\" isn't an item in the \"Vault\" vault.\n"), errors.New("exit 1"), true
 			case "document":
 				// create takes the file first, edit takes the item first.
 				path := c.args[2]
@@ -104,7 +104,7 @@ func TestDeployCredentialStoresTheIdentitysKubeconfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("no create: %v", r.calls)
 	}
-	if c.args[3] != "--vault" || c.args[4] != "LatereAI" || !slices.Contains(c.args, "auth rollout kubeconfig") || c.args[len(c.args)-1] != "kubeconfig" {
+	if c.args[3] != "--vault" || c.args[4] != "Vault" || !slices.Contains(c.args, "auth rollout kubeconfig") || c.args[len(c.args)-1] != "kubeconfig" {
 		t.Errorf("create: %s", c)
 	}
 	// Every call against the admin's kubeconfig names the context; the check

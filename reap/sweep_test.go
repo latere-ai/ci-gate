@@ -19,7 +19,7 @@ import (
 // Inside a lateregate run, Sweep leaves what carries the run's label to the
 // run's own check, which reports it; a container of another run, or of none,
 // whose owner exited is still removed.
-func TestSweepLeavesWhatThisRunLabelledToTheRunsCheck(t *testing.T) {
+func TestSweepLeavesWhatThisRunLabeledToTheRunsCheck(t *testing.T) {
 	host, err := os.Hostname()
 	if err != nil {
 		t.Fatal(err)

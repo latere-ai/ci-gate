@@ -61,8 +61,8 @@ func TestTellsOnAUserSurface(t *testing.T) {
 		{"package-qualified identifier", `"store.Deploy not found"`, "package-qualified identifier"},
 		{"pgx error", `"query: pgx.ErrNoRows"`, "package-qualified identifier"},
 		{"a sentence break is not a qualifier", `"Wait for it. Then retry."`, ""},
-		{"kubernetes kind and name", `"apply Deployment insula-p-3f2a/api failed"`, "Kubernetes object"},
-		{"kubernetes namespace", `"Namespace insula-p-3f2a is terminating"`, "Kubernetes object"},
+		{"kubernetes kind and name", `"apply Deployment tenant-p-3f2a/api failed"`, "Kubernetes object"},
+		{"kubernetes namespace", `"Namespace tenant-p-3f2a is terminating"`, "Kubernetes object"},
 		{"kubectl style plural", `"pods \"api-7d9c\" is forbidden"`, "Kubernetes object"},
 		{"a kind in prose", `"Service unavailable. Try again in a few minutes."`, ""},
 		{"absolute path", `"cannot read /etc/latere/config.yaml"`, "file path"},
@@ -117,7 +117,7 @@ import (
 
 func H(w http.ResponseWriter, name string) {
 	errs.WriteError(w, "c", fmt.Sprintf("deploy %s: store.Deploy missing", name))
-	errs.WriteError(w, "c", "cannot apply "+"Deployment insula-p-1/api")
+	errs.WriteError(w, "c", "cannot apply "+"Deployment tenant-p-1/api")
 }
 `,
 	})

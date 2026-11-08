@@ -69,7 +69,7 @@ func TestAnUntrackableTreeFailsWithTheReason(t *testing.T) {
 func TestAMessageHeldInAConstantIsRead(t *testing.T) {
 	callers := map[string]string{
 		"same package": "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/app/internal/api\"\n)\n\n" +
-			"const msg = \"apply Deployment insula-p-3f2a/api: store.Deploy not found\"\n\n" +
+			"const msg = \"apply Deployment tenant-p-3f2a/api: store.Deploy not found\"\n\n" +
 			"func h(w http.ResponseWriter) { api.WriteError(w, \"deploy_failed\", msg) }\n",
 		"concatenated": "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/app/internal/api\"\n)\n\n" +
 			"const prefix = \"deploy failed: \"\nconst msg = prefix + \"store.Deploy not found\"\n\n" +
@@ -81,7 +81,7 @@ func TestAMessageHeldInAConstantIsRead(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			root := module(t, map[string]string{
 				"internal/api/api.go":   apiPkg,
-				"internal/text/text.go": "package text\n\nconst Failed = \"apply Deployment insula-p-3f2a/api: store.Deploy not found\"\n",
+				"internal/text/text.go": "package text\n\nconst Failed = \"apply Deployment tenant-p-3f2a/api: store.Deploy not found\"\n",
 				"cmd/app/main.go":       main,
 			})
 			out, err := run(t, surfaces("internal/api.WriteError"), root)

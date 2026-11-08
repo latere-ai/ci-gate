@@ -77,7 +77,7 @@ func TestDeployRunsEveryStepInOrderAsTheRolloutIdentity(t *testing.T) {
 		}
 	}
 	si, _ := r.find("kubectl --kubeconfig " + r.kube + " -n latere set image")
-	if got := si.args[len(si.args)-1]; got != "authd=ghcr.io/latere-ai/auth@"+testDigest {
+	if got := si.args[len(si.args)-1]; got != "authd=ghcr.io/example/auth@"+testDigest {
 		t.Errorf("set image to %q", got)
 	}
 	ro, _ := r.find("kubectl --kubeconfig " + r.kube + " -n latere rollout")
@@ -94,7 +94,7 @@ func TestDeployRunsEveryStepInOrderAsTheRolloutIdentity(t *testing.T) {
 		if c.name == "" {
 			t.Fatalf("no bash call ending in %s", step)
 		}
-		for k, v := range map[string]string{"TAG": "v1.10.0", "COMMIT": testCommit, "IMAGE": "ghcr.io/latere-ai/auth@" + testDigest} {
+		for k, v := range map[string]string{"TAG": "v1.10.0", "COMMIT": testCommit, "IMAGE": "ghcr.io/example/auth@" + testDigest} {
 			if got := envOf(c.env, k); got != v {
 				t.Errorf("%s ran with %s=%q, want %q", step, k, got, v)
 			}
@@ -224,19 +224,19 @@ func TestDeploySetsTheDigestPodmanPulled(t *testing.T) {
 			set, ok = c, true
 		}
 	}
-	if !ok || !strings.Contains(set.String(), "ghcr.io/latere-ai/auth@"+testDigest) {
+	if !ok || !strings.Contains(set.String(), "ghcr.io/example/auth@"+testDigest) {
 		t.Fatalf("set image without the pulled digest: %v", set)
 	}
 
 	r = newRig(t, "")
 	r.answer = func(c call) ([]byte, error, bool) {
 		if c.name == "podman" && c.args[0] == "image" {
-			return []byte(testDigest + "\nghcr.io/latere-ai/auth@sha256:" + strings.Repeat("c", 64) + "\n"), nil, true
+			return []byte(testDigest + "\nghcr.io/example/auth@sha256:" + strings.Repeat("c", 64) + "\n"), nil, true
 		}
 		return nil, nil, false
 	}
 	err := Deploy(r.d, "v1.2.3")
-	if err == nil || !strings.Contains(err.Error(), "which it does not list under ghcr.io/latere-ai/auth") {
+	if err == nil || !strings.Contains(err.Error(), "which it does not list under ghcr.io/example/auth") {
 		t.Fatalf("a pulled digest not under the image's name: %v", err)
 	}
 	if _, ok := r.find("kubectl"); ok {
@@ -250,14 +250,14 @@ func TestDeployResolvesTheDigestWithDocker(t *testing.T) {
 	if err := Deploy(r.d, "v1.2.3"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := r.find("docker buildx imagetools inspect ghcr.io/latere-ai/auth:v1.2.3"); !ok {
+	if _, ok := r.find("docker buildx imagetools inspect ghcr.io/example/auth:v1.2.3"); !ok {
 		t.Errorf("no imagetools: %v", r.calls)
 	}
 	r = newRig(t, "")
 	r.have["docker"] = true
 	r.answer = func(c call) ([]byte, error, bool) {
 		if c.name == "docker" {
-			return []byte("ERROR: ghcr.io/latere-ai/auth:v1.2.3: not found\n"), errors.New("exit 1"), true
+			return []byte("ERROR: ghcr.io/example/auth:v1.2.3: not found\n"), errors.New("exit 1"), true
 		}
 		return nil, nil, false
 	}
