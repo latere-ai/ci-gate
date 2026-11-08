@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -139,6 +140,9 @@ func extract(archive []byte, dest string) error {
 			return fmt.Errorf("the archive holds %q, which is outside the tree", h.Name)
 		}
 		p := filepath.Join(dest, clean)
+		if err := refuseThroughSymlink(dest, p, h.Name); err != nil {
+			return err
+		}
 		switch h.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(p, 0o755); err != nil {
@@ -168,6 +172,32 @@ func extract(archive []byte, dest string) error {
 			}
 		}
 	}
+}
+
+// refuseThroughSymlink refuses an entry whose path, below dest, passes through
+// a symlink the archive created earlier: writing there would land wherever the
+// link points, which may be outside dest. The entry's own path is checked too,
+// so a file cannot replace a link by being written through it.
+func refuseThroughSymlink(dest, p, name string) error {
+	rel, err := filepath.Rel(dest, p)
+	if err != nil || rel == "." {
+		return err
+	}
+	cur := dest
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		info, err := os.Lstat(cur)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("the archive holds %q under a symlink, which could write outside the tree", name)
+		}
+	}
+	return nil
 }
 
 // secrets holds the temporary directory a deploy keeps its credential and

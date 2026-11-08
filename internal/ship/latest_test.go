@@ -4,7 +4,11 @@
 package ship
 
 import (
+	"archive/tar"
+	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -78,5 +82,34 @@ func TestPushLeavesLatestAloneForATagOriginDoesNotHave(t *testing.T) {
 	}
 	if line := pushedTags(t, r); strings.Contains(line, ":latest") {
 		t.Errorf("a tag newer than origin's moved latest: %s", line)
+	}
+}
+
+func TestExtractRefusesAnEntryUnderASymlinkItCreated(t *testing.T) {
+	outside := t.TempDir()
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for _, h := range []tar.Header{
+		{Name: "deploy", Typeflag: tar.TypeSymlink, Linkname: outside, Mode: 0o777},
+		{Name: "deploy/pwned.txt", Typeflag: tar.TypeReg, Mode: 0o644, Size: 2},
+	} {
+		if err := tw.WriteHeader(&h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := tw.Write([]byte("x\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := filepath.Join(t.TempDir(), "tree")
+	err := extract(buf.Bytes(), dest)
+	if _, statErr := os.Stat(filepath.Join(outside, "pwned.txt")); statErr == nil {
+		t.Fatalf("extract (err=%v) wrote %s/pwned.txt, outside the tree %s", err, outside, dest)
+	}
+	if err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("the archive was not refused for writing through a symlink: %v", err)
 	}
 }
