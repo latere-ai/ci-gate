@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -264,14 +265,48 @@ func modernize(cfg config.Modernize, goBin string, out io.Writer, run Exec, hint
 		return fmt.Errorf("the diff above is already in the standard library; apply it with go fix")
 	}
 	if err != nil {
-		// An empty patch with a non-zero exit is a build error, and the build
-		// is another gate's job.
-		_, _ = fmt.Fprintln(out, "no modernization found (go fix reported no patch)")
-		//nolint:nilerr // the exit code is a build error, not this gate's to report
-		return nil
+		// An empty patch with a non-zero exit is a build error when go fix
+		// says so, and the build is another gate's job. Any other failure
+		// means go fix did not run, which is a verdict nobody has seen.
+		msg := stderrOf(err)
+		if isBuildError(msg) {
+			_, _ = fmt.Fprintln(out, "no modernization found (go fix reported no patch)")
+			return nil
+		}
+		if msg == "" {
+			return fmt.Errorf("go fix failed to run: %w", err)
+		}
+		return fmt.Errorf("go fix failed to run: %w\n%s", err, msg)
 	}
 	_, _ = fmt.Fprintln(out, "no modernization found")
 	return nil
+}
+
+// buildErrorLine matches the position prefix of a compiler, parser or type
+// checker message, such as ./a.go:3:23: undefined: x.
+var buildErrorLine = regexp.MustCompile(`\.go:\d+(:\d+)?: `)
+
+// isBuildError reports whether go fix's stderr is the toolchain failing to
+// load, parse or type-check the packages, as opposed to go fix itself failing
+// to run: an unknown flag, a crash, a missing tool.
+func isBuildError(stderr string) bool {
+	if buildErrorLine.MatchString(stderr) {
+		return true
+	}
+	for _, m := range []string{
+		"no required module provides package",
+		"cannot find package",
+		"cannot find module",
+		"missing go.sum entry",
+		"build constraints exclude all Go files",
+		"[build failed]",
+		"[setup failed]",
+	} {
+		if strings.Contains(stderr, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // InNodeModules reports whether a slash-separated path, an import path or a

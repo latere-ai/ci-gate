@@ -294,7 +294,8 @@ func TestModernizeReportsAFailingHelpCall(t *testing.T) {
 // error, and the build is another gate's job.
 func TestModernizeTreatsAnEmptyPatchWithAnErrorAsAPass(t *testing.T) {
 	var calls []call
-	if err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, pkgList, errors.New("exit 1"))); err != nil {
+	buildErr := &StderrError{Err: errors.New("exit 1"), Stderr: "# m\nfix: ./a.go:3:23: undefined: x\n"}
+	if err := Modernize(config.Modernize{}, "go", &strings.Builder{}, fake(t, &calls, pkgList, buildErr)); err != nil {
 		t.Fatalf("an empty patch must pass whatever the exit code: %v", err)
 	}
 }

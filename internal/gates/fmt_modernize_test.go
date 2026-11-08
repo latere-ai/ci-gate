@@ -148,3 +148,55 @@ func TestStderrErrorKeepsTheWrappedMessage(t *testing.T) {
 		t.Error("a plain error has no stderr")
 	}
 }
+
+// go fix failing for a reason that is not a build error (an unknown flag, a
+// crash) is a verdict nobody has seen, so the gate fails and shows why.
+func TestModernizeFailsWhenGoFixDoesNotRun(t *testing.T) {
+	for name, stderr := range map[string]string{
+		"unknown flag": "flag provided but not defined: -diff\nusage: go fix [build flags]\n",
+		"no message":   "",
+		"crash":        "panic: runtime error: index out of range\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var calls []call
+			var sb strings.Builder
+			failure := &StderrError{Err: errors.New("exit status 2"), Stderr: stderr}
+			err := Modernize(config.Modernize{}, "go", &sb, fake(t, &calls, pkgList, failure))
+			if err == nil {
+				t.Fatalf("passed although go fix did not run: %q", sb.String())
+			}
+			if !strings.Contains(err.Error(), "go fix failed to run") || !strings.Contains(err.Error(), strings.TrimSpace(stderr)) {
+				t.Errorf("error does not carry go fix's message: %v", err)
+			}
+		})
+	}
+}
+
+func TestModernizePassesWhenGoFixCannotLoadThePackages(t *testing.T) {
+	for _, stderr := range []string{
+		"fix: ./a.go:3:9: expected ')', found '{'\n",
+		"a.go:3:8: no required module provides package nope.example/x; to add it:\n\tgo get nope.example/x\n",
+		"main.go:4:2: missing go.sum entry for module providing package example.com/y\n",
+	} {
+		var calls []call
+		failure := &StderrError{Err: errors.New("exit status 1"), Stderr: stderr}
+		if err := Modernize(config.Modernize{}, "go", io.Discard, fake(t, &calls, pkgList, failure)); err != nil {
+			t.Errorf("%q: %v", stderr, err)
+		}
+	}
+}
+
+// Real go fix against a tree that does not type-check and one given a flag it
+// does not know.
+func TestModernizeAgainstTheRealToolchain(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("no go toolchain")
+	}
+	root := fmtRepo(t, map[string]string{
+		"go.mod": "module example.com/m\n\ngo 1.27\n",
+		"a.go":   "package m\n\nfunc F() int { return x }\n",
+	})
+	if err := Modernize(config.Modernize{}, "go", io.Discard, OSExec(root, io.Discard)); err != nil {
+		t.Errorf("a tree that does not build is another gate's to report: %v", err)
+	}
+}
