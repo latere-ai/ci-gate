@@ -6,6 +6,7 @@ package containers
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -126,5 +127,24 @@ func TestLeftoversRemovesOnlyWhatCarriesTheRunLabel(t *testing.T) {
 	}
 	if want := []string{"containers/mine", "networks/my-net"}; !slices.Equal(removed, want) {
 		t.Fatalf("removed %v, want only %v, what carries run=r1", removed, want)
+	}
+}
+
+// A machine that will not name itself still labels its containers with a
+// well-formed owner, one no sweep will mistake for another process's.
+func TestHostnameFallsBackToAnUnknownHostTheLabelCanCarry(t *testing.T) {
+	if got := hostName("box", nil); got != "box" {
+		t.Errorf("hostName = %q", got)
+	}
+	for _, got := range []string{hostName("", nil), hostName("box", errors.New("no name"))} {
+		if got != UnknownHost {
+			t.Errorf("hostName = %q, want %q", got, UnknownHost)
+		}
+		if _, _, ok := owner(Labels(7, got, "")[OwnerLabel]); !ok {
+			t.Errorf("the owner label with host %q cannot be read back", got)
+		}
+	}
+	if Hostname() == "" {
+		t.Error("Hostname is empty")
 	}
 }

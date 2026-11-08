@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
+	"latere.ai/x/ci-gate/internal/containers"
 )
 
 // engine answers the container engine's commands from a script: the output
@@ -294,7 +295,7 @@ func TestRealProbes(t *testing.T) {
 	if err := dial(context.Background(), "127.0.0.1:1"); err == nil {
 		t.Error("a closed port accepted")
 	}
-	if hostname() == "" {
+	if containers.Hostname() == "" {
 		t.Error("no hostname")
 	}
 }

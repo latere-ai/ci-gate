@@ -34,14 +34,13 @@ import (
 // Labels returns the labels to put on each container the calling process
 // starts: its owner, and the lateregate run it belongs to when there is one.
 func Labels() map[string]string {
-	host, _ := os.Hostname()
 	// syscall.Getenv and not os.Getenv: the go command keys a package's
 	// cached test result on each variable the test reads through package os,
 	// and the run label changes on every run while deciding nothing about the
 	// outcome. Read through os, it would keep every package that starts a
 	// container from ever replaying from the cache.
 	run, _ := syscall.Getenv(containers.RunEnv)
-	return containers.Labels(os.Getpid(), host, run)
+	return containers.Labels(os.Getpid(), containers.Hostname(), run)
 }
 
 // Sweep removes each labeled container, and then each labeled network, on

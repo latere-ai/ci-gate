@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"testing"
 
 	"latere.ai/x/ci-gate/internal/containers"
@@ -64,4 +65,13 @@ func exitedPid(t *testing.T) int {
 		t.Fatal(err)
 	}
 	return cmd.Process.Pid
+}
+
+// Labels names the owner with the host name the sweep compares against, so a
+// container it labels is one a later sweep can read.
+func TestLabelsCarryTheHostNameTheSweepReads(t *testing.T) {
+	want := strconv.Itoa(os.Getpid()) + "@" + containers.Hostname()
+	if got := Labels()[containers.OwnerLabel]; got != want {
+		t.Fatalf("owner label = %q, want %q", got, want)
+	}
 }

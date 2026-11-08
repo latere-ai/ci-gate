@@ -86,23 +86,12 @@ type Host struct {
 // NewHost is a host for suite on engine, labeled the way a test helper
 // labels its containers.
 func NewHost(engine, suite string, out io.Writer, run gates.Exec) *Host {
-	labels := containers.Labels(os.Getpid(), hostname(), os.Getenv(containers.RunEnv))
+	labels := containers.Labels(os.Getpid(), containers.Hostname(), os.Getenv(containers.RunEnv))
 	return &Host{
 		Engine: engine, Run: run, Out: out, Labels: labels, Suite: suite, PID: os.Getpid(),
 		Wait: time.Minute, Poll: 250 * time.Millisecond,
 		Dial: dial, Ready: ready,
 	}
-}
-
-// hostname is this machine's name, as the owner label carries it. A machine
-// that will not say gets a name no other process shares, so the label stays
-// well formed and the sweep leaves the container alone.
-func hostname() string {
-	h, err := os.Hostname()
-	if err != nil || h == "" {
-		return "unknown-host"
-	}
-	return h
 }
 
 func dial(ctx context.Context, addr string) error {

@@ -6,6 +6,7 @@ package containers
 import (
 	"context"
 	"errors"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -30,6 +31,25 @@ func Labels(pid int, host, run string) map[string]string {
 		l[RunLabel] = run
 	}
 	return l
+}
+
+// UnknownHost is the host name an owner label carries when the machine will
+// not say its own.
+const UnknownHost = "unknown-host"
+
+// Hostname is this machine's name, as the owner label carries it. A machine
+// that will not say gets a name no other process shares, so the label stays
+// well formed and a sweep leaves the container alone rather than never being
+// able to read the label.
+func Hostname() string {
+	return hostName(os.Hostname())
+}
+
+func hostName(h string, err error) string {
+	if err != nil || h == "" {
+		return UnknownHost
+	}
+	return h
 }
 
 // owner reads an OwnerLabel value.
