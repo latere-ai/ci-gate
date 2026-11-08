@@ -193,3 +193,105 @@ func TestSettleMarkerReportsAMarkerItCannotWrite(t *testing.T) {
 		t.Errorf("no marker path, nothing to settle: %q", f)
 	}
 }
+
+// The gate removes its own sandbox on every path. A leaked tree that holds a
+// read-only directory is made writable and removed, so the next run of the
+// repository does not fail on a stale sandbox.
+func TestTempDirRemovesAReadOnlyTreeALeakLeft(t *testing.T) {
+	if !lockable {
+		t.Skip("no shared sandbox here")
+	}
+	root := isolated(t)
+	var calls []call
+	do := func(sandbox string) {
+		ro := filepath.Join(sandbox, "mod")
+		if err := os.MkdirAll(ro, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(ro, "f.go"), []byte("x"), 0o400); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(ro, 0o500); err != nil { // a module cache without -modcacherw
+			t.Fatal(err)
+		}
+	}
+	err := TempDir(config.TempDir{}, root, nil, io.Discard, suite(t, &calls, do, nil))
+	if err == nil {
+		t.Fatal("the leak must fail the gate")
+	}
+	sandbox := tempDirOf(t, calls[0].env)
+	t.Cleanup(func() {
+		_ = filepath.WalkDir(sandbox, func(p string, d os.DirEntry, _ error) error {
+			if d != nil && d.IsDir() {
+				_ = os.Chmod(p, 0o700)
+			}
+			return nil
+		})
+	})
+	if _, serr := os.Stat(sandbox); serr == nil {
+		t.Fatalf("%s outlived the gate", sandbox)
+	}
+	// and the next run of the repository
+	var again []call
+	if err := TempDir(config.TempDir{}, root, nil, io.Discard, suite(t, &again, func(d string) { touch(t, d) }, nil)); err != nil {
+		t.Fatalf("the next run: %v", err)
+	}
+}
+
+// Pins that the sandbox's removal never follows a link. A link at
+// the sandbox path, and a link left inside the sandbox, only lose the link.
+func TestTempDirNeverFollowsALink(t *testing.T) {
+	if !lockable {
+		t.Skip("no shared sandbox here")
+	}
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	root := filepath.Join(t.TempDir(), "repo")
+	victim := t.TempDir()
+	keep := filepath.Join(victim, "keep.txt")
+	if err := os.WriteFile(keep, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	name, err := sandboxName(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(tmp, name)); err != nil {
+		t.Fatal(err)
+	}
+	var calls []call
+	do := func(sandbox string) {
+		touch(t, sandbox)
+		if err := os.Symlink(victim, filepath.Join(sandbox, "link")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = TempDir(config.TempDir{}, root, nil, io.Discard, suite(t, &calls, do, nil))
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("the gate removed a file outside its sandbox: %v", err)
+	}
+}
+
+// A tree that cannot be made removable is reported with its path and what to
+// do, not dropped.
+func TestRemoveTreeNamesWhatItCannotRemove(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root removes anything")
+	}
+	parent := filepath.Join(t.TempDir(), "locked")
+	dir := filepath.Join(parent, "sandbox")
+	leak(t, dir, "x", 1)
+	if err := os.Chmod(parent, 0o500); err != nil { // dir itself cannot be unlinked
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+	err := removeTree(dir)
+	if err == nil || !strings.Contains(err.Error(), dir) || !strings.Contains(err.Error(), "chmod -R u+rwx") {
+		t.Fatalf("want an error naming %s and what to do, got %v", dir, err)
+	}
+	var sb strings.Builder
+	removeSandbox(dir, &sb)
+	if !strings.Contains(sb.String(), dir) {
+		t.Errorf("a release that cannot remove the sandbox says so:\n%s", sb.String())
+	}
+}

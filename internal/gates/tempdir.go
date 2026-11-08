@@ -143,7 +143,7 @@ func claimSandbox(root string, out io.Writer) (string, func(), error) {
 		if err != nil {
 			return "", nil, fmt.Errorf("making the sandbox: %w", err)
 		}
-		return dir, func() { _ = os.RemoveAll(dir) }, nil
+		return dir, func() { removeSandbox(dir, out) }, nil
 	}
 	name, err := sandboxName(root)
 	if err != nil {
@@ -154,7 +154,7 @@ func claimSandbox(root string, out io.Writer) (string, func(), error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("locking the sandbox: %w", err)
 	}
-	if err := os.RemoveAll(dir); err != nil {
+	if err := removeTree(dir); err != nil {
 		unlock()
 		return "", nil, fmt.Errorf("emptying the sandbox: %w", err)
 	}
@@ -163,9 +163,44 @@ func claimSandbox(root string, out io.Writer) (string, func(), error) {
 		return "", nil, fmt.Errorf("making the sandbox: %w", err)
 	}
 	return dir, func() {
-		_ = os.RemoveAll(dir)
+		removeSandbox(dir, out)
 		unlock()
 	}, nil
+}
+
+// removeSandbox removes the sandbox at the end of a run, saying so on out
+// when it cannot: the next run of the repository would fail on what is left.
+func removeSandbox(dir string, out io.Writer) {
+	if err := removeTree(dir); err != nil {
+		_, _ = fmt.Fprintf(out, "%v\n", err)
+	}
+}
+
+// removeTree removes dir and everything under it. A tree a test left
+// read-only, such as a Go module cache downloaded without -modcacherw or a
+// directory of mode 0500, cannot be removed as it stands, so a failed removal
+// makes the directories writable and tries again. Links are never followed:
+// only the link itself is touched.
+func removeTree(dir string) error {
+	err := os.RemoveAll(dir)
+	if err == nil {
+		return nil
+	}
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		//nolint:nilerr // an entry that cannot be read is skipped: the retry reports what remains
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+		// A chmod that fails shows up as the failed removal below.
+		_ = os.Chmod(p, 0o700)
+		return nil
+	})
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("removing %s: %w\nthe tree holds entries this user cannot remove: "+
+			"make them writable (chmod -R u+rwx %s) or remove %s as its owner, then run again",
+			dir, err, dir, dir)
+	}
+	return nil
 }
 
 // sandboxName is the sandbox's name for the repository at root: the user and
