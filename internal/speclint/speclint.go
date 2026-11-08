@@ -307,7 +307,10 @@ func CheckWikilinks(specs, tree []Spec) []string {
 	for _, s := range specs {
 		seen := map[string]bool{}
 		for _, m := range wikilinkRe.FindAllStringSubmatch(s.body, -1) {
-			target := strings.TrimSuffix(m[1], ".md")
+			target := wikilinkTarget(m[1])
+			if target == "" {
+				continue // [[#heading]] points inside the same spec
+			}
 			if !known[target] && !seen[target] {
 				seen[target] = true
 				out = append(out, fmt.Sprintf("%s: [[%s]] resolves to nothing", s.Name, target))
@@ -315,6 +318,14 @@ func CheckWikilinks(specs, tree []Spec) []string {
 		}
 	}
 	return out
+}
+
+// wikilinkTarget is the spec name a wikilink's inner text points at, without
+// the alias after "|", the heading after "#" and the ".md" suffix.
+func wikilinkTarget(inner string) string {
+	name, _, _ := strings.Cut(inner, "|")
+	name, _, _ = strings.Cut(name, "#")
+	return strings.TrimSuffix(strings.TrimSpace(name), ".md")
 }
 
 // linkRe matches a Markdown link to a local .md file.
