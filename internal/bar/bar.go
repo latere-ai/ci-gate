@@ -719,7 +719,13 @@ func Check(c Ctx) error {
 		g, _ := Find(e.Name)
 		_, _ = fmt.Fprintf(c.Out, "== %s\n", g.Name)
 		if err := g.Run(c); err != nil {
-			verdict[e.Name] = firstLine(err.Error())
+			// An error whose first line is empty still failed: the row says
+			// so and points at the output above, where the whole error is.
+			v := firstLine(err.Error())
+			if strings.TrimSpace(v) == "" {
+				v = "failed with no message; see the output above"
+			}
+			verdict[e.Name] = v
 			failed = append(failed, e.Name)
 			_, _ = fmt.Fprintf(c.Out, "FAIL %s: %s\n", g.Name, err)
 			continue

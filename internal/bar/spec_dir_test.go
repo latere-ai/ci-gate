@@ -4,9 +4,11 @@
 package bar
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"latere.ai/x/ci-gate/internal/config"
@@ -36,5 +38,25 @@ func TestSpecLintAppliesWhereSpecDirPoints(t *testing.T) {
 	}
 	if e := entry(plan, "spec-lint"); e.Status != Run {
 		t.Fatalf("spec-lint with spec.dir docs/specs tracked by git: %+v", e)
+	}
+}
+
+func TestAFailureWithNoFirstLineIsStillFAILInTheSummary(t *testing.T) {
+	saved := Gates
+	t.Cleanup(func() { Gates = saved })
+	Gates = []Gate{
+		{Name: "quiet", Run: func(Ctx) error { return errors.New("\nthe detail is on the second line") }},
+		{Name: "blank", Run: func(Ctx) error { return errors.New("") }},
+	}
+	c, sb := ctx(t, nil, func(_ []string, _ bool, _ string, _ ...string) ([]byte, error) { return nil, nil })
+	err := Check(c)
+	if err == nil || !strings.Contains(err.Error(), "2 of 2 gates failed") {
+		t.Fatalf("verdict = %v", err)
+	}
+	out := sb.String()
+	for _, name := range []string{"quiet", "blank"} {
+		if !strings.Contains(out, "FAIL "+name) || strings.Contains(out, "PASS "+name) {
+			t.Errorf("%s is not FAIL in the summary:\n%s", name, out)
+		}
 	}
 }
