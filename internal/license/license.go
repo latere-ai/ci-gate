@@ -126,7 +126,7 @@ func Run(cfg config.License, root string, out io.Writer) error {
 
 	var bad []string
 	scanned := 0
-	skip := untracked(root)
+	skip := tracked(root)
 	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -313,7 +313,7 @@ func Write(cfg config.License, root string, out io.Writer, now time.Time) error 
 	}
 	var wrong []string
 	written := 0
-	skip := untracked(root)
+	skip := tracked(root)
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -377,42 +377,42 @@ func withNotice(src, prefix string, cfg config.License, now time.Time) string {
 	return notice + src
 }
 
-// untracked lists the files git does not track under root, keyed by the
-// path WalkDir will hand back. A file that is not in the repository is not
-// the repository's to notice: a work-in-progress test from another change
-// sitting in the tree fails nothing here, and never reaches a runner. When
-// root is not a git checkout there is nothing to exclude.
-func untracked(root string) map[string]bool {
-	cmd := exec.CommandContext(context.Background(), "git", "ls-files", "-z", "--others", "--exclude-standard")
+// tracked lists the files git tracks under root, keyed by the path WalkDir
+// will hand back. A file that is not in the repository is not the
+// repository's to notice: a work-in-progress test from another change
+// sitting in the tree, or ignored build output, fails nothing here and
+// never reaches a runner. When root is not a git checkout it returns nil,
+// and nothing is excluded.
+func tracked(root string) map[string]bool {
+	cmd := exec.CommandContext(context.Background(), "git", "ls-files", "-z")
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
 		return nil
 	}
-	skip := map[string]bool{}
+	set := map[string]bool{}
 	for p := range strings.SplitSeq(string(out), "\x00") {
 		if p != "" {
-			skip[filepath.Join(root, p)] = true
+			set[filepath.Join(root, p)] = true
 		}
 	}
-	return skip
+	return set
 }
 
 // skipped reports whether a walk entry is outside the repository's own
-// files: an untracked file, anything under an untracked directory (git
-// lists the directory once, not its contents), or a nested checkout such as
-// an agent worktree parked under .claude, which is a whole other tree with
-// its own history.
-func skipped(root, path string, d os.DirEntry, untracked map[string]bool) bool {
-	if untracked[path] {
-		return true
-	}
-	if d.IsDir() && path != root {
-		if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
-			return true
+// files: a file git does not track (when there is a git checkout to ask), or
+// a nested checkout such as an agent worktree parked under .claude, which is
+// a whole other tree with its own history.
+func skipped(root, path string, d os.DirEntry, tracked map[string]bool) bool {
+	if d.IsDir() {
+		if path != root {
+			if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
+				return true
+			}
 		}
+		return false
 	}
-	return false
+	return tracked != nil && !tracked[path]
 }
 
 // underSkipped reports whether rel, a slash path relative to the root, has
