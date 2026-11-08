@@ -15,6 +15,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -141,6 +142,8 @@ func run(argv []string, out io.Writer) error {
 
 	fs := flag.NewFlagSet("lateregate "+cmd, flag.ContinueOnError)
 	fs.SetOutput(out)
+	// -h prints the one usage text below, not the flag package's list.
+	fs.Usage = func() {}
 	root := fs.String("C", ".", "repository root holding "+config.Name)
 	goBin := fs.String("go", "go", "Go toolchain to run")
 	asJSON := fs.Bool("json", false, "print the plan as JSON (list)")
@@ -158,6 +161,10 @@ func run(argv []string, out io.Writer) error {
 	fs.Var(&profiles, "profile",
 		"coverage profile to read (cover); repeat the flag for each test tier")
 	if err := fs.Parse(argv); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			_, _ = fmt.Fprint(out, help())
+			return nil
+		}
 		return err
 	}
 
@@ -376,12 +383,22 @@ func run(argv []string, out io.Writer) error {
 	return fmt.Errorf("unknown command %q", cmd)
 }
 
+// isCI reports whether this is a CI run: CI is set to anything but empty,
+// false or 0, which is how a shell turns it off.
+func isCI() bool {
+	switch os.Getenv("CI") {
+	case "", "false", "0":
+		return false
+	}
+	return true
+}
+
 // measureFrom is the change a check reads. CI checks the whole tree unless
 // it was given a base, because the default branch is held to the whole bar
 // and a laptop is what narrows to the change; with a base, CI skips the
 // gates that cannot have moved. -all wins over any base.
 func measureFrom(c bar.Ctx, since string, all bool) *scope.Scope {
-	ci := os.Getenv("CI") != ""
+	ci := isCI()
 	switch {
 	case all:
 		return nil

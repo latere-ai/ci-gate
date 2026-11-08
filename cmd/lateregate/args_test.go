@@ -39,3 +39,25 @@ func TestTheRefusalNamesTheArgument(t *testing.T) {
 		t.Fatalf("want the argument named, got %v", err)
 	}
 }
+
+// -h after a command is a request for the usage, not a failure.
+func TestHelpAfterACommandPrintsTheUsage(t *testing.T) {
+	for _, cmd := range []string{"check", "release", "init", "list"} {
+		var out strings.Builder
+		if err := run([]string{cmd, "-h"}, &out); err != nil {
+			t.Errorf("%s -h: %v", cmd, err)
+		}
+		if !strings.Contains(out.String(), "Usage:") || strings.Contains(out.String(), "help requested") {
+			t.Errorf("%s -h must print the usage and nothing about a flag error:\n%.200s", cmd, out.String())
+		}
+	}
+}
+
+func TestOnlyANonEmptyCIValueOtherThanFalseOrZeroIsCI(t *testing.T) {
+	for value, want := range map[string]bool{"": false, "false": false, "0": false, "true": true, "1": true, "yes": true} {
+		t.Setenv("CI", value)
+		if got := isCI(); got != want {
+			t.Errorf("CI=%q: isCI() = %v, want %v", value, got, want)
+		}
+	}
+}
