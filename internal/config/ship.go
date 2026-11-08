@@ -153,10 +153,10 @@ func (s *Ship) validate() error {
 
 func (i ShipImage) validate() error {
 	if i.Name == "" {
-		return errors.New("ship.image.name is required: the registry path the release publishes, such as ghcr.io/latere-ai/auth")
+		return errors.New("ship.image.name is required: the registry path the release publishes, such as ghcr.io/your-org/your-service")
 	}
 	if !shipName.MatchString(i.Name) {
-		return fmt.Errorf("ship.image.name %q must be a registry path with no tag or digest, such as ghcr.io/latere-ai/auth", i.Name)
+		return fmt.Errorf("ship.image.name %q must be a registry path with no tag or digest, such as ghcr.io/your-org/your-service", i.Name)
 	}
 	for key, p := range map[string]string{"ship.image.dockerfile": i.Dockerfile, "ship.image.context": i.Context} {
 		if p != "" && !filepath.IsLocal(filepath.Clean(p)) {

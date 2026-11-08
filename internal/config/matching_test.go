@@ -145,3 +145,14 @@ tempdir:
 		t.Errorf("restated = %v, want none", c.Restated)
 	}
 }
+
+func TestTheShipImageNameErrorUsesANeutralExample(t *testing.T) {
+	_, err := loadBody(t, "identity:\n  role: none\nship:\n  image:\n    name: ghcr.io/x/y:v1\n")
+	if err == nil || !strings.Contains(err.Error(), "ghcr.io/your-org/your-service") {
+		t.Fatalf("error = %v", err)
+	}
+	_, err = loadBody(t, "identity:\n  role: none\nship:\n  image:\n    dockerfile: Dockerfile\n")
+	if err == nil || !strings.Contains(err.Error(), "ghcr.io/your-org/your-service") {
+		t.Fatalf("error = %v", err)
+	}
+}
