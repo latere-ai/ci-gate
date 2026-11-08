@@ -601,7 +601,7 @@ func TestInitReportsAFailingHooksPath(t *testing.T) {
 		if name == "git" && len(args) > 0 && args[0] == "config" {
 			return nil, errors.New("not a git repository")
 		}
-		return nil, errors.New("exit 1")
+		return nil, nil
 	}
 	if err := Init(dir, &config.Config{}, &strings.Builder{}, exec); err == nil || !strings.Contains(err.Error(), "core.hooksPath") {
 		t.Fatalf("got %v", err)

@@ -180,3 +180,97 @@ func TestInitKeepsAnOwnPrepushWhenItMakesItExecutable(t *testing.T) {
 		t.Error("the pre-push stays unexecutable")
 	}
 }
+
+// A directory git cannot configure is refused before a file is written.
+func TestInitOutsideAGitRepositoryWritesNothing(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	dir := t.TempDir()
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
+	out, err := runInit(t, dir)
+	if err == nil || !strings.Contains(err.Error(), "git init") {
+		t.Fatalf("want an error that says to run git init first, got %v", err)
+	}
+	entries, rerr := os.ReadDir(dir)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if len(entries) != 0 || out != "" {
+		t.Errorf("init wrote into a directory that is no repository: %v, output %q", entries, out)
+	}
+}
+
+// A repository on another hooks directory keeps it; init writes the hooks
+// and says what would switch it.
+func TestInitLeavesAnExistingHooksPathAlone(t *testing.T) {
+	dir := gitRepo(t)
+	cmd := exec.Command("git", "config", "core.hooksPath", ".husky")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	out, err := runInit(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hooksPath(t, dir); got != ".husky" {
+		t.Errorf("core.hooksPath was .husky and is now %q", got)
+	}
+	for _, want := range []string{"wrote .githooks/pre-commit", "core.hooksPath is .husky", "git config core.hooksPath .githooks"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("want %q:\n%s", want, out)
+		}
+	}
+}
+
+// An unset hooksPath is set once, and a second run has nothing to set.
+func TestInitSetsTheHooksPathOnce(t *testing.T) {
+	dir := gitRepo(t)
+	if _, err := runInit(t, dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := hooksPath(t, dir); got != ".githooks" {
+		t.Fatalf("core.hooksPath = %q", got)
+	}
+	out, err := runInit(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "core.hooksPath is") {
+		t.Errorf("a repository already on .githooks needs no word:\n%s", out)
+	}
+}
+
+// When git refuses the setting after the files are down, the error lists
+// every file so the person knows what was left.
+func TestInitNamesTheFilesWrittenWhenGitConfigFails(t *testing.T) {
+	dir := t.TempDir()
+	run := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && len(args) > 0 && args[0] == "config" {
+			return nil, errors.New("exit status 255")
+		}
+		return nil, nil
+	}
+	err := Init(dir, &config.Config{}, &strings.Builder{}, run)
+	if err == nil {
+		t.Fatal("want the git config failure")
+	}
+	for _, f := range []string{".github/workflows/ci.yml", ".githooks/pre-commit", ".githooks/pre-push", ".gitignore", "CHANGELOG.md"} {
+		if !strings.Contains(err.Error(), f) {
+			t.Errorf("the error must name %s already written: %v", f, err)
+		}
+	}
+}
+
+func TestInitReportsAFailingHooksPathWithNothingWritten(t *testing.T) {
+	dir := repo(t)
+	run := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if name == "git" && len(args) > 0 && args[0] == "config" {
+			return nil, errors.New("exit status 255")
+		}
+		return nil, nil
+	}
+	err := Init(dir, &config.Config{}, &strings.Builder{}, run)
+	if err == nil || !strings.Contains(err.Error(), "core.hooksPath") || strings.Contains(err.Error(), "already written") {
+		t.Fatalf("got %v", err)
+	}
+}

@@ -586,8 +586,13 @@ func hasCaller(root string) (bool, error) {
 // Init writes what Run checks for, and never a file already in shape.
 //
 // It does not touch Makefile or .lateregate.yaml: those hold decisions, and
-// a tool that writes decisions for a repository has made them for it.
+// a tool that writes decisions for a repository has made them for it. It
+// checks first that root is inside a git repository, so a directory git
+// cannot configure is refused before anything is written.
 func Init(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error {
+	if _, err := exec(nil, false, "git", "-C", root, "rev-parse", "--git-dir"); err != nil {
+		return fmt.Errorf("%s is not inside a git repository, so nothing was written; run `git init` there first, then `lateregate init`", root)
+	}
 	var written []string
 	wrote := func(rel string) { written = append(written, rel) }
 
@@ -668,8 +673,23 @@ func Init(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error
 		wrote(changelog.Name)
 	}
 
-	if _, err := exec(nil, false, "git", "config", "core.hooksPath", ".githooks"); err != nil {
-		return fmt.Errorf("git config core.hooksPath: %w", err)
+	// A core.hooksPath the repository already chose is its own: the hooks
+	// are written either way, and the person is told what would switch it.
+	current, err := exec(nil, false, "git", "-C", root, "config", "--get", "core.hooksPath")
+	if err != nil {
+		current = nil
+	}
+	switch have := strings.TrimSpace(string(current)); have {
+	case ".githooks":
+	case "":
+		if _, err := exec(nil, false, "git", "config", "core.hooksPath", ".githooks"); err != nil {
+			if len(written) == 0 {
+				return fmt.Errorf("git config core.hooksPath: %w", err)
+			}
+			return fmt.Errorf("git config core.hooksPath: %w; already written: %s", err, strings.Join(written, ", "))
+		}
+	default:
+		_, _ = fmt.Fprintf(out, "core.hooksPath is %s, so git does not run %s or %s; to run them: git config core.hooksPath .githooks\n", have, hookPath, prepushPath)
 	}
 
 	if len(written) == 0 {
