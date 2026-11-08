@@ -295,6 +295,9 @@ func ready(root, version string, run gates.Exec) (release, error) {
 	if !IsReleaseTag(version) {
 		return release{}, fmt.Errorf("usage: lateregate release vX.Y.Z (got %q)", version)
 	}
+	if !semver.IsValid(version) {
+		return release{}, fmt.Errorf("%q is not a valid semantic version: use vMAJOR.MINOR.PATCH with no leading zeros, such as v1.2.3 or v1.3.0-rc.1", version)
+	}
 	status, err := run(nil, false, "git", "status", "--porcelain")
 	if err != nil {
 		return release{}, fmt.Errorf("git status: %w", err)

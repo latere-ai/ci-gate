@@ -6,6 +6,7 @@ package changelog
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"latere.ai/x/ci-gate/internal/config"
@@ -36,5 +37,18 @@ func TestStampReplacesAPrereleaseVersionWhole(t *testing.T) {
 				t.Fatalf("stamping %s over %q gave %q, want %q", tc.version, tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+// A version that is not valid semver is refused before anything is read from
+// git, even when no tag on origin exists to compare it against.
+func TestReleaseRefusesAVersionThatIsNotSemver(t *testing.T) {
+	dir := clone(t)
+	for _, version := range []string{"v01.02.03", "v1.02.3", "v1.2.03", "v1.2.3-01"} {
+		err := Ready(dir, version, realExec(t, dir))
+		if err == nil || !strings.Contains(err.Error(), "is not a valid semantic version") ||
+			!strings.Contains(err.Error(), "no leading zeros") {
+			t.Errorf("Ready(%s) = %v, want a refusal that says what a valid version looks like", version, err)
+		}
 	}
 }
