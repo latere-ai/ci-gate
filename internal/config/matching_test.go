@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func loadBody(t *testing.T, body string) (*Config, error) {
@@ -78,5 +79,20 @@ func TestABlankTempdirKeyBuiltInMemoryAdmitsNothing(t *testing.T) {
 	td := TempDir{Allow: map[string]string{"": "why"}}
 	if _, ok := td.AllowedFor("leaked-123"); ok {
 		t.Error("an empty tempdir.allow key admits every survivor")
+	}
+}
+
+func TestAWaiverEndsAtTheSameInstantInEveryZone(t *testing.T) {
+	w := Waiver{Reason: "r", Until: "2026-11-15"}
+	last := time.Date(2026, 11, 15, 23, 59, 59, 0, time.UTC)
+	for _, zone := range []*time.Location{
+		time.UTC, time.FixedZone("UTC+8", 8*3600), time.FixedZone("UTC-8", -8*3600),
+	} {
+		if !w.Live(last.In(zone)) {
+			t.Errorf("waiver through 2026-11-15 is not live at its last second, read in %s", zone)
+		}
+		if w.Live(last.Add(time.Second).In(zone)) {
+			t.Errorf("waiver through 2026-11-15 is still live at 2026-11-16T00:00:00Z, read in %s", zone)
+		}
 	}
 }

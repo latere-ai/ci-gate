@@ -182,6 +182,10 @@ func (w Waiver) UntilDate() (time.Time, bool) {
 // whether a gate runs, and a gate whose own rule turns on a waiver reads the
 // same method, so a date can never mean two things in one run.
 //
+// The day is a UTC day: a waiver through 2026-11-15 holds until the instant
+// 2026-11-16T00:00:00Z, the same instant on every machine whatever its
+// time zone, so a laptop and a CI runner agree about one commit.
+//
 // A date that does not parse is not live. Load rejects one before any gate
 // reads it, so this covers a waiver built in memory rather than read.
 func (w Waiver) Live(now time.Time) bool {
@@ -189,7 +193,7 @@ func (w Waiver) Live(now time.Time) bool {
 	if !ok {
 		return false
 	}
-	return now.Before(until.AddDate(0, 0, 1))
+	return now.UTC().Before(until.AddDate(0, 0, 1))
 }
 
 // WaiverFor is the waiver covering a gate, or nil where the file carries

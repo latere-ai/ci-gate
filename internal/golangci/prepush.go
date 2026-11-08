@@ -51,9 +51,8 @@ const zeroSHA = "0000000000000000000000000000000000000000"
 // the waiver was written for. now is the day the waiver is read against.
 func Prepush(root string, cfg *config.Config, goBin string, in io.Reader, out io.Writer, run gates.Exec, now time.Time) error {
 	if w, ok := cfg.Waive["lint"]; ok {
-		// Validated at load, so it parses; inclusive, like the full gate.
-		until, _ := w.UntilDate()
-		if now.Before(until.AddDate(0, 0, 1)) {
+		// The same definition of a live waiver the full gate reads.
+		if w.Live(now) {
 			_, _ = fmt.Fprintf(out, "lint is waived until %s; nothing to lint\n", w.Until)
 			return nil
 		}
