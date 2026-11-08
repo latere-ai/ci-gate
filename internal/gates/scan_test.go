@@ -142,3 +142,26 @@ func TestOtelClientLeavesInstrumentedAndUnrelatedShapesAlone(t *testing.T) {
 		t.Fatalf("otel-client reported an unrelated shape: %v", err)
 	}
 }
+
+func TestKustomizationsLeaveOutAComponentWhateverItsSpelling(t *testing.T) {
+	for name, body := range map[string]string{
+		"trailing comment": "apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component # shared patches\n",
+		"single quotes":    "kind: 'Component'\n",
+		"after other keys": "resources: []\nkind: Component\n",
+		"flow mapping":     "{kind: Component, resources: []}\n",
+	} {
+		if !isComponent([]byte(body)) {
+			t.Errorf("%s: a Component was read as a plain kustomization", name)
+		}
+	}
+	for name, body := range map[string]string{
+		"a kustomization":      "kind: Kustomization\nresources: [a.yaml]\n",
+		"no kind":              "resources: [a.yaml]\n",
+		"component in a value": "namePrefix: kind-Component\n",
+		"not yaml":             "kind: [Component\n",
+	} {
+		if isComponent([]byte(body)) {
+			t.Errorf("%s: read as a Component", name)
+		}
+	}
+}

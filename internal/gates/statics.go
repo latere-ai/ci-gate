@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/goccy/go-yaml"
 )
 
 // The tools the static gates run, each pinned once. actionlint and kustomize
@@ -190,14 +192,17 @@ func Kustomizations(run Exec, read func(string) ([]byte, error)) ([]string, erro
 }
 
 // isComponent reports whether a kustomization file declares kind: Component.
+// It reads the kind value, so a trailing comment, a quoted value or a flow
+// mapping reads the same as the plain line. A file that is not YAML is not a
+// Component: it is rendered, and kustomize says what is wrong with it.
 func isComponent(body []byte) bool {
-	for line := range strings.SplitSeq(string(body), "\n") {
-		k, v, ok := strings.Cut(line, ":")
-		if ok && k == "kind" && strings.Trim(strings.TrimSpace(v), `"'`) == "Component" {
-			return true
-		}
+	var doc struct {
+		Kind string `yaml:"kind"`
 	}
-	return false
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		return false
+	}
+	return doc.Kind == "Component"
 }
 
 // Manifests renders every tracked kustomization with kustomize at
