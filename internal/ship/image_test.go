@@ -117,6 +117,7 @@ func TestPushRefusesOffTagAndDirty(t *testing.T) {
 func TestPushBuildsOnceTagsThreeAndPrintsTheDigest(t *testing.T) {
 	r := newRig(t, "")
 	r.tags = []string{"v1.1.0", "v1.2.3"}
+	r.remote = "aaa\trefs/tags/v1.1.0\nbbb\trefs/tags/v1.2.3\n"
 	if err := Push(r.d); err != nil {
 		t.Fatal(err)
 	}
@@ -164,6 +165,7 @@ func TestPushSkipsLatestForAPrerelease(t *testing.T) {
 func TestPushAuthFailureSaysHowToLogIn(t *testing.T) {
 	for _, said := range []string{"unauthorized: authentication required", "denied: permission_denied", "received unexpected HTTP status: 403 Forbidden", "401 Unauthorized"} {
 		r := newRig(t, "")
+		r.remote = "aaa\trefs/tags/v1.2.3\n"
 		r.answer = func(c call) ([]byte, error, bool) {
 			if c.name == "podman" && c.args[0] == "push" {
 				return []byte(said + "\n"), errors.New("exit 125"), true
@@ -182,6 +184,7 @@ func TestPushAuthFailureSaysHowToLogIn(t *testing.T) {
 	}
 	// Another failure is not blamed on the login.
 	r := newRig(t, "")
+	r.remote = "aaa\trefs/tags/v1.2.3\n"
 	r.answer = func(c call) ([]byte, error, bool) {
 		if c.name == "podman" && c.args[0] == "push" {
 			return []byte("connection reset\n"), errors.New("exit 125"), true

@@ -108,6 +108,21 @@ func (d Deps) headTag() (string, error) {
 	return best, nil
 }
 
+// latestHeldBack says why the image tagged tag must not become :latest, or ""
+// when it may: latest follows the newest stable release on origin, so
+// publishing an older release again leaves it alone. Origin that cannot be
+// read is an error, because the answer decides what consumers of latest pull.
+func (d Deps) latestHeldBack(tag string) (string, error) {
+	newest, err := d.NewestTag()
+	if err != nil {
+		return "", fmt.Errorf("latest follows origin's newest release, so push cannot tell whether %s may move it: %w; check that origin is reachable and has the tag, then run it again", tag, err)
+	}
+	if tag != newest {
+		return fmt.Sprintf("%s is published under its version tag alone, because origin's newest release is %s", tag, newest), nil
+	}
+	return "", nil
+}
+
 var digestIn = regexp.MustCompile(`sha256:[0-9a-f]{64}`)
 
 // Push builds the image from the tagged commit and publishes it. HEAD must be
@@ -140,7 +155,15 @@ func Push(d Deps) error {
 	name := s.Image.Name
 	tags := []string{name + ":" + tag, name + ":sha-" + sha}
 	if !prerelease(tag) {
-		tags = append(tags, name+":latest")
+		why, err := d.latestHeldBack(tag)
+		if err != nil {
+			return err
+		}
+		if why != "" {
+			d.printf("latest stays where it is: %s\n", why)
+		} else {
+			tags = append(tags, name+":latest")
+		}
 	}
 	if err := d.buildImage(engine, tag, tags); err != nil {
 		return err
