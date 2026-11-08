@@ -99,12 +99,6 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 	if t := strings.TrimSpace(opt.Timeout); t != "" {
 		flags = append(flags, "-timeout", t)
 	}
-	args := slices.Clone(flags)
-	if opt.Profile != "" {
-		args = append(args, "-covermode=atomic", "-coverpkg=./...", "-coverprofile="+opt.Profile)
-	}
-	args = append(args, opt.patterns()...)
-
 	if opt.Hermetic {
 		path, note, err := suitePath(opt, goBin, run)
 		if err != nil {
@@ -114,13 +108,21 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 		env = envWithPath(env, path)
 	}
 
+	home := root
+	if opt.Home != "" {
+		home = opt.Home
+	}
+	var marker string
+	if opt.Sandbox || opt.Containers {
+		var err error
+		if marker, err = leakMarker(home); err != nil {
+			return err
+		}
+	}
+
 	var sandbox string
 	var before time.Time
 	if opt.Sandbox {
-		home := root
-		if opt.Home != "" {
-			home = opt.Home
-		}
 		dir, release, err := claimSandbox(home, out)
 		if err != nil {
 			return err
@@ -141,6 +143,18 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 		}
 	}
 
+	// The marker is read once the sandbox's lock is held, so a run waiting
+	// behind another reads what that run decided.
+	if markerPresent(marker) {
+		_, _ = fmt.Fprintln(out, uncachedNote)
+		flags = slices.Insert(flags, 1, "-count=1")
+	}
+	args := slices.Clone(flags)
+	if opt.Profile != "" {
+		args = append(args, "-covermode=atomic", "-coverpkg=./...", "-coverprofile="+opt.Profile)
+	}
+	args = append(args, opt.patterns()...)
+
 	output, runErr := run(env, true, goBin, args...)
 
 	var failures []string
@@ -159,19 +173,26 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 			failures = append(failures, "the suite's coverage is under the floor: "+err.Error())
 		}
 	}
+	leaked := false
 	if opt.Sandbox {
 		after, err := touchedAt(sandbox)
 		if err != nil {
 			return err
 		}
-		if f := survivors(opt.TempDir, sandbox, before, after, out); f != "" {
+		f, left := survivors(opt.TempDir, sandbox, before, after, out)
+		if f != "" {
 			failures = append(failures, f)
 		}
+		leaked = leaked || left
 	}
 	if watch != nil {
 		if f := watch.leftovers(out); f != "" {
 			failures = append(failures, f)
+			leaked = true
 		}
+	}
+	if f := settleMarker(marker, leaked, out); f != "" {
+		failures = append(failures, f)
 	}
 	if len(failures) > 0 {
 		return errors.New(strings.Join(failures, "\nand "))
@@ -251,28 +272,29 @@ func runFailure(opt SuiteRun, output string, err error) string {
 }
 
 // survivors reports what the run left in the sandbox, printing each entry,
-// or "" when nothing survived and the run did use the directory.
-func survivors(cfg config.TempDir, sandbox string, before, after time.Time, out io.Writer) string {
+// or "" when nothing survived and the run did use the directory. The bool is
+// true when the run left an entry the config does not admit.
+func survivors(cfg config.TempDir, sandbox string, before, after time.Time, out io.Writer) (string, bool) {
 	entries, err := os.ReadDir(sandbox)
 	if err != nil {
-		return fmt.Sprintf("reading the sandbox: %v", err)
+		return fmt.Sprintf("reading the sandbox: %v", err), false
 	}
 	if len(entries) == 0 && !after.After(before) {
 		return fmt.Sprintf("nothing ever wrote to %s, so the run did not use it; "+
-			"the gate cannot tell a clean suite from one that ignored TMPDIR", sandbox)
+			"the gate cannot tell a clean suite from one that ignored TMPDIR", sandbox), false
 	}
 	leaked, allowed := classify(entries, cfg, sandbox)
 	for _, a := range allowed {
 		_, _ = fmt.Fprintf(out, "  allowed %s: %s\n", a.name, a.why)
 	}
 	if len(leaked) == 0 {
-		return ""
+		return "", false
 	}
 	for _, l := range leaked {
 		_, _ = fmt.Fprintf(out, "  %s (%s)\n", l.name, humanSize(l.size))
 	}
 	return fmt.Sprintf("the suite left %d entr%s under TMPDIR, %s in all; a directory left "+
-		"there is never deleted", len(leaked), plural(len(leaked)), humanSize(totalSize(leaked)))
+		"there is never deleted", len(leaked), plural(len(leaked)), humanSize(totalSize(leaked))), true
 }
 
 // describe names what the run checked beyond the suite itself.

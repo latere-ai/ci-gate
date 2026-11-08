@@ -4,6 +4,7 @@
 package gates
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -61,6 +62,21 @@ func TempDir(cfg config.TempDir, root string, argv []string, out io.Writer, run 
 		return err
 	}
 
+	marker, err := leakMarker(root)
+	if err != nil {
+		return err
+	}
+	if markerPresent(marker) {
+		if more, ok := uncached(argv); ok {
+			_, _ = fmt.Fprintln(out, uncachedNote)
+			argv = more
+		} else {
+			_, _ = fmt.Fprintf(out, "the last run of this repository's suite left something behind, "+
+				"but %q is not go test, so this run cannot bypass its cache\n",
+				strings.Join(argv, " "))
+		}
+	}
+
 	_, _ = fmt.Fprintf(out, "TMPDIR=%s\n", sandbox)
 	_, runErr := run(envWithTemp(os.Environ(), sandbox), true, argv[0], argv[1:]...)
 
@@ -88,6 +104,9 @@ func TempDir(cfg config.TempDir, root string, argv []string, out io.Writer, run 
 	leaked, allowed := classify(entries, cfg, sandbox)
 	for _, a := range allowed {
 		_, _ = fmt.Fprintf(out, "  allowed %s: %s\n", a.name, a.why)
+	}
+	if f := settleMarker(marker, len(leaked) > 0, out); f != "" {
+		return errors.New(f)
 	}
 	if len(leaked) > 0 {
 		for _, l := range leaked {
