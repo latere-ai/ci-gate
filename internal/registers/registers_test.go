@@ -29,6 +29,7 @@ func module(t *testing.T, files map[string]string) string {
 			t.Fatal(err)
 		}
 	}
+	gitTrack(t, root)
 	return root
 }
 
@@ -273,16 +274,16 @@ func TestAnUnparseableFileIsLeftToTheBuild(t *testing.T) {
 
 func TestAnUnreadableTreeIsAnError(t *testing.T) {
 	root := module(t, map[string]string{"internal/api/api.go": apiPkg})
-	locked := filepath.Join(root, "locked")
-	if err := os.Mkdir(locked, 0o000); err != nil {
+	locked := filepath.Join(root, "internal/api/api.go")
+	if err := os.Chmod(locked, 0o000); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o644) })
 	if os.Getuid() == 0 {
 		t.Skip("root reads every directory")
 	}
 	if _, err := run(t, surfaces("internal/api.WriteError"), root); err == nil || !strings.Contains(err.Error(), "scanning") {
-		t.Fatalf("a directory the walk cannot enter: %v", err)
+		t.Fatalf("a tracked file that cannot be read: %v", err)
 	}
 }
 

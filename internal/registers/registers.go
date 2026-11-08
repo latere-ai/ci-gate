@@ -29,12 +29,12 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"latere.ai/x/ci-gate/internal/config"
+	"latere.ai/x/ci-gate/internal/gates"
 )
 
 // tell is one shape a developer sentence takes on a user surface.
@@ -94,35 +94,29 @@ func Run(cfg config.Registers, root string, out io.Writer) error {
 	var found []Finding
 	scanned := 0
 	fset := token.NewFileSet()
-	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+	// The file list is what git tracks, so a scratch file or a git-ignored
+	// build directory is read on no machine, and a laptop and a clean CI
+	// checkout agree.
+	files, err := gates.TrackedFiles(root, "the Go files that call a user surface",
+		append([]string{".claude", "testdata", "node_modules"}, cfg.Skip...), "*.go")
+	if err != nil {
+		return fmt.Errorf("scanning for user-surface strings: %w; run it inside a git checkout", err)
+	}
+	for _, rel := range files {
+		if strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
-			return err
+			return fmt.Errorf("scanning for user-surface strings: %w", err)
 		}
-		name := d.Name()
-		if d.IsDir() {
-			if p != root && (name == ".git" || name == ".claude" || name == "testdata" || name == "node_modules" || slices.Contains(cfg.Skip, name)) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			return nil
-		}
-		rel, relErr := filepath.Rel(root, p)
-		if relErr != nil {
-			rel = p
-		}
-		file, ok := parse(fset, p)
+		file, ok := parse(fset, rel, src)
 		if !ok {
-			return nil
+			continue
 		}
 		scanned++
-		pkgPath := path.Join(module, filepath.ToSlash(filepath.Dir(rel)))
-		found = append(found, fileFindings(fset, file, filepath.ToSlash(rel), pkgPath, module, surfaces, calls)...)
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("scanning for user-surface strings: %w", err)
+		pkgPath := path.Join(module, path.Dir(rel))
+		found = append(found, fileFindings(fset, file, rel, pkgPath, module, surfaces, calls)...)
 	}
 	if scanned == 0 {
 		return fmt.Errorf("no non-test Go files found under %s; the gate would pass vacuously", root)
@@ -158,8 +152,8 @@ func Run(cfg config.Registers, root string, out io.Writer) error {
 // parse reads one file. A file the parser cannot read is a build failure,
 // and the build is another gate's job, so the answer is a boolean rather
 // than an error: there is nothing for this gate to report.
-func parse(fset *token.FileSet, path string) (*ast.File, bool) {
-	file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+func parse(fset *token.FileSet, path string, src []byte) (*ast.File, bool) {
+	file, err := parser.ParseFile(fset, path, src, parser.SkipObjectResolution)
 	return file, err == nil
 }
 
