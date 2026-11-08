@@ -431,20 +431,25 @@ func tracksLicensed(c Ctx) (bool, string, error) {
 	return true, "", nil
 }
 
-// tracksSpecs asks git, not the config. Deriving this from spec.dir would
-// let a repository escape the gate by deleting a line, and a repository with
-// a real spec tree and no spec section is precisely the gap to report.
+// tracksSpecs asks git whether it tracks anything under the configured
+// spec.dir (which defaults to specs). The answer comes from git and not from
+// the presence of a spec section, so a repository cannot leave the gate by
+// deleting a line of its configuration.
 func tracksSpecs(c Ctx) (bool, string, error) {
-	out, err := c.Exec(nil, false, "git", "ls-files", "--", config.DefaultSpecDir)
+	dir := c.Cfg.Spec.Dir
+	if dir == "" {
+		dir = config.DefaultSpecDir
+	}
+	out, err := c.Exec(nil, false, "git", "ls-files", "--", dir)
 	if err != nil {
 		// Applicability that cannot be determined must not resolve to "does
 		// not apply": that is the vacuous pass this package exists to refuse.
 		return false, "", fmt.Errorf("cannot list %s/ with git: %w\n"+
 			"whether a repository has specs to lint is asked of git, so this "+
-			"needs to run inside a git repository", config.DefaultSpecDir, err)
+			"needs to run inside a git repository", dir, err)
 	}
 	if strings.TrimSpace(string(out)) == "" {
-		return false, "tracks no " + config.DefaultSpecDir + "/ files", nil
+		return false, "tracks no " + dir + "/ files", nil
 	}
 	return true, "", nil
 }
