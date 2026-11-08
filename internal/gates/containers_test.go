@@ -4,6 +4,7 @@
 package gates
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"testing"
 
 	"latere.ai/x/ci-gate/internal/containers"
+	"latere.ai/x/ci-gate/reap"
 )
 
 // engine stands in for a container engine: it lists what it holds, filtered
@@ -352,5 +354,37 @@ func TestSuiteSweepsANetworkAnExitedProcessLeft(t *testing.T) {
 func TestOneOfANounIsSingular(t *testing.T) {
 	if ofNoun(1, "network") != "1 network" || ofNoun(3, "network") != "3 networks" {
 		t.Fatal("ofNoun")
+	}
+}
+
+// A package whose test binary exits and leaves a container is the leak the
+// containers check exists to name. The next package's helper begins with
+// reap.Sweep, which must leave the run's own container to that check.
+func TestSuiteNamesWhatAHelperSweepFoundOfThisRun(t *testing.T) {
+	root := isolated(t)
+	host, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &engine{}
+	withEngine(t, e)
+	t.Setenv("DOCKER_HOST", "unix://e.sock")
+	dead := exitedPid(t)
+	s := &suiteRun{do: func(env []string) {
+		run, _ := envValue(env, containers.RunEnv)
+		// The suite's go test child carries the run label in its environment.
+		t.Setenv(containers.RunEnv, run)
+		// package X: its binary exited without stopping its container
+		e.hold(containers.Container{ID: "leaked-by-x", Image: "postgres:17-alpine", State: "running",
+			Labels: containers.Labels(dead, host, run)})
+		// package Y: its helper starts with reap.Sweep
+		if _, err := reap.Sweep(context.Background()); err != nil {
+			t.Error(err)
+		}
+	}}
+	var sb strings.Builder
+	err = Suite(SuiteRun{Containers: true}, root, suiteGo, &sb, s.exec)
+	if err == nil || !strings.Contains(err.Error(), "left 1 container") {
+		t.Fatalf("err = %v, want the suite to name the container the helper's sweep spared; output:\n%s", err, sb.String())
 	}
 }

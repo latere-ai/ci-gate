@@ -47,8 +47,10 @@ func Labels() map[string]string {
 // Sweep removes each labeled container, and then each labeled network, on
 // this machine's engine whose owner has exited, and returns how many it
 // removed. One whose owner is alive is never touched, however old it is, so a
-// sweep is safe while other suites run. With no engine socket there is
-// nothing to sweep.
+// sweep is safe while other suites run. Inside a lateregate run, a container
+// or network that carries the run's label is left alone too: the run's own
+// check names it, and removes it, once the suite has ended. With no engine
+// socket there is nothing to sweep.
 func Sweep(ctx context.Context) (int, error) {
 	e, ok := containers.Find()
 	if !ok {
@@ -58,6 +60,8 @@ func Sweep(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	gone, err := containers.Sweep(ctx, e, host, containers.Alive)
+	// Read through syscall for the reason Labels does.
+	run, _ := syscall.Getenv(containers.RunEnv)
+	gone, err := containers.SweepOutside(ctx, e, host, containers.Alive, run)
 	return gone.Len(), err
 }

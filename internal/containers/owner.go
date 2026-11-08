@@ -62,7 +62,18 @@ func (r Removed) Len() int { return len(r.Containers) + len(r.Networks) }
 // whose owner ran elsewhere is left alone, because its pid names some other
 // machine's process. Containers go first, so a network is free by its turn.
 func Sweep(ctx context.Context, e *Engine, host string, alive func(pid int) bool) (Removed, error) {
+	return SweepOutside(ctx, e, host, alive, "")
+}
+
+// SweepOutside is Sweep for a caller inside the lateregate run named run,
+// when run is not empty: whatever carries that run's label is left alone,
+// because the run's own check names it and removes it after the run, and a
+// sweep that removed it first would leave the check nothing to report.
+func SweepOutside(ctx context.Context, e *Engine, host string, alive func(pid int) bool, run string) (Removed, error) {
 	orphaned := func(labels map[string]string) bool {
+		if run != "" && labels[RunLabel] == run {
+			return false
+		}
 		pid, h, ok := owner(labels[OwnerLabel])
 		return ok && h == host && !alive(pid)
 	}
