@@ -588,7 +588,9 @@ func hasCaller(root string) (bool, error) {
 // It does not touch Makefile or .lateregate.yaml: those hold decisions, and
 // a tool that writes decisions for a repository has made them for it.
 func Init(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error {
-	wrote := 0
+	var written []string
+	wrote := func(rel string) { written = append(written, rel) }
+
 	// The caller, only when no workflow calls the shared pipeline at any ref
 	// or the old one, and ci.yml does not exist. An existing caller carries
 	// inputs somebody chose, so it is edited by hand and reported by Run
@@ -617,34 +619,22 @@ func Init(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error
 				return err
 			}
 			_, _ = fmt.Fprintln(out, "wrote "+callerRel)
-			wrote++
+			wrote(callerRel)
 		}
 	}
 
-	if f := checkHook(root); f != "" {
-		p := filepath.Join(root, hookPath)
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(p, []byte(gates.Staged), 0o755); err != nil {
-			return err
-		}
-		_, _ = fmt.Fprintln(out, "wrote "+hookPath)
-		wrote++
+	// The pre-commit is replaced when it is missing or holds its own copy of
+	// the checks; one that delegates and only lacks the executable bit keeps
+	// its bytes.
+	if err := ensureHook(root, hookPath, gates.Staged, gates.HookInvocation, true, out, wrote); err != nil {
+		return err
 	}
 	// The pre-push, only when there is none. One that exists and does not
 	// delegate holds a check somebody wrote (pkg refuses a tag without a
 	// changelog section there), so it is edited by hand to add the
 	// delegation and reported by Run until it is.
-	if _, err := os.Stat(filepath.Join(root, prepushPath)); err != nil {
-		if err := os.WriteFile(filepath.Join(root, prepushPath), []byte(gates.Prepush), 0o755); err != nil {
-			return err
-		}
-		_, _ = fmt.Fprintln(out, "wrote "+prepushPath)
-		wrote++
-	}
-	if _, err := exec(nil, false, "git", "config", "core.hooksPath", ".githooks"); err != nil {
-		return fmt.Errorf("git config core.hooksPath: %w", err)
+	if err := ensureHook(root, prepushPath, gates.Prepush, gates.PrepushInvocation, false, out, wrote); err != nil {
+		return err
 	}
 
 	if f := checkGitignore(root); f != "" {
@@ -665,7 +655,7 @@ func Init(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error
 			return err
 		}
 		_, _ = fmt.Fprintf(out, "added %s to .gitignore\n", strings.Join(add, ", "))
-		wrote++
+		wrote(".gitignore")
 	}
 
 	// The changelog, only when there is none. One that exists holds notes,
@@ -675,13 +665,61 @@ func Init(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error
 			return err
 		}
 		_, _ = fmt.Fprintln(out, "wrote "+changelog.Name+"; commit it")
-		wrote++
+		wrote(changelog.Name)
 	}
 
-	if wrote == 0 {
+	if _, err := exec(nil, false, "git", "config", "core.hooksPath", ".githooks"); err != nil {
+		return fmt.Errorf("git config core.hooksPath: %w", err)
+	}
+
+	if len(written) == 0 {
 		_, _ = fmt.Fprintln(out, "nothing to write; the wiring is in shape")
 	}
 	_, _ = fmt.Fprintf(out, "next: `go get -tool %s`, then `lateregate contract`\n", ToolPath)
+	return nil
+}
+
+// ensureHook makes the hook at rel exist, delegate and be executable. A
+// missing hook is written. An existing one that does not delegate is
+// replaced only when replace is set; otherwise it is the repository's own
+// and is left for a hand edit. An existing one that lacks the executable bit
+// is given it, which keeps its bytes.
+func ensureHook(root, rel, body, invocation string, replace bool, out io.Writer, wrote func(string)) error {
+	p := filepath.Join(root, rel)
+	info, err := os.Stat(p)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return err
+	default:
+		existing, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if replace && !gates.Delegates(string(existing), invocation) {
+			break
+		}
+		if info.Mode()&0o111 == 0 {
+			if err := os.Chmod(p, 0o755); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(out, "made %s executable; git never ran it before\n", rel)
+			wrote(rel)
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+		return err
+	}
+	// WriteFile keeps the mode of a file that exists.
+	if err := os.Chmod(p, 0o755); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(out, "wrote "+rel)
+	wrote(rel)
 	return nil
 }
 

@@ -118,3 +118,65 @@ func TestInitWritesNoSecondCaller(t *testing.T) {
 		t.Errorf("another file already calls the shared workflow, got %v", err)
 	}
 }
+
+// A hook git cannot run is no hook; init gives it the bit and says so.
+func TestInitMakesAnExistingHookExecutable(t *testing.T) {
+	dir := gitRepo(t)
+	precommit := "#!/bin/sh\nexec go tool lateregate hook\n"
+	prepush := "#!/bin/sh\nrefs=$(cat)\nprintf '%s\\n' \"$refs\" | go tool lateregate prepush || exit 1\n"
+	putMode(t, dir, ".githooks/pre-commit", precommit, 0o644)
+	putMode(t, dir, ".githooks/pre-push", prepush, 0o644)
+	out, err := runInit(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for hook, body := range map[string]string{".githooks/pre-commit": precommit, ".githooks/pre-push": prepush} {
+		info, err := os.Stat(filepath.Join(dir, hook))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&0o111 == 0 {
+			t.Errorf("%s is still not executable", hook)
+		}
+		if got := readFile(t, dir, hook); got != body {
+			t.Errorf("%s changed:\n%s", hook, got)
+		}
+		if !strings.Contains(out, "made "+hook+" executable") {
+			t.Errorf("want a line saying %s was made executable:\n%s", hook, out)
+		}
+	}
+}
+
+// A pre-commit that holds its own copy of the checks is replaced, and the
+// replacement runs.
+func TestInitReplacesANonExecutableHandRolledHook(t *testing.T) {
+	dir := gitRepo(t)
+	putMode(t, dir, ".githooks/pre-commit", "#!/bin/sh\ngofmt -l .\n", 0o644)
+	if _, err := runInit(t, dir); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dir, ".githooks", "pre-commit"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&0o111 == 0 || readFile(t, dir, ".githooks/pre-commit") != gates.Staged {
+		t.Errorf("want the delegating hook, executable; mode %v", info.Mode())
+	}
+}
+
+// A pre-push that holds the repository's own check keeps its bytes and gets
+// the bit.
+func TestInitKeepsAnOwnPrepushWhenItMakesItExecutable(t *testing.T) {
+	dir := gitRepo(t)
+	own := "#!/bin/sh\n./scripts/changelog-for-tag.sh\n"
+	putMode(t, dir, ".githooks/pre-push", own, 0o644)
+	if _, err := runInit(t, dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, dir, ".githooks/pre-push"); got != own {
+		t.Errorf("pre-push changed:\n%s", got)
+	}
+	if info, _ := os.Stat(filepath.Join(dir, ".githooks", "pre-push")); info.Mode()&0o111 == 0 {
+		t.Error("the pre-push stays unexecutable")
+	}
+}
