@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
@@ -120,6 +121,23 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 		}
 	}
 
+	var watched atomic.Pointer[containerWatch]
+	var releaser atomic.Pointer[func()]
+	if opt.Sandbox || opt.Containers {
+		// The handler reports on its own goroutine while the suite is still
+		// writing, so both go through one lock.
+		out = &syncWriter{w: out}
+		// Ctrl-C or SIGTERM ends the process without running the deferred
+		// release or the container check, so the handler runs both first.
+		defer onInterrupt(out, func() {
+			if r := releaser.Load(); r != nil {
+				(*r)()
+			}
+			if w := watched.Load(); w != nil {
+				w.leftovers(out)
+			}
+		})()
+	}
 	var sandbox string
 	var before time.Time
 	if opt.Sandbox {
@@ -127,7 +145,9 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 		if err != nil {
 			return err
 		}
+		release = once(release)
 		defer release()
+		releaser.Store(&release)
 		if before, err = touchedAt(dir); err != nil {
 			return err
 		}
@@ -140,6 +160,7 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 	if opt.Containers {
 		if watch = watchContainers(out); watch != nil {
 			env = watch.env(env)
+			watched.Store(watch)
 		}
 	}
 

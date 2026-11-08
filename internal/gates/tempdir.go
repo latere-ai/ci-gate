@@ -55,7 +55,13 @@ func TempDir(cfg config.TempDir, root string, argv []string, out io.Writer, run 
 	}
 	// A gate that leaks while checking for leaks is worse than no gate. This
 	// runs whatever the suite did, including when it failed.
+	release = once(release)
 	defer release()
+	// Ctrl-C or SIGTERM ends the process without running the deferred release,
+	// so the handler gives the sandbox back first. It reports on its own
+	// goroutine while the gate is still writing, so both go through one lock.
+	out = &syncWriter{w: out}
+	defer onInterrupt(out, release)()
 
 	before, err := touchedAt(sandbox)
 	if err != nil {

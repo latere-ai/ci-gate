@@ -4,11 +4,14 @@
 package gates
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -293,5 +296,85 @@ func TestRemoveTreeNamesWhatItCannotRemove(t *testing.T) {
 	removeSandbox(dir, &sb)
 	if !strings.Contains(sb.String(), dir) {
 		t.Errorf("a release that cannot remove the sandbox says so:\n%s", sb.String())
+	}
+}
+
+// interrupted runs f with the process exit replaced, and returns the status
+// the interrupted gate asked for once f has sent itself sig.
+func interrupted(t *testing.T, sig syscall.Signal, f func(send func())) int {
+	t.Helper()
+	codes := make(chan int, 1)
+	prev := exitProcess
+	exitProcess = func(code int) { codes <- code }
+	t.Cleanup(func() { exitProcess = prev })
+	f(func() {
+		if err := syscall.Kill(os.Getpid(), sig); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case code := <-codes:
+			codes <- code
+		case <-time.After(5 * time.Second):
+			t.Fatal("the gate did not react to the signal")
+		}
+	})
+	return <-codes
+}
+
+func TestTempDirReleasesTheSandboxWhenInterrupted(t *testing.T) {
+	if !lockable {
+		t.Skip("without a file lock every run makes a directory of its own")
+	}
+	root := isolated(t)
+	for sig, want := range map[syscall.Signal]int{syscall.SIGINT: 130, syscall.SIGTERM: 143} {
+		var sandbox string
+		got := interrupted(t, sig, func(send func()) {
+			run := func(env []string, _ bool, _ string, _ ...string) ([]byte, error) {
+				sandbox = tempDirOf(t, env)
+				leak(t, sandbox, "left", 8)
+				send()
+				// the handler has released the sandbox by the time exit is asked for
+				if _, err := os.Stat(sandbox); err == nil {
+					t.Errorf("%s outlived the interrupt", sandbox)
+				}
+				return nil, errors.New("killed")
+			}
+			_ = TempDir(config.TempDir{}, root, nil, io.Discard, run)
+		})
+		if got != want {
+			t.Errorf("%v: exit status %d, want %d", sig, got, want)
+		}
+	}
+}
+
+func TestSuiteReleasesTheSandboxAndChecksContainersWhenInterrupted(t *testing.T) {
+	if !lockable {
+		t.Skip("without a file lock every run makes a directory of its own")
+	}
+	root := isolated(t)
+	e := &engine{}
+	withEngine(t, e)
+	var sandbox string
+	var sb strings.Builder
+	got := interrupted(t, syscall.SIGINT, func(send func()) {
+		s := &suiteRun{do: func(env []string) {
+			sandbox, _ = envValue(env, "TMPDIR")
+			leak(t, sandbox, "left", 8)
+			startsContainers(e, 1, 0)(env)
+			send()
+		}}
+		_ = Suite(SuiteRun{Sandbox: true, Containers: true}, root, suiteGo, &sb, s.exec)
+	})
+	if got != 130 {
+		t.Errorf("exit status %d, want 130", got)
+	}
+	if _, err := os.Stat(sandbox); err == nil {
+		t.Errorf("%s outlived the interrupt", sandbox)
+	}
+	e.mu.Lock()
+	removed := len(e.removed)
+	e.mu.Unlock()
+	if removed == 0 {
+		t.Errorf("the container the run left was not removed:\n%s", sb.String())
 	}
 }
