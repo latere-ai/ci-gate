@@ -24,7 +24,7 @@ const base = "2222222222222222222222222222222222222222"
 // specs.
 func lake(_ []string, _ bool, name string, args ...string) ([]byte, error) {
 	if name == "git" && len(args) > 0 && args[0] == "ls-files" && slices.Contains(args, "lakefile.toml") {
-		return []byte("proofs/lakefile.toml\n"), nil
+		return []byte("proofs/lakefile.toml\x00"), nil
 	}
 	return nil, nil
 }
@@ -91,7 +91,7 @@ func TestLeanRunsOnlyForAChangedProject(t *testing.T) {
 			if asked++; asked > 1 {
 				return nil, errors.New("git broke")
 			}
-			return []byte("proofs/lakefile.toml\n"), nil
+			return []byte("proofs/lakefile.toml\x00"), nil
 		}
 		return nil, nil
 	}

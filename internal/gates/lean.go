@@ -77,7 +77,7 @@ func DefaultLeanToolchain() LeanToolchain {
 // tracks: each one holding a lakefile.toml or a lakefile.lean, outside the
 // .lake directory where Lake keeps the packages it fetched.
 func LakeProjects(run Exec) ([]string, error) {
-	args := []string{"ls-files", "--"}
+	args := []string{"ls-files", "-z", "--"}
 	for _, f := range lakefiles {
 		args = append(args, f, "*/"+f)
 	}
@@ -86,8 +86,7 @@ func LakeProjects(run Exec) ([]string, error) {
 		return nil, fmt.Errorf("cannot list Lake projects with git: %w", err)
 	}
 	var dirs []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		p := strings.TrimSpace(line)
+	for _, p := range nulSeparated(string(out)) {
 		if !slices.Contains(lakefiles, path.Base(p)) || slices.Contains(strings.Split(p, "/"), ".lake") {
 			continue
 		}

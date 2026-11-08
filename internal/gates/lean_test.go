@@ -29,16 +29,18 @@ func TestLakeProjectsAreTheTrackedLakefiles(t *testing.T) {
 		"proofs/.lake/packages/batteries/lakefile.toml",
 		"docs/notlakefile.toml",
 		"specs/001-a.md",
+		"proof s/ü/lakefile.toml",
 		"",
-	}, "\n")
+	}, "\x00")
 	dirs, err := LakeProjects(fake(t, &calls, listed))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(dirs, []string{".", "formal"}) {
+	if !slices.Equal(dirs, []string{".", "formal", "proof s/ü"}) {
 		t.Fatalf("projects %v", dirs)
 	}
-	if len(calls) != 1 || calls[0].name != "git" || !slices.Contains(calls[0].args, "*/lakefile.lean") {
+	// -z, or git quotes the path outside ASCII and it matches no lakefile.
+	if len(calls) != 1 || calls[0].name != "git" || !slices.Contains(calls[0].args, "*/lakefile.lean") || !slices.Contains(calls[0].args, "-z") {
 		t.Fatalf("asked %v", calls)
 	}
 	if _, err := LakeProjects(fake(t, &calls, errors.New("not a git repository"))); err == nil ||
@@ -73,7 +75,7 @@ func TestLeanBuildsEveryProjectWithTheLakeOnPath(t *testing.T) {
 	var listed, builds []call
 	var dirs []string
 	var sb strings.Builder
-	if err := Lean(onPath("/opt/lake"), &sb, fake(t, &listed, "a/lakefile.toml\nb/lakefile.lean\n"), inDirs(&dirs, &builds)); err != nil {
+	if err := Lean(onPath("/opt/lake"), &sb, fake(t, &listed, "a/lakefile.toml\x00b/lakefile.lean\x00"), inDirs(&dirs, &builds)); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(dirs, []string{"a", "b"}) || len(listed) != 1 {
@@ -95,7 +97,7 @@ func TestLeanReportsEveryProjectWithAWarning(t *testing.T) {
 	var listed, builds []call
 	var dirs []string
 	err := Lean(onPath("lake"), &strings.Builder{},
-		fake(t, &listed, "a/lakefile.toml\nb/lakefile.toml\nc/lakefile.toml\n"), inDirs(&dirs, &builds, "a", "c"))
+		fake(t, &listed, "a/lakefile.toml\x00b/lakefile.toml\x00c/lakefile.toml\x00"), inDirs(&dirs, &builds, "a", "c"))
 	if err == nil || !strings.Contains(err.Error(), "2 of 3 Lake projects") ||
 		!strings.Contains(err.Error(), "a, c") || !strings.Contains(err.Error(), "sorry") {
 		t.Fatalf("got %v", err)
@@ -160,7 +162,7 @@ func (m *machine) exec(env []string, stream bool, name string, args ...string) (
 	}
 	switch base {
 	case "git":
-		return []byte("formal/lakefile.toml\n"), nil
+		return []byte("formal/lakefile.toml\x00"), nil
 	case "curl":
 		return nil, os.WriteFile(args[slices.Index(args, "-o")+1], m.archive, 0o644)
 	case "elan-init":

@@ -152,7 +152,7 @@ func TestPlanSkipsAGateWithNoSubject(t *testing.T) {
 func TestPlanRunsLeanForATrackedLakeProject(t *testing.T) {
 	lake := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
 		if name == "git" && slices.Contains(args, "*/lakefile.toml") {
-			return []byte("formal/lakefile.toml\n"), nil
+			return []byte("formal/lakefile.toml\x00"), nil
 		}
 		return withSpecs(nil, false, name, args...)
 	}
