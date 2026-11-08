@@ -43,6 +43,16 @@ while getopts no:x: flag; do
 done
 shift $((OPTIND - 1))
 
+# A repository is a plain name: it becomes a folder under the working
+# directory, which is removed with rm -rf.
+for name in "$@"; do
+  if ! [[ $name =~ ^[A-Za-z0-9._-]+$ ]] || [ "$name" = . ] || [ "$name" = .. ]; then
+    echo "bump-private: '$name' is not a repository name" >&2
+    sed -n '/^# Usage:/,/^# Needs/p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+  fi
+done
+
 for tool in gh git go jq; do
   command -v "$tool" >/dev/null || { echo "bump-private: $tool is not on PATH" >&2; exit 2; }
 done
@@ -139,13 +149,19 @@ for repo in "${repos[@]}"; do
     continue
   fi
 
-  before=$(directives "$mod")
+  if ! before=$(directives "$mod" 2>> "$log"); then
+    fail "$repo" "go mod edit could not read go.mod ($log)"
+    continue
+  fi
   if ! { go -C "$mod" get -tool "latere.ai/x/ci-gate/cmd/lateregate@$latest" &&
     go -C "$mod" mod tidy; } >> "$log" 2>&1; then
     fail "$repo" "moving the pin failed ($log)"
     continue
   fi
-  after=$(directives "$mod")
+  if ! after=$(directives "$mod" 2>> "$log"); then
+    fail "$repo" "go mod edit could not read go.mod after moving the pin ($log)"
+    continue
+  fi
   if [ "$before" != "$after" ]; then
     fail "$repo" "moving the pin to $latest changes go.mod from $before to $after; raise Go by hand first"
     continue
@@ -158,9 +174,15 @@ for repo in "${repos[@]}"; do
     continue
   fi
 
-  git -C "$dir" add "$module/go.mod" "$module/go.sum"
-  git -C "$dir" commit -q -m "gate: ci-gate $latest"
-  branch=$(git -C "$dir" symbolic-ref --short refs/remotes/origin/HEAD)
+  if ! { git -C "$dir" add "$module/go.mod" "$module/go.sum" &&
+    git -C "$dir" commit -q -m "gate: ci-gate $latest"; } >> "$log" 2>&1; then
+    fail "$repo" "committing the new pin failed ($log)"
+    continue
+  fi
+  if ! branch=$(git -C "$dir" symbolic-ref --short refs/remotes/origin/HEAD 2>> "$log"); then
+    fail "$repo" "the default branch is unknown: origin/HEAD is not set in the clone ($log)"
+    continue
+  fi
   branch=${branch#origin/}
   git -C "$dir" config core.hooksPath .githooks
   pushed=false
