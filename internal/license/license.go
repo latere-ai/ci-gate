@@ -42,6 +42,33 @@ const (
 // diff, and a gate that fails for a reason nobody caused gets skipped.
 var year = regexp.MustCompile(`^\d{4}(-\d{4})?$`)
 
+// firstYear is the earliest copyright year accepted; the latest is next
+// year, so a notice written just before 1 January is not wrong the day after.
+const firstYear = 1970
+
+// thisYear is the current calendar year.
+func thisYear() int { return time.Now().Year() }
+
+// validYear reports whether s is a year, or a range of years in order, each
+// between firstYear and next year.
+func validYear(s string) bool {
+	if !year.MatchString(s) {
+		return false
+	}
+	from, to, isRange := strings.Cut(s, "-")
+	a, err := strconv.Atoi(from)
+	if err != nil {
+		return false
+	}
+	b := a
+	if isRange {
+		if b, err = strconv.Atoi(to); err != nil {
+			return false
+		}
+	}
+	return a >= firstYear && a <= b && b <= thisYear()+1
+}
+
 // fingerprints maps each identifier a repository may declare to phrases that
 // are in the canonical text of that license and in no other the fleet uses.
 // The two "only"/"or-later" forms of a GNU license share one text, so they
@@ -280,8 +307,9 @@ func check(src, prefix string, cfg config.License) string {
 	if len(fields) == 0 {
 		return CopyrightTag + " carries no year or holder"
 	}
-	if !year.MatchString(fields[0]) {
-		return CopyrightTag + " starts with " + quote(fields[0]) + ", not a year"
+	if !validYear(fields[0]) {
+		return CopyrightTag + " starts with " + quote(fields[0]) + ", not a year from " +
+			itoa(firstYear) + " to " + itoa(thisYear()+1)
 	}
 	if holder := strings.Join(fields[1:], " "); holder != cfg.Holder {
 		return "holder is " + quote(holder) + ", declared " + quote(cfg.Holder)

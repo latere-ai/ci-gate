@@ -8,8 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -85,5 +87,23 @@ func TestAnUnsetHolderFailsTheGate(t *testing.T) {
 	}
 	if _, err := Files(config.License{SPDX: "MIT"}, root, []string{"a.go"}); err == nil {
 		t.Fatal("the hook passed with no holder")
+	}
+}
+
+// A year is a real one, from 1970 through next year; a range runs forward.
+func TestOnlyARealCopyrightYearPasses(t *testing.T) {
+	year := time.Now().Year()
+	for _, tc := range []struct {
+		y    string
+		want bool
+	}{
+		{"0000", false}, {"9999", false}, {"1969", false}, {"1970", true},
+		{strconv.Itoa(year), true}, {strconv.Itoa(year + 1), true}, {strconv.Itoa(year + 2), false},
+		{"2020-" + strconv.Itoa(year), true}, {"2025-2020", false}, {"2020-9999", false},
+	} {
+		src := "// SPDX-FileCopyrightText: " + tc.y + " Latere AI\n// SPDX-License-Identifier: MIT\n\npackage a\n"
+		if got := check(src, "//", scopeCfg()) == ""; got != tc.want {
+			t.Errorf("year %q accepted = %v, want %v", tc.y, got, tc.want)
+		}
 	}
 }
