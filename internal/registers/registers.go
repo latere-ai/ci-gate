@@ -12,8 +12,10 @@
 // passed to WriteError. Each is a mechanical tell, so it is a gate.
 //
 // The scan parses each file and looks only at calls to the functions the
-// repository named as user surfaces, then at the string literals in their
-// arguments, including a literal nested in a fmt.Sprintf argument. It reads
+// repository named as user surfaces, then at the strings in their arguments:
+// literals, including one nested in a fmt.Sprintf argument, and package-level
+// string constants named there, in this package or an imported one of the
+// tree. It reads
 // no type information: a surface is matched by import path and name, so a
 // method or a function passed as a value is not seen, and the repository
 // names the package-level functions its user output goes through.
@@ -92,7 +94,7 @@ func Run(cfg config.Registers, root string, out io.Writer) error {
 	}
 	calls := map[string]int{}
 	var found []Finding
-	scanned := 0
+	var srcs []*source
 	fset := token.NewFileSet()
 	// The file list is what git tracks, so a scratch file or a git-ignored
 	// build directory is read on no machine, and a laptop and a clean CI
@@ -114,9 +116,12 @@ func Run(cfg config.Registers, root string, out io.Writer) error {
 		if !ok {
 			continue
 		}
-		scanned++
-		pkgPath := path.Join(module, path.Dir(rel))
-		found = append(found, fileFindings(fset, file, rel, pkgPath, module, surfaces, calls)...)
+		srcs = append(srcs, &source{rel: rel, pkgPath: path.Join(module, path.Dir(rel)), file: file})
+	}
+	scanned := len(srcs)
+	ix := newIndex(srcs)
+	for _, s := range srcs {
+		found = append(found, fileFindings(fset, s, module, surfaces, calls, ix)...)
 	}
 	if scanned == 0 {
 		return fmt.Errorf("no non-test Go files found under %s; the gate would pass vacuously", root)
@@ -160,44 +165,26 @@ func parse(fset *token.FileSet, path string, src []byte) (*ast.File, bool) {
 // fileFindings walks one parsed file for calls to a surface and checks the
 // string literals in their arguments. calls counts every matched call, so
 // the caller can tell a clean surface from one the tree never reaches.
-func fileFindings(fset *token.FileSet, file *ast.File, rel, pkgPath, module string, surfaces []config.Surface, calls map[string]int) []Finding {
-	imports := map[string]string{} // local name -> import path
-	for _, imp := range file.Imports {
-		if imp.Path == nil {
-			continue
-		}
-		ip, err := strconv.Unquote(imp.Path.Value)
-		if err != nil {
-			continue
-		}
-		local := path.Base(ip)
-		if imp.Name != nil {
-			local = imp.Name.Name
-		}
-		imports[local] = ip
-	}
+func fileFindings(fset *token.FileSet, src *source, module string, surfaces []config.Surface, calls map[string]int, ix *index) []Finding {
+	imports := ix.imports(src.file)
 	var out []Finding
-	ast.Inspect(file, func(n ast.Node) bool {
+	ast.Inspect(src.file, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-		s, ok := calledSurface(call, imports, pkgPath, module, surfaces)
+		s, ok := calledSurface(call, imports, src.pkgPath, module, surfaces)
 		if !ok {
 			return true
 		}
 		key := s.Pkg + "." + s.Func
 		calls[key]++
 		for _, arg := range call.Args {
-			for _, lit := range stringLiterals(arg) {
-				text, err := strconv.Unquote(lit.Value)
-				if err != nil {
-					continue
-				}
+			for _, tx := range ix.argTexts(arg, src.pkgPath, imports) {
 				for _, t := range tells {
-					if m := t.match(text); m != "" {
+					if m := t.match(tx.str); m != "" {
 						out = append(out, Finding{
-							Rel: rel, Line: fset.Position(lit.Pos()).Line,
+							Rel: src.rel, Line: fset.Position(tx.pos).Line,
 							Surface: key, Tell: t.name, Text: m,
 						})
 					}
@@ -242,19 +229,6 @@ func calledSurface(call *ast.CallExpr, imports map[string]string, pkgPath, modul
 // module or in full, is the import path.
 func samePackage(surface, importPath, module string) bool {
 	return surface == importPath || path.Join(module, surface) == importPath
-}
-
-// stringLiterals collects every string literal under e, so a literal built
-// by concatenation or passed through fmt.Sprintf is still read.
-func stringLiterals(e ast.Expr) []*ast.BasicLit {
-	var out []*ast.BasicLit
-	ast.Inspect(e, func(n ast.Node) bool {
-		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-			out = append(out, lit)
-		}
-		return true
-	})
-	return out
 }
 
 // match returns the offending text, or "" when the tell is absent.

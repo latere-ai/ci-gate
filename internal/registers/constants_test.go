@@ -65,3 +65,87 @@ func TestAnUntrackableTreeFailsWithTheReason(t *testing.T) {
 		t.Fatalf("err = %v, want git named", err)
 	}
 }
+
+func TestAMessageHeldInAConstantIsRead(t *testing.T) {
+	callers := map[string]string{
+		"same package": "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/app/internal/api\"\n)\n\n" +
+			"const msg = \"apply Deployment insula-p-3f2a/api: store.Deploy not found\"\n\n" +
+			"func h(w http.ResponseWriter) { api.WriteError(w, \"deploy_failed\", msg) }\n",
+		"concatenated": "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/app/internal/api\"\n)\n\n" +
+			"const prefix = \"deploy failed: \"\nconst msg = prefix + \"store.Deploy not found\"\n\n" +
+			"func h(w http.ResponseWriter) { api.WriteError(w, \"deploy_failed\", msg) }\n",
+		"another package": "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/app/internal/api\"\n\t\"example.com/app/internal/text\"\n)\n\n" +
+			"func h(w http.ResponseWriter) { api.WriteError(w, \"deploy_failed\", text.Failed) }\n",
+	}
+	for name, main := range callers {
+		t.Run(name, func(t *testing.T) {
+			root := module(t, map[string]string{
+				"internal/api/api.go":   apiPkg,
+				"internal/text/text.go": "package text\n\nconst Failed = \"apply Deployment insula-p-3f2a/api: store.Deploy not found\"\n",
+				"cmd/app/main.go":       main,
+			})
+			out, err := run(t, surfaces("internal/api.WriteError"), root)
+			if err == nil || !strings.Contains(err.Error(), "developer sentence") {
+				t.Fatalf("a developer sentence held in a constant was not found (err %v):\n%s", err, out)
+			}
+			if !strings.Contains(out, "main.go:") {
+				t.Errorf("the finding should name the call site:\n%s", out)
+			}
+		})
+	}
+}
+
+func TestAConstantInUserRegisterPasses(t *testing.T) {
+	root := module(t, map[string]string{
+		"internal/api/api.go": apiPkg,
+		"cmd/app/main.go": "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/app/internal/api\"\n)\n\n" +
+			"const a = \"This deploy is still running.\"\nconst b = b2\nconst b2 = a\n\n" +
+			"func h(w http.ResponseWriter, err error) { api.WriteError(w, \"c\", b); api.WriteError(w, \"c\", err.Error()) }\n",
+	})
+	if out, err := run(t, surfaces("internal/api.WriteError"), root); err != nil {
+		t.Fatalf("a constant in the user's register failed: %v\n%s", err, out)
+	}
+}
+
+func TestACallThroughAVersionedImportIsMatched(t *testing.T) {
+	root := module(t, map[string]string{
+		"internal/api/api.go": apiPkg,
+		"cmd/a/main.go": "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/app/internal/api\"\n)\n\n" +
+			"func h(w http.ResponseWriter) { api.WriteError(w, \"ok\", \"try again\") }\n",
+		"cmd/b/main.go": "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/app/internal/api/v2\"\n)\n\n" +
+			"func h(w http.ResponseWriter) { api.WriteError(w, \"x\", \"store.Deploy not found\") }\n",
+		"internal/api/v2/api.go": "package api\n\nimport \"net/http\"\n\nfunc WriteError(w http.ResponseWriter, code, msg string) {}\n",
+	})
+	out, err := run(t, surfaces("internal/api.WriteError", "internal/api/v2.WriteError"), root)
+	if err == nil || !strings.Contains(err.Error(), "developer sentence") {
+		t.Fatalf("a call through a /v2 import was not read (err %v):\n%s", err, out)
+	}
+}
+
+func TestACallThroughAnExternalVersionedImportIsMatched(t *testing.T) {
+	root := module(t, map[string]string{
+		"cmd/b/main.go": "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/ext/render/v3\"\n)\n\n" +
+			"func h(w http.ResponseWriter) { render.Error(w, \"store.Deploy not found\") }\n",
+	})
+	out, err := run(t, surfaces("example.com/ext/render/v3.Error"), root)
+	if err == nil || !strings.Contains(err.Error(), "developer sentence") {
+		t.Fatalf("a call through an external /v3 import was not read (err %v):\n%s", err, out)
+	}
+}
+
+func TestLocalNameOfAnImportPath(t *testing.T) {
+	ix := &index{names: map[string]string{"example.com/app/internal/odd": "different"}}
+	for ip, want := range map[string]string{
+		"net/http":                     "http",
+		"example.com/lib/v2":           "lib",
+		"example.com/lib/v10":          "lib",
+		"example.com/app/internal/odd": "different",
+		"gopkg.in/yaml.v3":             "yaml",
+		"gopkg.in/check":               "check",
+		"example.com/v2":               "example.com",
+	} {
+		if got := ix.localName(ip); got != want {
+			t.Errorf("localName(%q) = %q, want %q", ip, got, want)
+		}
+	}
+}
