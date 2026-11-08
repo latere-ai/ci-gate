@@ -63,7 +63,7 @@ type containerWatch struct {
 func watchContainers(out io.Writer) *containerWatch {
 	e, ok := findEngine()
 	if !ok {
-		_, _ = fmt.Fprintln(out, "no container engine socket, so the suite starts no container to watch")
+		_, _ = fmt.Fprintln(out, containers.Missing())
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

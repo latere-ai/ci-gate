@@ -14,8 +14,10 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -53,7 +55,7 @@ func Find() (*Engine, bool) {
 }
 
 func find(getenv func(string) string, socket func(string) bool) (*Engine, bool) {
-	for _, p := range candidates(getenv) {
+	for _, p := range lookup(getenv).sockets {
 		if socket(p) {
 			return Socket(p), true
 		}
@@ -61,27 +63,96 @@ func find(getenv func(string) string, socket func(string) bool) (*Engine, bool) 
 	return nil, false
 }
 
-// candidates are the sockets a client tries, in the order the Docker client
-// and testcontainers do: DOCKER_HOST when it is set, and only it, then the
-// system socket, Docker Desktop's per-user socket and rootless Podman's.
-//
-// A DOCKER_HOST over TCP names an engine this package does not reach, so it
-// yields nothing rather than a default socket that may be another engine.
-func candidates(getenv func(string) string) []string {
-	if h := getenv("DOCKER_HOST"); h != "" {
-		if p, ok := strings.CutPrefix(h, "unix://"); ok {
-			return []string{p}
-		}
-		return nil
+// Missing says why Find found no engine, for a gate that then watches
+// nothing: the engine a client is configured for and this package does not
+// reach, or else the places it looked.
+func Missing() string {
+	return missing(os.Getenv)
+}
+
+func missing(getenv func(string) string) string {
+	l := lookup(getenv)
+	msg := "no container engine found (looked at " + strings.Join(l.sockets, ", ") + ")"
+	if l.unreached != "" {
+		msg = "the engine at " + l.unreached + " is not one this gate reaches"
 	}
-	c := []string{"/var/run/docker.sock"}
-	if home := getenv("HOME"); home != "" {
-		c = append(c, filepath.Join(home, ".docker", "run", "docker.sock"))
+	if l.err != nil {
+		msg += "; " + l.err.Error()
+	}
+	return msg + ", so the suite's containers are not watched"
+}
+
+// propertiesFile is testcontainers' own configuration, in the home directory.
+const propertiesFile = ".testcontainers.properties"
+
+// search is where a client looks for an engine.
+type search struct {
+	// sockets are the unix sockets to try, in order.
+	sockets []string
+	// unreached names the setting, as KEY=value, that points at an engine
+	// this package cannot reach (tcp, ssh), when one does.
+	unreached string
+	// err is a configuration file that exists and could not be read.
+	err error
+}
+
+// lookup lists the sockets a client tries, in the order the Docker client
+// and testcontainers do: DOCKER_HOST when it is set, and only it, then
+// docker.host in ~/.testcontainers.properties, and only it, then the system
+// socket, Docker Desktop's per-user socket and rootless Podman's.
+//
+// A setting over TCP or SSH names an engine this package does not reach, so
+// it yields no socket rather than a default that may be another engine.
+func lookup(getenv func(string) string) search {
+	var l search
+	setting, source := getenv("DOCKER_HOST"), "DOCKER_HOST="
+	home := getenv("HOME")
+	if setting == "" && home != "" {
+		var err error
+		setting, err = propertiesHost(filepath.Join(home, propertiesFile))
+		if err != nil {
+			l.err = err
+		}
+		source = "docker.host=" // in ~/.testcontainers.properties
+	}
+	if setting != "" {
+		if p, ok := strings.CutPrefix(setting, "unix://"); ok {
+			l.sockets = []string{p}
+			return l
+		}
+		l.unreached = source + setting
+		if source != "DOCKER_HOST=" {
+			l.unreached += " in ~/" + propertiesFile
+		}
+		return l
+	}
+	l.sockets = []string{"/var/run/docker.sock"}
+	if home != "" {
+		l.sockets = append(l.sockets, filepath.Join(home, ".docker", "run", "docker.sock"))
 	}
 	if run := getenv("XDG_RUNTIME_DIR"); run != "" {
-		c = append(c, filepath.Join(run, "podman", "podman.sock"))
+		l.sockets = append(l.sockets, filepath.Join(run, "podman", "podman.sock"))
 	}
-	return c
+	return l
+}
+
+// propertiesHost is docker.host in the properties file at path, or "" when
+// the file is missing or does not set it.
+func propertiesHost(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", path, err)
+	}
+	for line := range strings.Lines(string(b)) {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && strings.TrimSpace(k) == "docker.host" {
+			return strings.TrimSpace(v), nil
+		}
+	}
+	return "", nil
 }
 
 // isSocket follows a link, because a Podman machine on macOS is reached

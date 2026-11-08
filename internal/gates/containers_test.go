@@ -223,7 +223,7 @@ func TestSuiteWithoutAnEngineSaysSoAndClaimsNothing(t *testing.T) {
 		t.Fatalf("%s=%q, want the enclosing run's label left as it was", containers.RunEnv, v)
 	}
 	out := sb.String()
-	if !strings.Contains(out, "no container engine socket") || strings.Contains(out, "no container left behind") {
+	if !strings.Contains(out, "containers are not watched") || strings.Contains(out, "no container left behind") {
 		t.Fatalf("the output must say nothing was watched, and not claim otherwise:\n%s", out)
 	}
 }
