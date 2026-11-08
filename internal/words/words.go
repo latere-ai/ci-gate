@@ -37,6 +37,7 @@ import (
 	"strings"
 
 	"latere.ai/x/ci-gate/internal/config"
+	"latere.ai/x/ci-gate/internal/gates"
 )
 
 // Finding is a do-not-use word in what a reader reads: every hit of one
@@ -232,6 +233,12 @@ func describe(a config.WordsAllow) string {
 // matches no file fails: it is a place the repository believes is checked
 // and is not.
 func gather(cfg config.Words, spec config.Spec, root string) ([]read, int, error) {
+	// The files a glob can match are the files git tracks, so a scratch file
+	// or a git-ignored directory is read on no machine.
+	tracked, err := gates.TrackedFiles(root, "the files words reads", nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("%w; run it inside a git checkout", err)
+	}
 	var reads []read
 	skipped := 0
 	for _, src := range []struct {
@@ -244,7 +251,7 @@ func gather(cfg config.Words, spec config.Spec, root string) ([]read, int, error
 	} {
 		var rels []string
 		for _, g := range src.globs {
-			matched, err := files(root, g)
+			matched, err := files(root, tracked, g)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -279,7 +286,7 @@ func gather(cfg config.Words, spec config.Spec, root string) ([]read, int, error
 		}
 	}
 	if cfg.SpecOverview {
-		rels, err := files(root, path.Join(spec.Dir, "*.md"))
+		rels, err := files(root, tracked, path.Join(spec.Dir, "*.md"))
 		if err != nil {
 			return nil, 0, err
 		}
@@ -341,28 +348,55 @@ func latest(rels, keep []string) ([]string, int, error) {
 	return out, skipped, nil
 }
 
-// files is every regular file the glob matches under root, as sorted
-// slash-separated paths relative to it.
-func files(root, glob string) ([]string, error) {
-	matches, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(glob)))
-	if err != nil {
-		return nil, fmt.Errorf("reading the glob %s: %w", glob, err)
+// files is every regular tracked file the glob matches, as sorted
+// slash-separated paths relative to root.
+//
+// A glob is slash-separated segments matched with path.Match, and a segment
+// of ** matches any number of directories, none included, so prompts/**/*.md
+// reads prompts/a.md and prompts/x/y/a.md alike.
+func files(root string, tracked []string, glob string) ([]string, error) {
+	segs := strings.Split(glob, "/")
+	for _, seg := range segs {
+		if _, err := path.Match(seg, ""); err != nil {
+			return nil, fmt.Errorf("reading the glob %s: %w", glob, err)
+		}
 	}
 	var out []string
-	for _, m := range matches {
-		info, err := os.Stat(m)
-		if err != nil {
-			return nil, err
-		}
-		if !info.Mode().IsRegular() {
+	for _, rel := range tracked {
+		if !globMatch(segs, strings.Split(rel, "/")) {
 			continue
 		}
-		rel, err := filepath.Rel(root, m)
+		info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, filepath.ToSlash(rel))
+		if info.Mode().IsRegular() {
+			out = append(out, rel)
+		}
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// globMatch reports whether the path's segments match the glob's.
+func globMatch(glob, name []string) bool {
+	for len(glob) > 0 {
+		if glob[0] == "**" {
+			rest := glob[1:]
+			for i := 0; i <= len(name); i++ {
+				if globMatch(rest, name[i:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if len(name) == 0 {
+			return false
+		}
+		if ok, err := path.Match(glob[0], name[0]); err != nil || !ok {
+			return false
+		}
+		glob, name = glob[1:], name[1:]
+	}
+	return len(name) == 0
 }

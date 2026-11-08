@@ -61,7 +61,12 @@ func tree(t *testing.T, files map[string]string) string {
 			t.Fatal(err)
 		}
 	}
-	return filepath.Join(root, "repo")
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitTrack(t, repo)
+	return repo
 }
 
 // base is the fixture list, decoded and held to the rules of a list.
