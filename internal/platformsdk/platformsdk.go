@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"latere.ai/x/ci-gate/internal/config"
+	"latere.ai/x/ci-gate/internal/gates"
 )
 
 // Finding is one place a client reaches the platform outside the SDK.
@@ -157,46 +158,52 @@ var pruned = []string{".git", ".claude", "testdata", "node_modules", "vendor"}
 // the pruned and skipped directories. A file the parser cannot read is left
 // out: that is a build failure, which the compiler reports better.
 func load(fset *token.FileSet, root string, skip []string) ([]*srcFile, error) {
-	modules := map[string]string{}
-	var files []*srcFile
-	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		name := d.Name()
-		if d.IsDir() {
-			if p != root && (slices.Contains(pruned, name) || slices.Contains(skip, name)) {
-				return filepath.SkipDir
-			}
-			mod, ok, err := modulePath(p)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return nil
-			}
-			if mod == SDK || strings.HasPrefix(mod, SDK+"/") {
-				return filepath.SkipDir
-			}
-			modules[p] = mod
-			return nil
-		}
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			return nil
-		}
-		file, err := parser.ParseFile(fset, p, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return nil //nolint:nilerr // an unparsable file is the compiler's to report
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
-		files = append(files, &srcFile{rel: filepath.ToSlash(rel), pkg: importPath(modules, root, filepath.Dir(p)), ast: file})
-		return nil
-	})
+	// The file list is what git tracks, so a scratch file or a git-ignored
+	// build directory is read on no machine, and a laptop and a clean CI
+	// checkout agree.
+	tracked, err := gates.TrackedFiles(root, "the Go files that may call the platform",
+		append(slices.Clone(pruned), skip...), "*.go", "go.mod", "*/go.mod")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w; run it inside a git checkout", err)
+	}
+	modules := map[string]string{}
+	var sdkDirs []string
+	for _, rel := range tracked {
+		if path.Base(rel) != "go.mod" {
+			continue
+		}
+		dir := filepath.Join(root, filepath.FromSlash(path.Dir(rel)))
+		mod, ok, err := modulePath(dir)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		if mod == SDK || strings.HasPrefix(mod, SDK+"/") {
+			sdkDirs = append(sdkDirs, path.Dir(rel))
+			continue
+		}
+		modules[dir] = mod
+	}
+	var files []*srcFile
+	for _, rel := range tracked {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		if slices.ContainsFunc(sdkDirs, func(d string) bool { return d == "." || rel == d || strings.HasPrefix(rel, d+"/") }) {
+			continue
+		}
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		src, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		file, err := parser.ParseFile(fset, p, src, parser.SkipObjectResolution)
+		if err != nil {
+			continue // an unparsable file is the compiler's to report
+		}
+		files = append(files, &srcFile{rel: rel, pkg: importPath(modules, root, filepath.Dir(p)), ast: file})
 	}
 	names := map[string]string{}
 	for _, f := range files {

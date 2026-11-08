@@ -33,6 +33,7 @@ func module(t *testing.T, files map[string]string) string {
 			t.Fatal(err)
 		}
 	}
+	gitTrack(t, root)
 	return root
 }
 
@@ -490,6 +491,7 @@ func TestATreeWithoutAModuleResolvesByDirectory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	gitTrack(t, root)
 	out, err := run(t, config.PlatformViaSDK{}, root)
 	expect(t, out, err,
 		"c/c.go:5: platform route /v1/agents/triggers in a string; use ListTriggers, ListTriggersPage, ListRoutines or ListRoutinesPage in latere.ai/x/sdk-go/agents",
@@ -507,13 +509,15 @@ func TestAnUnreadableRootFails(t *testing.T) {
 // A go.mod that cannot be read stops the scan rather than passing over its
 // module.
 func TestAnUnreadableGoModFails(t *testing.T) {
-	root := module(t, map[string]string{"c.go": "package client\n"})
-	if err := os.Mkdir(filepath.Join(root, "sub"), 0o755); err != nil {
+	if os.Getuid() == 0 {
+		t.Skip("root reads every file")
+	}
+	root := module(t, map[string]string{"c.go": "package client\n", "sub/go.mod": "module example.com/sub\n"})
+	locked := filepath.Join(root, "sub", "go.mod")
+	if err := os.Chmod(locked, 0o000); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(root, "sub", "go.mod"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o644) })
 	_, err := run(t, config.PlatformViaSDK{}, root)
 	if err == nil || !strings.Contains(err.Error(), "scanning for platform routes") {
 		t.Fatalf("want a scan error, got %v", err)
