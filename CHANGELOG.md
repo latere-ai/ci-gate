@@ -18,6 +18,129 @@ committed: the commit log already holds that.
   only when every gate passes. A private repository no longer moves its
   pin on GitHub Actions ([releasing guide](docs/releasing.md#moving-the-pin)).
 
+### Changed
+
+- **`hermetic` and the suite's stripped `PATH` hold only `go` and `gofmt`.**
+  The stripped `PATH` used to hold the whole directory `go` was found in,
+  which on Homebrew is hundreds of tools. A test that calls another of them
+  fails here as it would on a runner: add that tool's directory to
+  `hermetic.allow`, or stop calling it.
+- **`otel-client` reports the `net/http` helpers that use the default
+  client.** `http.Get`, `http.Post`, `http.Head`, `http.PostForm`,
+  `new(http.Client)` and a zero `var c http.Client` are reported, by the gate
+  and by the pre-commit hook. Send the call through an `http.Client` whose
+  `Transport` is instrumented.
+- **`registers` reads messages held in constants.** A package-level string
+  constant passed to a register call is read, whether it is declared in the
+  same package, in another package of the tree, or as a sum of constants, and
+  a call through a versioned import path such as `.../v2` is matched. A
+  developer sentence kept in a constant fails the gate: move it to the log or
+  the details field.
+- **The source scans read the files git tracks.** `cgo-free`, `otel-client`,
+  `registers`, `platform-via-sdk` and `license` read what `git ls-files`
+  lists, not a walk of the directory, so a laptop with scratch files or
+  ignored build output reads what a clean CI checkout reads. Outside a git
+  checkout they fail and say so. `license` leaves out `vendor`, and
+  `cgo-free` leaves out `node_modules`.
+- **`cgo-free` parses imports.** `import "C"` is found however it is written,
+  and a tracked Go file that does not parse fails the gate with its name and
+  the parse error.
+- **`license.holder` has no default.** The gate fails until it is set to the
+  copyright holder. A copyright year must lie between 1970 and next year.
+- **`golangci.extra` may only add to the shared bar.** An `extra` that
+  disables a linter, empties a deny list or replaces the exclusion rules is
+  refused.
+- **`spec-lint` applies where `spec.dir` points.** A repository whose specs
+  live outside `specs/` is linted.
+- **`modernize` fails when `go fix` does not run.** A failing `go fix` with
+  no patch passes only when its error is a build error, which the build gates
+  report; an unknown flag, a crash or a missing tool fails the gate.
+- **A `cover.exempt` key matches whole path elements.** `api` exempts
+  `example.com/m/api`, not `example.com/m/grapi`. An empty key in
+  `cover.exempt` or `tempdir.allow` is refused, since it would match
+  everything.
+- **`contract` reports every key that restates its default.** The list
+  includes `license.extensions: [.go]`, `tempdir.command`,
+  `identity.reached_by: clients`, and an e2e suite's default `timeout` and
+  `on`. Delete the line.
+- **Every command refuses a waiver that names no gate.** The hooks,
+  `contract` and `init` refuse it too, where only the commands that plan the
+  bar did.
+- **A leak is reported on every run until it is gone.** After the suite or
+  `tempdir` finds something left behind, the next runs bypass the test cache
+  until one leaves nothing, so a cached pass cannot hide the leak.
+- **A helper's container sweep leaves the current run's containers to the
+  run.** A container one test package leaks is no longer removed by a later
+  package's `reap.Sweep`, so the suite names it. Give each test package a
+  `TestMain` that stops what it starts.
+- **A removal the engine refuses no longer turns the leak check off.** The
+  opening sweep prints the refusal as a warning and the watch starts, so a
+  suite that leaks fails where it used to pass silently.
+- **A command comes before its flags.** `lateregate -C DIR release v1.2.3`
+  ran the bar and exited 0; it is refused with a message that shows the right
+  order, and `check` takes no argument. `lateregate <command> -h` prints the
+  usage. `CI=false` and `CI=0` are not a CI run, so a laptop that sets them
+  gets the change-scoped bar.
+- **`init` leaves a repository's own choices alone.** It writes
+  `.github/workflows/ci.yml` only when no workflow calls the shared one, at
+  any ref, and keeps a `core.hooksPath` set to something other than
+  `.githooks`, printing the command to change it. It needs a git repository
+  and writes nothing outside one. An existing `pre-commit` or `pre-push`
+  without the executable bit is made executable, since git never ran it. The
+  closing `next:` line lists only the steps still left.
+- **`release` reads its version more strictly.** It refuses a version that is
+  not valid semver, a version the changelog already has a section for, and a
+  cut while a CI run at `HEAD` is unfinished, even when an older run is
+  green. `release.stamp` replaces a prerelease version whole, suffix
+  included.
+
+### Fixed
+
+- **The change-scoped bar reaches what a change reaches.** A file the build
+  leaves out by a build tag counts when finding the importers of a changed
+  package, and a change in a nested module the root module reaches through
+  `replace` or `go.work` checks the whole tree.
+- **`push` moves `latest` only for origin's newest release tag**, and stops
+  when origin's tags cannot be read.
+- **`deploy` refuses an archive entry written through a link it created.**
+- **`scripts/bump-private.sh` goes on to the next repository after a command
+  fails**, and refuses a repository argument that is not a plain name.
+- **`fmt-check` and the pre-commit hook agree with the compiler.** They use
+  the `gofmt` of the toolchain `-go` names, leave out `testdata` and files
+  deleted in the working tree, and show `gofmt`'s own message when it fails.
+- **A package below the coverage floor never shows the floor's figure.** The
+  percentage is cut off at one decimal, not rounded up. A package whose only
+  code is a function literal in a `var` is listed.
+- **`spec-lint` resolves a wikilink with an alias or a heading**, and
+  compares the index status ignoring case when there is no status vocabulary,
+  exactly when there is one.
+- **`identity`'s closing line counts only the rules that ran** and names the
+  ones it skipped.
+- **`manifests` reads a kustomization's `kind` as YAML**, so a `Component`
+  written with a comment, quotes or flow style is left out.
+- **A `words` glob's `**` matches any number of directories**, none
+  included, over the tracked files. A glob that only an ignored or untracked
+  file satisfies matches no file.
+- **A tracked path with a space or a byte outside ASCII is read.** Every list
+  of tracked files is read NUL separated, where git quoted such a path and
+  the gates passed over it.
+- **The `tempdir` sandbox belongs to one checkout.** Two checkouts whose
+  directories share a name get a sandbox and a lock each. A read-only tree
+  under the sandbox is made writable before it is removed, and an interrupt
+  during the suite or `tempdir` releases the sandbox, removes the run's
+  containers, and exits 130 or 143.
+- **The container gate says which engine it could not reach.** It names a TCP
+  or SSH `DOCKER_HOST`, or lists the places it looked, and reads `docker.host`
+  from `~/.testcontainers.properties` as the Testcontainers clients do. The
+  run's own check removes only what carries its run label, whatever the
+  engine's filter returns, and a machine that cannot name itself labels its
+  containers with a host name a sweep can read.
+- **An e2e service container is the run's own.** Its name carries a random
+  suffix, only the container a start reported is removed, and a start that
+  fails shows the engine's reason.
+- **The `check` summary shows `FAIL` for a gate whose error has an empty
+  first line.**
+
 ## v0.70.1 - 2026-11-06
 
 ### Fixed
