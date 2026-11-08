@@ -110,6 +110,13 @@ func Run(cfg config.License, root string, out io.Writer) error {
 			"repository is released under, e.g. license.spdx: MIT",
 			config.Name)
 	}
+	if strings.TrimSpace(cfg.Holder) == "" {
+		return fmt.Errorf("license.holder is not set in %s\n"+
+			"the notice names who holds the copyright, and a notice naming nobody "+
+			"is not one. Set license.holder to the holder every file carries, "+
+			"e.g. license.holder: Latere AI",
+			config.Name)
+	}
 	text, err := os.ReadFile(filepath.Join(root, "LICENSE"))
 	if err != nil {
 		return fmt.Errorf("no LICENSE file at %s\n"+
@@ -199,6 +206,9 @@ func Tracks(cfg config.License, rels []string) bool {
 func Files(cfg config.License, root string, rels []string) ([]string, error) {
 	if strings.TrimSpace(cfg.SPDX) == "" {
 		return nil, fmt.Errorf("license.spdx is not set in %s", config.Name)
+	}
+	if strings.TrimSpace(cfg.Holder) == "" {
+		return nil, fmt.Errorf("license.holder is not set in %s", config.Name)
 	}
 	var bad []string
 	for _, rel := range rels {

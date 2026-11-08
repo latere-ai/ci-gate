@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"latere.ai/x/ci-gate/internal/config"
@@ -70,5 +71,19 @@ func TestAVendorTreeIsNotChecked(t *testing.T) {
 	bad, err := Files(scopeCfg(), root, []string{"vendor/dep/dep.go"})
 	if err != nil || len(bad) != 0 {
 		t.Fatalf("the hook checked vendor/: %v %v", bad, err)
+	}
+}
+
+// With license.holder unset a notice that names nobody must not pass.
+func TestAnUnsetHolderFailsTheGate(t *testing.T) {
+	root := t.TempDir()
+	scopeFile(t, root, "LICENSE", scopeMIT)
+	scopeFile(t, root, "a.go", "// SPDX-FileCopyrightText: 2026\n// SPDX-License-Identifier: MIT\n\npackage a\n")
+	err := Run(config.License{SPDX: "MIT"}, root, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "license.holder is not set") {
+		t.Fatalf("want a license.holder failure, got %v", err)
+	}
+	if _, err := Files(config.License{SPDX: "MIT"}, root, []string{"a.go"}); err == nil {
+		t.Fatal("the hook passed with no holder")
 	}
 }
