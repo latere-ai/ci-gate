@@ -437,7 +437,7 @@ func TestALostPackageTheRunHoldsNeedsNoOtherRun(t *testing.T) {
 	}, map[string]string{"x/x.go": "package x\n\nfunc X() int { return 0 }\n"})
 	r := &tester{}
 	err := floor(t, c, r)
-	if err == nil || !strings.Contains(err.Error(), "b 66.7%") {
+	if err == nil || !strings.Contains(err.Error(), "b 66.6%") {
 		t.Fatalf("b's figure is the run's: %v\n%s", err, sb.String())
 	}
 	if len(r.runs) != 1 {

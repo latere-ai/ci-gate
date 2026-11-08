@@ -85,18 +85,19 @@ func floor(cfg config.Cover, profiles []string, out io.Writer, list Lister, judg
 			continue // no statements: nothing to cover
 		}
 		pct := 100 * float64(c.covered) / float64(c.total)
+		shown := truncated(c.covered, c.total)
 		if why, ok := cfg.ExemptFor(p); ok {
-			_, _ = fmt.Fprintf(out, "     %-44s %6.1f%%  exempt: %s\n", short(cfg, p), pct, why)
+			_, _ = fmt.Fprintf(out, "     %-44s %6s%%  exempt: %s\n", short(cfg, p), shown, why)
 			continue
 		}
 		measured++
 		mark := "ok  "
 		if pct < cfg.Threshold {
 			mark = "FAIL"
-			failed = append(failed, fmt.Sprintf("%s %.1f%%", short(cfg, p), pct))
+			failed = append(failed, fmt.Sprintf("%s %s%%", short(cfg, p), shown))
 		}
-		_, _ = fmt.Fprintf(out, "%s %-44s %6.1f%%  (%d/%d statements)\n",
-			mark, short(cfg, p), pct, c.covered, c.total)
+		_, _ = fmt.Fprintf(out, "%s %-44s %6s%%  (%d/%d statements)\n",
+			mark, short(cfg, p), shown, c.covered, c.total)
 	}
 
 	missing, err := unmeasured(cfg, byPkg, list)
@@ -126,6 +127,16 @@ func floor(cfg config.Cover, profiles []string, out io.Writer, list Lister, judg
 	}
 	_, _ = fmt.Fprintf(out, "\nevery package clears %.0f%% (%d measured)\n", cfg.Threshold, measured)
 	return nil
+}
+
+// truncated renders covered/total as a percentage with one decimal, cutting
+// the rest off rather than rounding. The floor compares the exact figure, so
+// a rounded print could show a failing 89.96% as 90.0%, a FAIL line that
+// reads as meeting the floor; cut off, it shows 89.9%. Integer arithmetic
+// keeps a figure like 89.7 from reading 89.6 through float error.
+func truncated(covered, total int) string {
+	tenths := covered * 1000 / total
+	return fmt.Sprintf("%d.%d", tenths/10, tenths%10)
 }
 
 // unmeasured lists the packages the module holds that the profiles never
