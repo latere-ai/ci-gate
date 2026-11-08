@@ -22,6 +22,7 @@ func writeGo(t *testing.T, rel, src string) string {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	gitTrack(t, root)
 	return root
 }
 
@@ -106,6 +107,7 @@ func TestOtelClient_IgnoresTestFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "b.go"), []byte("package p\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	gitTrack(t, root)
 	var buf bytes.Buffer
 	if err := OtelClient(root, &buf, nil); err != nil {
 		t.Errorf("gate flagged a _test.go file: %v", err)
@@ -116,7 +118,9 @@ func TestOtelClient_IgnoresTestFiles(t *testing.T) {
 // meaningful. A gate that reads nothing must not report success.
 func TestOtelClient_VacuousScanFails(t *testing.T) {
 	var buf bytes.Buffer
-	err := OtelClient(t.TempDir(), &buf, nil)
+	root := t.TempDir()
+	gitIn(t, root, "init", "-q")
+	err := OtelClient(root, &buf, nil)
 	if err == nil {
 		t.Fatal("gate passed on a tree with no Go files")
 	}
@@ -132,6 +136,7 @@ func TestOtelClient_SkipsNamedDirectories(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "b.go"), []byte("package p\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	gitTrack(t, root)
 
 	var buf bytes.Buffer
 	if err := OtelClient(root, &buf, nil); err == nil {
@@ -175,6 +180,7 @@ func TestOtelClient_SkipsAgentWorktrees(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "b.go"), []byte("package p\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	gitTrack(t, root)
 	var buf bytes.Buffer
 	if err := OtelClient(root, &buf, nil); err != nil {
 		t.Errorf("gate walked into .claude: %v\n%s", err, buf.String())

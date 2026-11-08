@@ -22,6 +22,7 @@ func repo(t *testing.T, files map[string]string) string {
 			t.Fatal(err)
 		}
 	}
+	gitTrack(t, root)
 	return root
 }
 

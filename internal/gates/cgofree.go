@@ -8,10 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 )
 
 // CgoFree reports Go files that import "C".
@@ -26,40 +23,20 @@ import (
 // stale silently.
 func CgoFree(root string, out io.Writer, skip []string) error {
 	var found []string
-	scanned := 0
 	fset := token.NewFileSet()
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		name := d.Name()
-		if d.IsDir() {
-			// Skip the repository's own plumbing and anything the caller
-			// named, but never silently skip a source directory.
-			if name == ".git" || name == "testdata" || name == "node_modules" || slices.Contains(skip, name) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(name, ".go") {
-			return nil
-		}
-		scanned++
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			rel = path
-		}
-		line, ok, err := importsC(fset, path)
+	files, err := TrackedFiles(root, "the Go files to scan for cgo", append([]string{"testdata", "node_modules"}, skip...), "*.go")
+	if err != nil {
+		return fmt.Errorf("scanning for cgo: %w; run it inside a git checkout", err)
+	}
+	scanned := len(files)
+	for _, rel := range files {
+		line, ok, err := importsC(fset, filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			return fmt.Errorf("%s: %w; the gate cannot tell whether it imports \"C\", so fix the syntax first", rel, err)
 		}
 		if ok {
-			found = append(found, fmt.Sprintf("%s:%d", rel, line))
+			found = append(found, fmt.Sprintf("%s:%d", filepath.FromSlash(rel), line))
 		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("scanning for cgo: %w", err)
 	}
 	// A scan that read nothing proves nothing.
 	if scanned == 0 {

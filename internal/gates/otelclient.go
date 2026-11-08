@@ -9,7 +9,6 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -33,37 +32,22 @@ import (
 // to continue, and requiring instrumentation there buys nothing.
 func OtelClient(root string, out io.Writer, skip []string) error {
 	var found []string
-	scanned := 0
 	fset := token.NewFileSet()
-
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		name := d.Name()
-		if d.IsDir() {
-			// .claude holds agent worktrees, which are whole scratch copies of
-			// the repository. Walking them reports the same file twice and
-			// resurrects violations already fixed on the branch.
-			if name == ".git" || name == ".claude" || name == "testdata" || name == "node_modules" || slices.Contains(skip, name) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			return nil
+	// .claude holds agent worktrees, which are whole scratch copies of the
+	// repository. Reading them reports the same file twice and resurrects
+	// violations already fixed on the branch.
+	files, err := TrackedFiles(root, "the Go files to scan for HTTP clients",
+		append([]string{".claude", "testdata", "node_modules"}, skip...), "*.go")
+	if err != nil {
+		return fmt.Errorf("scanning for uninstrumented HTTP clients: %w; run it inside a git checkout", err)
+	}
+	scanned := 0
+	for _, rel := range files {
+		if strings.HasSuffix(rel, "_test.go") {
+			continue
 		}
 		scanned++
-
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			rel = path
-		}
-		found = append(found, findings(fset, path, rel)...)
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("scanning for uninstrumented HTTP clients: %w", err)
+		found = append(found, findings(fset, filepath.Join(root, filepath.FromSlash(rel)), filepath.FromSlash(rel))...)
 	}
 	// A scan that read nothing proves nothing.
 	if scanned == 0 {
