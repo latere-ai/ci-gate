@@ -305,20 +305,6 @@ func TestAnUnreadableSpecIsAnError(t *testing.T) {
 	}
 }
 
-// Without a configured vocabulary the index status cannot be judged, but the
-// links still must resolve.
-func TestNoVocabularySkipsStatusComparison(t *testing.T) {
-	c := cfg()
-	c.Status = nil
-	root := tree(t, map[string]string{
-		"001-a.md":  spec("whatever"),
-		"README.md": index("| 001 | [A](001-a.md) | anything | x |"),
-	})
-	if out, err := run(t, c, root); err != nil {
-		t.Fatalf("no vocabulary should skip the status check: %v\n%s", err, out)
-	}
-}
-
 func TestARowShorterThanTheStatusColumnIsReported(t *testing.T) {
 	body := "| # | Spec | Status |\n|---|---|---|\n| 001 | [A](001-a.md) |\n"
 	root := tree(t, map[string]string{"001-a.md": spec("draft"), "README.md": body})

@@ -418,14 +418,19 @@ func CheckIndex(cfg config.Spec, root string, specs, archived []Spec) ([]string,
 			continue
 		}
 		listed[target] = true
-		if len(cfg.Status) == 0 {
-			continue
-		}
 		if statusCol >= len(cells) {
 			out = append(out, fmt.Sprintf("%s: the row for %s has no status cell", cfg.Index, target))
 			continue
 		}
-		if got := strings.Trim(cells[statusCol], "*_`"); got != spec.Status {
+		// With a vocabulary the cell must be the status exactly. Without one
+		// there is no spelling to hold the index to, so "Complete" over
+		// "complete" agrees and only a different word is drift.
+		got := strings.Trim(cells[statusCol], "*_`")
+		same := got == spec.Status
+		if len(cfg.Status) == 0 {
+			same = strings.EqualFold(got, spec.Status)
+		}
+		if !same {
 			out = append(out, fmt.Sprintf("%s: row says %s is %q; the spec says %q",
 				cfg.Index, target, got, spec.Status))
 		}
