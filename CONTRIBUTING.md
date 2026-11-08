@@ -6,7 +6,7 @@ repository is the [README](README.md) and [`docs/`](docs/).
 ## Getting set up
 
 You need Go at the version `go.mod` names, `git`, and, for the TypeScript
-enum analyzer, Node 24 with npm.
+enum analyzer, Node 26 with npm.
 
 ```sh
 make hooks                 # git config core.hooksPath .githooks
@@ -50,6 +50,23 @@ held to the specs by this repository's own `spec-lint`.
 A bug fix carries a test that fails without it. A gate's failure message
 says what to do next, in the words of the person running the bar.
 
+## Sending a change
+
+1. Fork the repository and make a branch.
+2. Make one logical change per commit, and stage files by name.
+3. Write the subject as `scope: what changed`, in lowercase, for example
+   `cover: name the package under the floor`.
+4. Run `go test ./...` and `go tool lateregate`, and `npm run test:enums`
+   when the change touches the TypeScript enum analyzer.
+5. Open a pull request.
+
+A new gate, or a change to what a gate asserts, starts with a spec in
+`specs/`. A change a person running the bar would notice gets a line under
+`## Unreleased` in `CHANGELOG.md`; a change that makes a gate fail on a
+tree it passed before says what that repository has to do. Maintainers
+push to `main` directly, and CI runs the same bar on every push and pull
+request. If you plan a large change, open an issue first.
+
 ## Writing
 
 Every sentence the tool emits is written for one reader, and the register
@@ -71,9 +88,9 @@ go tool lateregate release vX.Y.Z
 The tag runs `.github/workflows/release.yml`, which publishes the GitHub
 release from the changelog section through `latere-ai/ci`'s
 `notes-release.yml`. Consuming repositories move to the release by
-bumping their `go.mod` pin; nothing moves them automatically. A change
-that alters a gate's verdict on existing trees is worth a line in the
-section saying what a repository has to do.
+bumping their `go.mod` pin: [Moving the pin](docs/releasing.md#moving-the-pin)
+says what moves it. A change that alters a gate's verdict on existing
+trees is worth a line in the section saying what a repository has to do.
 
 ## Reporting a vulnerability
 
