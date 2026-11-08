@@ -203,6 +203,13 @@ func run(argv []string, out io.Writer) error {
 			return actionpins.Write(*root, files, out)
 		}
 	case "check":
+		// check takes flags and nothing else. A word left over is nearly
+		// always a command that came after a leading flag, which parsing
+		// stops at; running the bar for it would report a pass for a
+		// command that never ran.
+		if args := fs.Args(); len(args) > 0 {
+			return fmt.Errorf("check takes no argument, but got %q; a command comes before its flags, for example `lateregate release -C DIR v1.2.3`", args[0])
+		}
 		ctx.Scope = measureFrom(ctx, *since, *all)
 		return bar.Check(ctx)
 	case "list":
