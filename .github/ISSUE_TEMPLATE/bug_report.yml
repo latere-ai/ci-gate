@@ -1,0 +1,68 @@
+name: Bug report
+description: A gate passes a tree it should fail, fails one it should pass, or a command does something it should not.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report a security vulnerability here. Follow
+        [SECURITY.md](https://github.com/latere-ai/ci-gate/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what happened instead.
+      placeholder: |
+        `go tool lateregate` passed although a file in testdata/ is unformatted ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: >
+        The smallest repository or file set that shows the problem, the
+        command, and its full output. Include the relevant part of
+        `.lateregate.yaml`. Never paste a token or a password.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: gate
+    attributes:
+      label: Gate or command
+      description: The gate (`suite`, `lint`, `license`, ...) or the command (`init`, `release`, `contract`, ...).
+      placeholder: suite
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it ran
+      multiple: true
+      options:
+        - A laptop, by hand
+        - The pre-commit or pre-push hook
+        - CI, through latere-ai/ci
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The pinned version, from `go list -m latere.ai/x/ci-gate` in your module.
+      placeholder: v0.70.1
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Go version, platform and container engine
+      description: The output of `go version`, and Docker or Podman with its version if containers are involved.
+      placeholder: go version go1.27.3 darwin/arm64, Podman 5.6

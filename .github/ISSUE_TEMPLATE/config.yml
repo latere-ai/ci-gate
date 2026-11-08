@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/latere-ai/ci-gate/blob/main/SECURITY.md
+    about: Report it privately, as SECURITY.md says. Do not open an issue for it.
+  - name: Documentation
+    url: https://github.com/latere-ai/ci-gate/tree/main/docs
+    about: Every gate, command and key of .lateregate.yaml. If they do not answer your question, file a bug against the documentation.
+  - name: The CI workflows
+    url: https://github.com/latere-ai/ci/issues
+    about: A problem in the GitHub Actions workflows that run the bar belongs in latere-ai/ci.

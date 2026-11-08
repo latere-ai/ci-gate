@@ -1,0 +1,26 @@
+name: Feature request
+description: A gate, a command or a key the bar does not have yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What slipped through the bar, or what the bar makes hard, in a
+        repository you maintain. Describe the problem rather than a
+        solution, so we can look for the best one together.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: Optional. How you would solve it, and any solution you would rather avoid.
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today
+      description: Optional. How you work around the problem now, such as a waiver or a script.
