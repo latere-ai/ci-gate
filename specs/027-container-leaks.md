@@ -127,16 +127,17 @@ into the binary every repository pins, for two requests, against
 cache alone.
 
 The socket is found the way the clients find it: `DOCKER_HOST` when set
+and only it, then a unix `docker.host` in `~/.testcontainers.properties`
 and only it, then `/var/run/docker.sock`, Docker Desktop's per-user
-socket, and rootless Podman's. A `DOCKER_HOST` over TCP names an engine
+socket, and rootless Podman's. A setting over TCP or SSH names an engine
 this package does not reach, so it finds nothing rather than falling back
 to a default socket that may be another engine.
 
 ## D4: no engine is not a failure, and is not reported as a pass
 
-With no engine socket, nothing the suite runs can have started a
-container, so there is nothing to leak. The property does not apply, the
-way a gate with no subject does not, and the output says so. The verdict
+With no engine the gate reaches, it cannot tell. The property does not
+apply, the way a gate with no subject does not, and the output says so,
+naming the engine it skipped or listing the places it looked. The verdict
 line names "no container left behind" only when a run was watched, so
 [[001-gate-principles]] D4 holds: nothing claims a check that did not run.
 
@@ -201,7 +202,8 @@ adopted the contract and nothing stopped the next one from skipping it.
   import too, and goes through its helper instead.
 - A container started without testcontainers, through a raw engine
   client or `docker run`, is outside both gates.
-- A container started over a `DOCKER_HOST` on TCP is not watched.
+- A container started on an engine over TCP or SSH is not watched, and the
+  gate's message names that engine.
 - A host whose name changed between runs leaves containers named for the
   old one alone, by D1.
 
