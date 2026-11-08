@@ -61,8 +61,11 @@ func testHost(e *engine, out io.Writer) *Host {
 	return h
 }
 
+// containerID is what the scripted engine prints for a run.
+const containerID = "0123456789abcdef0123456789abcdef"
+
 func scripted() *engine {
-	return &engine{out: map[string]string{"port": "127.0.0.1:49153\n"}, fail: map[string]bool{}}
+	return &engine{out: map[string]string{"run": containerID + "\n", "port": "127.0.0.1:49153\n"}, fail: map[string]bool{}}
 }
 
 // Postgres starts from the pinned image on a port the engine picks, with a
@@ -94,7 +97,7 @@ func TestPostgresStartsAndGivesItsURL(t *testing.T) {
 	if err := h.Stop(); err != nil {
 		t.Fatal(err)
 	}
-	if last := e.ran[len(e.ran)-1]; !strings.HasPrefix(last, "podman rm -f -v lateregate-e2e-store-postgres-") {
+	if last := e.ran[len(e.ran)-1]; !strings.HasPrefix(last, "podman rm -f -v "+containerID) {
 		t.Errorf("last command %q", last)
 	}
 	if err := h.Stop(); err != nil || e.calls["rm"] != 1 {
@@ -153,11 +156,11 @@ func TestAServiceThatFailsToStartIsRemoved(t *testing.T) {
 		want   string
 		remove bool
 	}{
-		"run fails, nothing made":   {pg, func(e *engine, _ *Host) { e.fail["run"], e.fail["inspect"] = true, true }, "does not start", false},
-		"run fails, container made": {pg, func(e *engine, _ *Host) { e.fail["run"] = true }, "does not start", true},
-		"port unreadable":           {pg, func(e *engine, _ *Host) { e.fail["port"] = true }, "cannot read the host port", true},
-		"port names none":           {pg, func(e *engine, _ *Host) { e.out["port"] = "garbage" }, "names no host port", true},
-		"never ready":               {pg, func(e *engine, _ *Host) { e.fail["exec"] = true; e.fail["logs"] = true }, "did not answer", true},
+		"run fails":        {pg, func(e *engine, _ *Host) { e.fail["run"] = true }, "does not start", false},
+		"run prints no id": {pg, func(e *engine, _ *Host) { e.out["run"] = "\n" }, "printed no container id", false},
+		"port unreadable":  {pg, func(e *engine, _ *Host) { e.fail["port"] = true }, "cannot read the host port", true},
+		"port names none":  {pg, func(e *engine, _ *Host) { e.out["port"] = "garbage" }, "names no host port", true},
+		"never ready":      {pg, func(e *engine, _ *Host) { e.fail["exec"] = true; e.fail["logs"] = true }, "did not answer", true},
 		"port not open": {pg, func(_ *engine, h *Host) {
 			h.Dial = func(context.Context, string) error { return errors.New("refused") }
 		}, "refused", true},

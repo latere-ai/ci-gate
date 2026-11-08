@@ -64,8 +64,9 @@ type Host struct {
 	Out    io.Writer
 	// Labels go on every container, so the sweep of a killed run finds them.
 	Labels map[string]string
-	// Suite and PID name the containers, so two suites, and two runner slots
-	// on one machine, never share a name.
+	// Suite and PID name the containers, with a random part besides, so two
+	// suites, and two runner slots on one machine, never share a name and a
+	// name another container holds is never taken for one of ours.
 	Suite string
 	PID   int
 	// Wait is how long a service has to answer; Poll is the pause between
@@ -80,6 +81,8 @@ type Host struct {
 	Dial  func(ctx context.Context, addr string) error
 	Ready func(ctx context.Context, url string) error
 
+	// started holds the id of each container a successful run printed, and
+	// nothing else: Stop removes exactly these.
 	started []string
 }
 
@@ -158,6 +161,16 @@ func (h *Host) Stop() error {
 	return errors.Join(errs...)
 }
 
+// lastLine is the last non-empty line of b, trimmed: the container id, after
+// any warning an engine printed before it.
+func lastLine(b []byte) string {
+	lines := strings.Fields(string(b))
+	if len(lines) == 0 {
+		return ""
+	}
+	return lines[len(lines)-1]
+}
+
 // secret is n random bytes as hex.
 func (h *Host) secret(n int) (string, error) {
 	src := h.Rand
@@ -174,7 +187,11 @@ func (h *Host) secret(n int) (string, error) {
 // launch starts a container from image publishing port on 127.0.0.1 at a
 // port the engine picks, and returns its name and that host port.
 func (h *Host) launch(svc, image, port string, env []string, args ...string) (name, host string, err error) {
-	name = fmt.Sprintf("lateregate-e2e-%s-%s-%d", h.Suite, svc, h.PID)
+	suffix, err := h.secret(4)
+	if err != nil {
+		return "", "", err
+	}
+	name = fmt.Sprintf("lateregate-e2e-%s-%s-%d-%s", h.Suite, svc, h.PID, suffix)
 	run := []string{"run", "-d", "--name", name, "-p", "127.0.0.1::" + port}
 	for _, k := range sortedLabels(h.Labels) {
 		run = append(run, "--label", k+"="+h.Labels[k])
@@ -184,14 +201,18 @@ func (h *Host) launch(svc, image, port string, env []string, args ...string) (na
 	}
 	run = append(append(run, image), args...)
 	_, _ = fmt.Fprintf(h.Out, "starting %s from %s\n", svc, image)
-	if _, err := h.Run(nil, false, h.Engine, run...); err != nil {
-		// A start that failed after the container was made leaves it behind.
-		if _, ierr := h.Run(nil, false, h.Engine, "container", "inspect", name); ierr == nil {
-			h.started = append(h.started, name)
-		}
+	printed, err := h.Run(nil, false, h.Engine, run...)
+	if err != nil {
+		// Only the id a successful run printed is ours to remove. A start
+		// that failed after the container was made carries the run's label,
+		// so the run's check names and removes it.
 		return "", "", fmt.Errorf("the container does not start: %w", err)
 	}
-	h.started = append(h.started, name)
+	id := lastLine(printed)
+	if id == "" {
+		return "", "", fmt.Errorf("the container does not start: %s run printed no container id", h.Engine)
+	}
+	h.started = append(h.started, id)
 	mapped, err := h.Run(nil, false, h.Engine, "port", name, port)
 	if err != nil {
 		h.logs(svc, name)

@@ -124,8 +124,10 @@ func TestARealMinIOStartsWithItsBuckets(t *testing.T) {
 	if err := ready(t.Context(), vals["minio.endpoint"]+"/minio/health/ready"); err != nil {
 		t.Error(err)
 	}
-	name := fmt.Sprintf("lateregate-e2e-repos-minio-%d", os.Getpid())
-	listed, err := exec.Command(engine, "exec", name, "mc", "ls", "local").CombinedOutput()
+	if len(h.started) != 1 {
+		t.Fatalf("started %v, want the one MinIO container", h.started)
+	}
+	listed, err := exec.Command(engine, "exec", h.started[0], "mc", "ls", "local").CombinedOutput()
 	if err != nil {
 		t.Fatalf("%v\n%s", err, listed)
 	}

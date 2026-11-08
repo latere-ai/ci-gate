@@ -339,7 +339,7 @@ func TestServicesReachTheSuiteAndAreRemoved(t *testing.T) {
 		if got := envGet(p.calls[0].Env, "DATABASE_URL"); !strings.HasPrefix(got, "postgres://lateregate:") {
 			t.Errorf("DATABASE_URL %q", got)
 		}
-		if !e.has("rm -f -v lateregate-e2e-store-postgres-") {
+		if !e.has("rm -f -v " + containerID) {
 			t.Errorf("fail=%v: the container was not removed: %q", fail, e.ran)
 		}
 	}
