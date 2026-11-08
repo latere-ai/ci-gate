@@ -192,16 +192,17 @@ func (g *Guard) previousTag() string {
 }
 
 // window is HEAD and its ancestors back to the previous tag: the commits the
-// section under `## Unreleased` describes. HEAD is added explicitly, because a
-// HEAD that is already the previous tag leaves the range empty.
-func (g *Guard) window(prev string) (map[string]bool, error) {
+// section under `## Unreleased` describes, and the HEAD commit itself. HEAD is
+// added explicitly, because a HEAD that is already the previous tag leaves the
+// range empty.
+func (g *Guard) window(prev string) (map[string]bool, string, error) {
 	spec := "HEAD"
 	if prev != "" {
 		spec = prev + "..HEAD"
 	}
 	out, err := g.git("rev-list", spec)
 	if err != nil {
-		return nil, fmt.Errorf("git rev-list %s: %w", spec, err)
+		return nil, "", fmt.Errorf("git rev-list %s: %w", spec, err)
 	}
 	w := map[string]bool{}
 	for line := range strings.SplitSeq(out, "\n") {
@@ -211,10 +212,10 @@ func (g *Guard) window(prev string) (map[string]bool, error) {
 	}
 	head, err := g.git("rev-parse", "HEAD")
 	if err != nil {
-		return nil, fmt.Errorf("git rev-parse HEAD: %w", err)
+		return nil, "", fmt.Errorf("git rev-parse HEAD: %w", err)
 	}
 	w[head] = true
-	return w, nil
+	return w, head, nil
 }
 
 // latestPerWorkflow is the newest completed run of each workflow on branch at
@@ -229,12 +230,15 @@ func (g *Guard) window(prev string) (map[string]bool, error) {
 // is the newer run's, so it is passed over the way the newer run is while it
 // is still in progress, and turning cancellation on for a workflow does not
 // change what the guard decides about it.
-func (g *Guard) latestPerWorkflow(owner, repo, branch string, window map[string]bool) ([]run, error) {
+//
+// A run at head that has not completed is returned separately, once per run.
+// It is not skipped: the older completed run beneath it describes a commit
+// that is not the one being tagged, so it cannot stand in for the answer.
+func (g *Guard) latestPerWorkflow(owner, repo, branch, head string, window map[string]bool) (out, unfinished []run, err error) {
 	seen := map[int64]bool{}
 	// The API lists the newest run first, so a workflow already in here has a
 	// run newer than the one being read.
 	listed := map[int64]bool{}
-	var out []run
 	for page := 1; page <= runPages; page++ {
 		q := url.Values{
 			"branch":   {branch},
@@ -244,14 +248,18 @@ func (g *Guard) latestPerWorkflow(owner, repo, branch string, window map[string]
 		var body runsPage
 		code, err := g.get(endpoint("repos", owner, repo, "actions", "runs"), q, &body)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if code != http.StatusOK {
-			return nil, fmt.Errorf("reading the runs on %s: the api answered %d", branch, code)
+			return nil, nil, fmt.Errorf("reading the runs on %s: the api answered %d", branch, code)
 		}
 		for _, r := range body.Runs {
 			superseded := listed[r.WorkflowID]
 			listed[r.WorkflowID] = true
+			if r.Status != "completed" && r.HeadSHA == head {
+				unfinished = append(unfinished, r)
+				continue
+			}
 			if r.Status != "completed" || !window[r.HeadSHA] || seen[r.WorkflowID] {
 				continue
 			}
@@ -265,7 +273,7 @@ func (g *Guard) latestPerWorkflow(owner, repo, branch string, window map[string]
 			break
 		}
 	}
-	return out, nil
+	return out, unfinished, nil
 }
 
 // releaseRun is the completed run at the previous tag's commit whose head ref

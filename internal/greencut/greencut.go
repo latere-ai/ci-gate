@@ -128,6 +128,9 @@ type report struct {
 	// the repair, so it is printed and the exit code stays zero.
 	warned   string
 	warnings []finding
+	// waiting are the runs at HEAD that have not completed. Nothing is known
+	// about HEAD until they do, so the cut waits for them.
+	waiting []finding
 	// hint replaces the actor line where there is no failed job to classify
 	// because nothing has run yet.
 	hint string
@@ -136,7 +139,12 @@ type report struct {
 // refuses reports whether the report holds something the cut stops on: a red
 // run over the commits being tagged, a previous tag that published nothing,
 // or a window nothing has run in. Warnings are not in the list.
-func (r report) refuses() bool { return len(r.findings) > 0 || r.hint != "" }
+func (r report) refuses() bool {
+	return len(r.findings) > 0 || len(r.waiting) > 0 || r.hint != ""
+}
+
+// waitNote is the line that follows runs still going at HEAD.
+const waitNote = "wait for them to finish, or cut with -force-red"
 
 // actor is the highest-precedence actor across the findings: where more than
 // one run is red, the fix that has to happen first is the one named.
@@ -158,6 +166,13 @@ func (r report) refusal() string {
 	}
 	if r.hint != "" {
 		_, _ = fmt.Fprintf(&b, "\n  %s", r.hint)
+		return b.String()
+	}
+	for _, f := range r.waiting {
+		_, _ = fmt.Fprintf(&b, "\n  %s\n  %s", f.summary, f.url)
+	}
+	if len(r.findings) == 0 {
+		_, _ = fmt.Fprintf(&b, "\n%s", waitNote)
 		return b.String()
 	}
 	actor, evidence := r.actor()
@@ -183,6 +198,9 @@ func (r report) override() string {
 	for _, f := range r.findings {
 		_, _ = fmt.Fprintf(&b, "  %s\n  %s\n  %s\n", f.summary, f.url, f.actor.Line(f.evidence))
 	}
+	for _, f := range r.waiting {
+		_, _ = fmt.Fprintf(&b, "  %s\n  %s\n", f.summary, f.url)
+	}
 	return b.String()
 }
 
@@ -205,11 +223,11 @@ func (g *Guard) scan() (*report, error) {
 	}
 
 	prev := g.previousTag()
-	window, err := g.window(prev)
+	window, head, err := g.window(prev)
 	if err != nil {
 		return nil, err
 	}
-	latest, err := g.latestPerWorkflow(owner, repo, info.DefaultBranch, window)
+	latest, unfinished, err := g.latestPerWorkflow(owner, repo, info.DefaultBranch, head, window)
 	if err != nil {
 		return nil, err
 	}
@@ -233,6 +251,16 @@ func (g *Guard) scan() (*report, error) {
 			return nil, err
 		}
 		rep.findings = append(rep.findings, f)
+	}
+
+	for _, r := range unfinished {
+		rep.waiting = append(rep.waiting, finding{
+			summary: fmt.Sprintf("%s #%d is %s at HEAD", r.Name, r.RunNumber, r.Status),
+			url:     r.HTMLURL,
+		})
+	}
+	if len(rep.findings) == 0 && len(rep.waiting) > 0 {
+		rep.headline = "ci has not finished at HEAD"
 	}
 
 	// The previous tag's release run, and the Release it should have left
@@ -264,7 +292,7 @@ func (g *Guard) scan() (*report, error) {
 				return nil, err
 			}
 			if !published {
-				if len(rep.findings) == 0 {
+				if len(rep.findings) == 0 && len(rep.waiting) == 0 {
 					rep.headline = prev + " deployed but published nothing"
 				}
 				rep.findings = append(rep.findings, finding{
@@ -275,7 +303,7 @@ func (g *Guard) scan() (*report, error) {
 			}
 		}
 	}
-	if len(rep.findings) == 0 && len(rep.warnings) == 0 {
+	if len(rep.findings) == 0 && len(rep.waiting) == 0 && len(rep.warnings) == 0 {
 		return nil, nil
 	}
 	return rep, nil

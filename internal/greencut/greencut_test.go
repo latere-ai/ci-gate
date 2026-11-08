@@ -426,11 +426,13 @@ func supersededWindow() []run {
 
 // A concurrency group cancels a run the moment a newer push supersedes it.
 // That run is not an answer: the guard reads past it exactly as it reads past
-// the newer run still in progress, so turning cancellation on does not change
-// what a cut decides.
+// the newer run, so turning cancellation on does not change what a cut
+// decides. The newer run has finished: one still going at HEAD is a refusal of
+// its own.
 func TestASupersededCanceledRunDefersToTheRunBeforeIt(t *testing.T) {
 	a := green()
 	a.runs = supersededWindow()
+	a.runs[0].Status, a.runs[0].Conclusion = "completed", "success"
 
 	var out strings.Builder
 	if err := guard(t, a, false, &out).Check(); err != nil {
