@@ -40,7 +40,8 @@ var foreignJSON = json.JoinOptions(
 
 // GoLister returns a Lister backed by `go list ./...`.
 //
-// A package is listed only when it declares a function with a body. The
+// A package is listed only when it declares a function with a body, as a
+// declaration or as a literal in a package-level var. The
 // coverage tool instruments statements, so a package that holds none produces
 // no data however it is tested, and reporting it as unmeasured would be a
 // finding no test can clear.
@@ -108,7 +109,8 @@ func Only(list Lister, pkgs []string) Lister {
 	}
 }
 
-// hasStatements reports whether a package declares a function with a body.
+// hasStatements reports whether a package declares a function with a body,
+// or a function literal with one in a package-level declaration.
 func hasStatements(dir string, files []string) (bool, error) {
 	fset := token.NewFileSet()
 	for _, name := range files {
@@ -118,8 +120,24 @@ func hasStatements(dir string, files []string) (bool, error) {
 			return false, fmt.Errorf("read %s: %w", path, err)
 		}
 		for _, decl := range file.Decls {
-			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Body != nil && len(fn.Body.List) > 0 {
-				return true, nil
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Body != nil && len(d.Body.List) > 0 {
+					return true, nil
+				}
+			case *ast.GenDecl:
+				// A function literal in a package-level var is instrumented
+				// like any function body.
+				found := false
+				ast.Inspect(d, func(n ast.Node) bool {
+					if lit, ok := n.(*ast.FuncLit); ok && len(lit.Body.List) > 0 {
+						found = true
+					}
+					return !found
+				})
+				if found {
+					return true, nil
+				}
 			}
 		}
 	}

@@ -4,6 +4,7 @@
 package cover
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -37,5 +38,25 @@ func TestTruncatedKeepsExactTenths(t *testing.T) {
 		if got := truncated(tc.covered, tc.total); got != tc.want {
 			t.Errorf("%d/%d printed %s, want %s", tc.covered, tc.total, got, tc.want)
 		}
+	}
+}
+
+// A package whose only code is a function literal in a package-level var is
+// instrumented, so it is listed and can be reported as unmeasured.
+func TestGoListerKeepsAPackageWhoseCodeIsAFuncLiteral(t *testing.T) {
+	root := module(t, map[string]string{
+		"logic/logic.go": "package logic\n\nfunc Add(a, b int) int { return a + b }\n",
+		"hooks/hooks.go": "package hooks\n\nvar Handler = func(a int) int {\n\tb := a * 2\n\treturn b\n}\n",
+		"decl/decl.go":   "package decl\n\nvar Empty = func() {}\n\nconst C = 1\n",
+	})
+	got, err := GoLister("go", root)()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(got, "example.com/m/hooks") {
+		t.Errorf("listed %v: hooks has statements and was left out", got)
+	}
+	if slices.Contains(got, "example.com/m/decl") {
+		t.Errorf("listed %v: decl has no statements", got)
 	}
 }
