@@ -388,3 +388,48 @@ func TestSuiteNamesWhatAHelperSweepFoundOfThisRun(t *testing.T) {
 		t.Fatalf("err = %v, want the suite to name the container the helper's sweep spared; output:\n%s", err, sb.String())
 	}
 }
+
+// stuckEngine is the engine behind a socket, with one dead-owner network
+// whose removal the engine refuses, as an engine does for a network that a
+// container still uses.
+type stuckEngine struct{ *engine }
+
+func (s stuckEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete && r.URL.Path == "/networks/stuck" {
+		http.Error(w, `{"message":"network is being used"}`, http.StatusInternalServerError)
+		return
+	}
+	s.engine.ServeHTTP(w, r)
+}
+
+// One refused removal in the opening sweep is printed as a warning, and the
+// container the run leaves is still named.
+func TestSuiteStillWatchesWhenTheOpeningSweepIsRefused(t *testing.T) {
+	root := isolated(t)
+	host, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &engine{networks: []containers.Network{
+		{ID: "stuck", Name: "stuck", Labels: containers.Labels(exitedPid(t), host, "old")},
+	}}
+	t.Chdir(t.TempDir())
+	l, err := net.Listen("unix", "e.sock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: stuckEngine{e}}
+	go func() { _ = srv.Serve(l) }()
+	t.Cleanup(func() { _ = srv.Close() })
+	setFindEngine(t, func() (*containers.Engine, bool) { return containers.Socket("e.sock"), true })
+
+	s := &suiteRun{do: startsContainers(e, 1, 0)} // the run leaves one container
+	var sb strings.Builder
+	err = Suite(SuiteRun{Containers: true}, root, suiteGo, &sb, s.exec)
+	if err == nil || !strings.Contains(err.Error(), "left 1 container") {
+		t.Fatalf("err = %v, want the container the run left; output:\n%s", err, sb.String())
+	}
+	if !strings.Contains(sb.String(), "network is being used") {
+		t.Fatalf("the refused removal was not printed:\n%s", sb.String())
+	}
+}

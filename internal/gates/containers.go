@@ -58,7 +58,8 @@ type containerWatch struct {
 // The sweep removes containers whose owner has exited, from any run of any
 // repository on this machine: a run that was killed never reached its own
 // check, and the next one to start is the first chance anything has to
-// remove what it left. Nothing the sweep finds fails this run.
+// remove what it left. Nothing the sweep finds, and no removal it cannot
+// make, fails this run or switches its watch off.
 func watchContainers(out io.Writer) *containerWatch {
 	e, ok := findEngine()
 	if !ok {
@@ -73,17 +74,22 @@ func watchContainers(out io.Writer) *containerWatch {
 		return nil
 	}
 	gone, err := containers.Sweep(ctx, e, host, containers.Alive)
-	if err != nil {
-		// An engine that does not answer now started nothing for the suite
-		// either; one that answers after is still checked.
-		_, _ = fmt.Fprintf(out, "the suite's containers are not watched: %v\n", err)
-		return nil
-	}
 	for _, c := range gone.Containers {
 		_, _ = fmt.Fprintf(out, "  removed %s %s, which an exited process left\n", containers.Short(c.ID), c.Image)
 	}
 	for _, n := range gone.Networks {
 		_, _ = fmt.Fprintf(out, "  removed network %s, which an exited process left\n", n.Name)
+	}
+	if err != nil {
+		// An engine that does not answer a plain listing started nothing for
+		// the suite either. One that answers, and refused a removal, is still
+		// checked: what an earlier run left and the engine will not remove
+		// is not this run's to fail on.
+		if _, lerr := e.List(ctx, containers.RunLabel); lerr != nil {
+			_, _ = fmt.Fprintf(out, "the suite's containers are not watched: %v\n", err)
+			return nil
+		}
+		_, _ = fmt.Fprintf(out, "warning: the sweep of what exited processes left did not finish: %v\n", err)
 	}
 	return &containerWatch{engine: e, run: runID()}
 }
