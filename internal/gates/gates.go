@@ -91,20 +91,20 @@ func (s *syncWriter) Write(p []byte) (int, error) {
 // CI, which is the worst order to find out. Stripping PATH reproduces a
 // runner's environment closely enough to catch that class before a push.
 func Hermetic(cfg config.Hermetic, goBin string, out io.Writer, run Exec) error {
-	dir, err := toolchainDir(goBin)
+	dir, names, err := goShim(goBin, run)
 	if err != nil {
 		return err
 	}
 	path := PathFor(dir, cfg.Allow)
-	_, _ = fmt.Fprintf(out, "PATH=%s\n", path)
+	_, _ = fmt.Fprintf(out, "PATH=%s%s\n", path, goNote(dir, names))
 	if _, err := run(envWithPath(os.Environ(), path), true, goBin, "test", "./..."); err != nil {
 		return fmt.Errorf("hermetic test run failed: %w", err)
 	}
 	return nil
 }
 
-// PathFor builds the stripped PATH: the toolchain's own directory first, then
-// whatever the repository declared it needs.
+// PathFor builds the stripped PATH: the directory that holds the Go toolchain's
+// programs first, then whatever the repository declared it needs.
 //
 // A repository that names a directory here is making an ambient dependency
 // visible, which is the point; the empty default is the strictest setting.

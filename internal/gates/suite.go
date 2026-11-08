@@ -224,23 +224,23 @@ func Suite(opt SuiteRun, root, goBin string, out io.Writer, run Exec) error {
 	return nil
 }
 
-// suitePath is the stripped PATH, and a note naming the C toolchain shim when
-// the race detector needs one: the toolchain's directory, the shim under
-// -race, then the directories the repository allowed, each once.
+// suitePath is the stripped PATH, and a note naming what the gate put on it:
+// the directory of links to the Go toolchain's programs, the C toolchain shim
+// under -race, then the directories the repository allowed, each once.
 func suitePath(opt SuiteRun, goBin string, run Exec) (string, string, error) {
-	dir, err := toolchainDir(goBin)
+	dir, goNames, err := goShim(goBin, run)
 	if err != nil {
 		return "", "", err
 	}
 	var keep []string
-	note := ""
+	note := goNote(dir, goNames)
 	if opt.Race {
 		shim, names, err := ccShim(goBin, run)
 		if err != nil {
 			return "", "", err
 		}
 		keep = append(keep, shim)
-		note = shimNote(shim, names)
+		note += shimNote(shim, names)
 	}
 	for _, a := range opt.Allow {
 		if a != dir && !slices.Contains(keep, a) {

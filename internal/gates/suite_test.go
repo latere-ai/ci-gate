@@ -19,6 +19,9 @@ import (
 const (
 	suiteGo = "/toolchain/bin/go"
 	suiteCC = "/compilers/bin/cc"
+	// suiteRoot is the GOROOT the stand-in toolchain reports; it does not
+	// exist on disk, so the shim links to the go binary the run was given.
+	suiteRoot = "/toolchain"
 )
 
 // suiteRun stands in for the toolchain: vet passes, `go env CC` names
@@ -39,6 +42,8 @@ func (s *suiteRun) exec(env []string, stream bool, name string, args ...string) 
 		return nil, s.vetErr
 	case len(args) > 1 && args[0] == "env" && args[1] == "CC":
 		return []byte(suiteCC + "\n"), nil
+	case len(args) > 1 && args[0] == "env" && args[1] == "GOROOT":
+		return []byte(suiteRoot + "\n"), nil
 	case len(args) > 0 && args[0] == "test":
 		if s.do != nil {
 			s.do(env)
@@ -117,8 +122,8 @@ func TestSuitePassesWithEveryPropertyInOneRun(t *testing.T) {
 	if v, _ := envValue(c.env, "CGO_ENABLED"); v != "1" {
 		t.Errorf("CGO_ENABLED=%q, the race detector needs cgo", v)
 	}
-	if parts := pathParts(c.env); len(parts) != 2 || parts[0] != "/toolchain/bin" || !isShim(parts[1]) {
-		t.Errorf("PATH=%v, want the toolchain and the C toolchain shim only", parts)
+	if parts := pathParts(c.env); len(parts) != 2 || !isGoShim(parts[0]) || !isShim(parts[1]) {
+		t.Errorf("PATH=%v, want the Go toolchain shim and the C toolchain shim only", parts)
 	}
 	if v, _ := envValue(c.env, "TMPDIR"); !strings.Contains(v, "lateregate-tempdir-") {
 		t.Errorf("TMPDIR=%q, want the repository's sandbox", v)
@@ -262,14 +267,14 @@ func TestSuitePathReachesTheCompilerThroughTheShim(t *testing.T) {
 		}
 		parts := pathParts(s.testCall(t).env)
 		if race {
-			if len(parts) != 3 || parts[0] != "/toolchain/bin" || !isShim(parts[1]) || parts[2] != "/opt/tools" {
-				t.Fatalf("race: PATH=%v, want the toolchain, the shim and the allow list", parts)
+			if len(parts) != 3 || !isGoShim(parts[0]) || !isShim(parts[1]) || parts[2] != "/opt/tools" {
+				t.Fatalf("race: PATH=%v, want the Go shim, the C shim and the allow list", parts)
 			}
 			if !strings.Contains(sb.String(), parts[1]+" holds the race detector's C toolchain: cc, as, ld") {
 				t.Errorf("the PATH line must name the shim and what it holds:\n%s", sb.String())
 			}
 		} else {
-			if len(parts) != 2 || parts[0] != "/toolchain/bin" || parts[1] != "/opt/tools" {
+			if len(parts) != 2 || !isGoShim(parts[0]) || parts[1] != "/opt/tools" {
 				t.Errorf("race waived: PATH=%v, want the strict PATH", parts)
 			}
 			if shims, _ := filepath.Glob(filepath.Join(os.TempDir(), "lateregate-cc-*")); len(shims) != 0 {
@@ -293,7 +298,7 @@ func TestSuitePathNamesEachDirectoryOnce(t *testing.T) {
 	if err := Suite(opt, root, suiteGo, &strings.Builder{}, s.exec); err != nil {
 		t.Fatal(err)
 	}
-	if parts := pathParts(s.testCall(t).env); len(parts) != 3 || parts[2] != "/opt/tools" {
+	if parts := pathParts(s.testCall(t).env); len(parts) != 4 || parts[2] != "/toolchain/bin" || parts[3] != "/opt/tools" {
 		t.Errorf("PATH=%v", parts)
 	}
 }
@@ -402,7 +407,7 @@ func TestShimFailureStopsTheSuite(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(os.TempDir(), "blocker"))
 	s := &suiteRun{}
 	err := Suite(SuiteRun{Race: true, Hermetic: true}, root, suiteGo, &strings.Builder{}, s.exec)
-	if err == nil || !strings.Contains(err.Error(), "C toolchain shim") {
+	if err == nil || !strings.Contains(err.Error(), "toolchain shim") {
 		t.Fatalf("want the shim failure, got %v", err)
 	}
 	for _, c := range s.calls {
@@ -434,6 +439,11 @@ func pathParts(env []string) []string {
 // isShim reports whether dir is a C toolchain shim under this test's TMPDIR.
 func isShim(dir string) bool {
 	return strings.HasPrefix(dir, filepath.Join(os.TempDir(), "lateregate-cc-"))
+}
+
+// isGoShim reports whether dir is a Go toolchain shim under this test's TMPDIR.
+func isGoShim(dir string) bool {
+	return strings.HasPrefix(dir, filepath.Join(os.TempDir(), "lateregate-go-"))
 }
 
 // A compiler named rather than given as a path is found on the PATH as it

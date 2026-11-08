@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -376,5 +377,85 @@ func TestSuiteReleasesTheSandboxAndChecksContainersWhenInterrupted(t *testing.T)
 	e.mu.Unlock()
 	if removed == 0 {
 		t.Errorf("the container the run left was not removed:\n%s", sb.String())
+	}
+}
+
+// Hermetic says PATH is reduced to the Go toolchain; a go binary that lives
+// in a shared bin directory must not bring every program in that directory
+// along.
+func TestHermeticPathHoldsTheGoToolchainAndNotItsNeighbors(t *testing.T) {
+	isolated(t)
+	root := t.TempDir()
+	shared := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{filepath.Join(root, "bin", "go"), filepath.Join(root, "bin", "gofmt"), filepath.Join(shared, "sibling-tool")} {
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// go on the shared directory is a link into the toolchain, as on Homebrew.
+	if err := os.Symlink(filepath.Join(root, "bin", "go"), filepath.Join(shared, "go")); err != nil {
+		t.Fatal(err)
+	}
+	var path string
+	run := func(env []string, _ bool, _ string, args ...string) ([]byte, error) {
+		if len(args) > 0 && args[0] == "env" {
+			return []byte(root + "\n"), nil
+		}
+		path, _ = envValue(env, "PATH")
+		return nil, nil
+	}
+	if err := Hermetic(config.Hermetic{}, filepath.Join(shared, "go"), io.Discard, run); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", path)
+	if p, err := exec.LookPath("sibling-tool"); err == nil {
+		t.Fatalf("the hermetic PATH %q still finds %s, a program that is not the Go toolchain", path, p)
+	}
+	for _, name := range []string{"go", "gofmt"} {
+		p, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatalf("the hermetic PATH %q lacks %s: %v", path, name, err)
+		}
+		if got, _ := os.Readlink(p); got != filepath.Join(root, "bin", name) {
+			t.Errorf("%s -> %s, want the toolchain's own", p, got)
+		}
+	}
+}
+
+// The real go command, reached through the links, still finds its toolchain.
+func TestHermeticGoShimRunsTheRealToolchain(t *testing.T) {
+	isolated(t)
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("no go on PATH")
+	}
+	dir, names, err := goShim(goBin, OSExec(t.TempDir(), io.Discard))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) != 2 {
+		t.Errorf("the shim holds %v, want go and gofmt", names)
+	}
+	cmd := exec.Command(filepath.Join(dir, "go"), "env", "GOROOT")
+	cmd.Env = append(os.Environ(), "GOROOT=")
+	if b, err := cmd.CombinedOutput(); err != nil || len(strings.TrimSpace(string(b))) == 0 {
+		t.Fatalf("go through the shim: %v\n%s", err, b)
+	}
+}
+
+func TestGoShimStopsWhenTheToolchainCannotAnswer(t *testing.T) {
+	isolated(t)
+	failing := func([]string, bool, string, ...string) ([]byte, error) { return nil, errors.New("no toolchain") }
+	if _, _, err := goShim("/toolchain/bin/go", failing); err == nil || !strings.Contains(err.Error(), "GOROOT") {
+		t.Fatalf("want the GOROOT failure, got %v", err)
+	}
+	if _, _, err := goShim("definitely-not-a-real-go-binary", failing); err == nil || !strings.Contains(err.Error(), "cannot locate") {
+		t.Fatalf("want the missing toolchain named, got %v", err)
 	}
 }

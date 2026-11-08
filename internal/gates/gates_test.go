@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -60,14 +61,17 @@ func TestPathForKeepsTheToolchainFirst(t *testing.T) {
 }
 
 func TestHermeticRunsTheSuiteWithAStrippedPath(t *testing.T) {
+	isolated(t)
 	var calls []call
 	var sb strings.Builder
 	cfg := config.Hermetic{Allow: []string{"/usr/bin"}}
 	if err := Hermetic(cfg, "/opt/go/bin/go", &sb, fake(t, &calls)); err != nil {
 		t.Fatal(err)
 	}
+	// fake answers the GOROOT question itself, so the test run is the one
+	// call recorded.
 	if len(calls) != 1 {
-		t.Fatalf("want one call, got %d", len(calls))
+		t.Fatalf("want the test run, got %d calls", len(calls))
 	}
 	c := calls[0]
 	if c.name != "/opt/go/bin/go" || strings.Join(c.args, " ") != "test ./..." {
@@ -76,11 +80,11 @@ func TestHermeticRunsTheSuiteWithAStrippedPath(t *testing.T) {
 	if !c.stream {
 		t.Error("the test run's output must reach the terminal")
 	}
-	want := "PATH=/opt/go/bin" + string(os.PathListSeparator) + "/usr/bin"
-	if !hasEnv(c.env, want) {
-		t.Errorf("child PATH not stripped; env has %v, want %q", pathOf(c.env), want)
+	shim := pathOf(c.env)
+	if !strings.HasPrefix(shim, filepath.Join(os.TempDir(), "lateregate-go-")) || !strings.HasSuffix(shim, string(os.PathListSeparator)+"/usr/bin") {
+		t.Errorf("child PATH not stripped; env has %q, want the Go shim then /usr/bin", shim)
 	}
-	if !strings.Contains(sb.String(), want) {
+	if want := "PATH=" + shim; !strings.Contains(sb.String(), want) {
 		t.Errorf("the PATH being used should be printed:\n%s", sb.String())
 	}
 }
@@ -88,9 +92,13 @@ func TestHermeticRunsTheSuiteWithAStrippedPath(t *testing.T) {
 // The developer's PATH must not survive into the child, or the gate proves
 // nothing.
 func TestHermeticReplacesRatherThanAppendsToPath(t *testing.T) {
+	isolated(t)
 	var calls []call
 	if err := Hermetic(config.Hermetic{}, "/opt/go/bin/go", &strings.Builder{}, fake(t, &calls)); err != nil {
 		t.Fatal(err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("want the test run, got %d calls", len(calls))
 	}
 	n := 0
 	for _, kv := range calls[0].env {
@@ -101,12 +109,13 @@ func TestHermeticReplacesRatherThanAppendsToPath(t *testing.T) {
 	if n != 1 {
 		t.Errorf("child env has %d PATH entries, want exactly 1", n)
 	}
-	if got := pathOf(calls[0].env); got != "/opt/go/bin" {
-		t.Errorf("PATH = %q, want only the toolchain", got)
+	if got := pathOf(calls[0].env); !strings.HasPrefix(got, filepath.Join(os.TempDir(), "lateregate-go-")) || strings.Contains(got, string(os.PathListSeparator)) {
+		t.Errorf("PATH = %q, want only the Go toolchain shim", got)
 	}
 }
 
 func TestHermeticReportsAFailingSuite(t *testing.T) {
+	isolated(t)
 	var calls []call
 	err := Hermetic(config.Hermetic{}, "/opt/go/bin/go", &strings.Builder{},
 		fake(t, &calls, errors.New("exit status 1")))
