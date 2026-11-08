@@ -27,11 +27,24 @@ func TestExtraThatRemovesFromTheSharedBarIsRefused(t *testing.T) {
 				"stdlib": map[string]any{"deny": []any{}},
 			}}},
 		}}, []string{"depguard.rules.stdlib.deny", "io/ioutil", "encoding/json"}},
-		{"replaced exclusion rules", map[string]any{"linters": map[string]any{
+		{"an exclusion of a shared linter", map[string]any{"linters": map[string]any{
 			"exclusions": map[string]any{"rules": []any{
 				map[string]any{"path": `gen\.go`, "linters": []any{"errcheck"}},
 			}},
-		}}, []string{"linters.exclusions.rules", `_test\.go`}},
+		}}, []string{"linters.exclusions.rules", `gen\.go`, "errcheck"}},
+		{"a test exclusion that reaches a shared linter", map[string]any{"linters": map[string]any{
+			"exclusions": map[string]any{"rules": []any{
+				map[string]any{"path": `_test\.go`, "linters": []any{"errcheck", "staticcheck"}},
+			}},
+		}}, []string{"linters.exclusions.rules", "staticcheck"}},
+		{"an exclusion of every linter", map[string]any{"linters": map[string]any{
+			"exclusions": map[string]any{"rules": []any{
+				map[string]any{"path": `internal/legacy/`},
+			}},
+		}}, []string{"linters.exclusions.rules", "internal/legacy/", "every linter"}},
+		{"an excluded path", map[string]any{"linters": map[string]any{
+			"exclusions": map[string]any{"paths": []any{`(^|/)node_modules/`, `(^|/)third_party/`}},
+		}}, []string{"linters.exclusions.paths", "third_party"}},
 		{"a check switched off", map[string]any{"linters": map[string]any{
 			"settings": map[string]any{"errcheck": map[string]any{"check-type-assertions": false}},
 		}}, []string{"errcheck.check-type-assertions"}},
@@ -87,5 +100,32 @@ func TestExtraMayMakeTheBarStricter(t *testing.T) {
 	}})
 	if err != nil {
 		t.Fatalf("a stricter extra is refused: %v", err)
+	}
+}
+
+// The exclusion rules extra writes replace the shared list. Leaving a shared
+// exclusion out makes the bar stricter, and a rule that switches off only the
+// repository's own linters, or shared linters a shared rule with the same
+// selectors already switches off, takes nothing from it.
+func TestExtraExclusionsThatTakeNothingFromTheSharedBarAreAccepted(t *testing.T) {
+	for name, exclusions := range map[string]map[string]any{
+		"own linters on tests, one shared exclusion left out": {"rules": []any{
+			map[string]any{"path": `_test\.go`, "linters": []any{"gosec", "errcheck", "unparam", "noctx", "errchkjson", "prealloc"}},
+		}},
+		"no rules at all":   {"rules": []any{}},
+		"no excluded paths": {"paths": []any{}},
+		"the shared rule restated": {"rules": []any{
+			map[string]any{"path": `_test\.go`, "linters": []any{"errcheck", "noctx", "errchkjson", "bodyclose"}},
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := renderExtra(t, map[string]any{"linters": map[string]any{
+				"enable":     []any{"gosec", "unparam", "prealloc"},
+				"exclusions": exclusions,
+			}})
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+		})
 	}
 }

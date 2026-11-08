@@ -591,9 +591,14 @@ packages that serve requests, `exempt` removes paths inside those, and
 A repository adds to the set through `golangci.extra`, which merges over
 the shared document. `linters.enable` appends, so adding a linter means "as
 well as", never "instead of". An `extra` that removes or weakens anything
-in the shared document (a `linters.disable` entry, a shorter deny list or
-exclusion list, a check switched off) is refused, naming what it removes. Layering rules, which are facts about one
-service's directories, belong there:
+in the shared document (a `linters.disable` entry, a shorter deny list, a
+check switched off) is refused, naming what it removes. Exclusions read
+the other way round: an exclusion list in `extra` replaces the shared one,
+and leaving a shared exclusion out makes the bar stricter. A new excluded
+path, or a new exclusion rule that turns off a shared linter where no
+shared rule with the same selectors already does, is refused. An exclusion
+of a linter the repository enables itself is its own to scope. Layering
+rules, which are facts about one service's directories, belong there:
 
 ```yaml
 golangci:

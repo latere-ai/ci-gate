@@ -317,6 +317,10 @@ func subtractions(shared, extra any, path string) []string {
 			if path != "" {
 				child = path + "." + k
 			}
+			if path == "linters" && k == "exclusions" {
+				out = append(out, exclusionAdditions(sm["exclusions"], ev[k], sm["enable"], child)...)
+				continue
+			}
 			sv, ok := sm[k]
 			if !ok {
 				if k == "disable" && path == "linters" {
@@ -372,6 +376,112 @@ func subtractions(shared, extra any, path string) []string {
 		}
 	}
 	return out
+}
+
+// exclusionAdditions lists what the exclusions in extra switch off that the
+// shared exclusions do not.
+//
+// An exclusion turns findings off, so it reads the other way round from the
+// lists above. merge replaces each exclusion list, and a shared entry extra
+// leaves out makes the bar stricter: it is not reported. An excluded path
+// extra adds turns every linter off there. A rule extra adds turns its
+// linters off, or every linter when it names none, on the files its
+// selectors pick; it takes from the bar when one of those is a linter the
+// shared document enables and no shared rule with the same selectors already
+// turns it off. A linter the repository enables itself is its own to scope.
+func exclusionAdditions(shared, extra, enabled any, path string) []string {
+	sm, _ := shared.(map[string]any)
+	em, ok := extra.(map[string]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	if ep, ok := em["paths"].([]any); ok {
+		known := map[string]bool{}
+		if sp, ok := sm["paths"].([]any); ok {
+			for _, e := range sp {
+				known[fmt.Sprint(e)] = true
+			}
+		}
+		var added []string
+		for _, e := range ep {
+			if !known[fmt.Sprint(e)] {
+				added = append(added, describe(e))
+			}
+		}
+		if len(added) > 0 {
+			out = append(out, listLine(path+".paths", "turns every linter off in", added))
+		}
+	}
+	er, ok := em["rules"].([]any)
+	if !ok {
+		return out
+	}
+	sharedOn := map[string]bool{}
+	if el, ok := enabled.([]any); ok {
+		for _, l := range el {
+			sharedOn[fmt.Sprint(l)] = true
+		}
+	}
+	// What the shared rules already turn off, by the selectors of the rule.
+	off := map[string]map[string]bool{}
+	if sr, ok := sm["rules"].([]any); ok {
+		for _, r := range sr {
+			rm, ok := r.(map[string]any)
+			if !ok {
+				continue
+			}
+			key := selectors(rm)
+			if off[key] == nil {
+				off[key] = map[string]bool{}
+			}
+			for _, l := range entries(rm["linters"]) {
+				off[key][l] = true
+			}
+		}
+	}
+	for _, r := range er {
+		rm, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		key := selectors(rm)
+		names := entries(rm["linters"])
+		if len(names) == 0 {
+			out = append(out, path+".rules turns every linter off for "+key)
+			continue
+		}
+		var taken []string
+		for _, l := range names {
+			if sharedOn[l] && !off[key][l] {
+				taken = append(taken, l)
+			}
+		}
+		if len(taken) > 0 {
+			out = append(out, listLine(path+".rules", "turns off", taken)+" for "+key)
+		}
+	}
+	return out
+}
+
+// selectors names the files and findings an exclusion rule picks: every key
+// but its linters, in a fixed order.
+func selectors(rule map[string]any) string {
+	keys := make([]string, 0, len(rule))
+	for k := range rule {
+		if k != "linters" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+" "+fmt.Sprint(rule[k]))
+	}
+	if len(parts) == 0 {
+		return "every file"
+	}
+	return strings.Join(parts, ", ")
 }
 
 func listLine(path, verb string, items []string) string {

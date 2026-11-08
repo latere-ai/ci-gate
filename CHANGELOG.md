@@ -48,8 +48,10 @@ committed: the commit log already holds that.
 - **`license.holder` has no default.** The gate fails until it is set to the
   copyright holder. A copyright year must lie between 1970 and next year.
 - **`golangci.extra` may only add to the shared bar.** An `extra` that
-  disables a linter, empties a deny list or replaces the exclusion rules is
-  refused.
+  disables a linter, shortens a deny list, switches a check off, or adds an
+  exclusion that turns off a shared linter the shared rules do not already
+  turn off there, is refused, naming what it takes. Leaving a shared
+  exclusion out is stricter and passes.
 - **`spec-lint` applies where `spec.dir` points.** A repository whose specs
   live outside `specs/` is linted.
 - **`modernize` fails when `go fix` does not run.** A failing `go fix` with
