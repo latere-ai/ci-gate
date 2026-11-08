@@ -83,9 +83,10 @@ func SweepOutside(ctx context.Context, e *Engine, host string, alive func(pid in
 // Leftovers removes every container and network labeled with run, whoever
 // owns it, and returns what it removed. It is for after the run: once every
 // process of the run has exited, each one still carrying its label is one
-// nothing stopped.
+// nothing stopped. The label is checked on each entry as well as in the
+// request, because an engine or proxy may list more than the filter asks for.
 func Leftovers(ctx context.Context, e *Engine, run string) (Removed, error) {
-	return remove(ctx, e, RunLabel+"="+run, func(map[string]string) bool { return true })
+	return remove(ctx, e, RunLabel+"="+run, func(labels map[string]string) bool { return labels[RunLabel] == run })
 }
 
 // remove takes off the engine each container, then each network, that

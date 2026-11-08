@@ -4,10 +4,15 @@
 package containers
 
 import (
+	"context"
+	"encoding/json/v2"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -83,5 +88,43 @@ func TestMissingNamesTheEngineItCannotReachOrWhereItLooked(t *testing.T) {
 	}
 	if got := Missing(); got == "" {
 		t.Error("Missing is empty")
+	}
+}
+
+// Leftovers checks the run label on each entry itself, so an engine or proxy
+// that ignores the label filter and lists everything gets only the run's own
+// removed.
+func TestLeftoversRemovesOnlyWhatCarriesTheRunLabel(t *testing.T) {
+	var mu sync.Mutex
+	var removed []string
+	all := []Container{
+		owned("mine", "1@box", "r1"),
+		owned("other-run", "2@box", "r2"),
+		{ID: "unlabelled", Labels: map[string]string{}},
+	}
+	nets := []Network{
+		{ID: "my-net", Labels: owned("", "1@box", "r1").Labels},
+		{ID: "other-net", Labels: owned("", "2@box", "r2").Labels},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case r.Method == http.MethodDelete:
+			removed = append(removed, strings.TrimPrefix(r.URL.Path, "/"))
+			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/networks":
+			_ = json.MarshalWrite(w, nets)
+		default: // ignores the filters query
+			_ = json.MarshalWrite(w, all)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	e := &Engine{base: srv.URL, client: srv.Client()}
+	if _, err := Leftovers(context.Background(), e, "r1"); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"containers/mine", "networks/my-net"}; !slices.Equal(removed, want) {
+		t.Fatalf("removed %v, want only %v, what carries run=r1", removed, want)
 	}
 }
