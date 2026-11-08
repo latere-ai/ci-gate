@@ -45,7 +45,9 @@ another. `go tool lateregate <gate>` runs one.
 | `cover` | every package clears the floor, not the repository average | folded into `suite` |
 
 A gate that checks Go code has a subject only in a repository that tracks
-Go. With no tracked `.go` file, `fmt-check`, `modernize`, `cgo-free`,
+Go. Every gate that reads tracked files takes the list from git NUL
+separated, so a path with a space or a byte outside ASCII is read like any
+other. With no tracked `.go` file, `fmt-check`, `modernize`, `cgo-free`,
 `otel-client`, `lint`, `vuln`, `suite` and the six properties it folds skip
 themselves with `tracks no Go file`, the way `tidy` skips with no `go.mod`,
 and `check` passes over them. That is the shape of a repository whose code is
@@ -99,13 +101,19 @@ race-clean`, `the suite reached for docker, which is not on the stripped
 PATH`, `the suite left 2 entries under TMPDIR`, `the suite left 3
 containers behind`, `the suite's coverage is under the floor`.
 
+The stripped PATH is a directory of links to `go` and `gofmt`, taken from
+the toolchain's own `bin` directory, then the C toolchain shim under
+`-race`, then the directories `hermetic.allow` names. The directory that
+holds the `go` binary is not on it, since on Homebrew that is
+`/opt/homebrew/bin` with hundreds of other tools beside it.
+
 The race detector needs cgo, and cgo needs the compiler the toolchain
 names in `CC` and the `as` and `ld` it calls. Under `-race` the stripped
 PATH reaches them through a shim: a directory under the machine's `TMPDIR`
 that links those three and nothing else, at the same path on every run. The
 compiler's own directory stays off the PATH, since on Linux that is
 `/usr/bin`, with `git` and `docker` in it. The `PATH=` line of the output
-names the shim and what it holds. Every flag is one the go command's test
+names the links and the shim and what each holds. Every flag is one the go command's test
 cache accepts, so an unchanged package replays its result.
 
 The plan marks `test`, `race`, `hermetic`, `tempdir`, `containers` and
@@ -180,9 +188,14 @@ cover:
 A test that shells out to a tool installed on the developer's machine
 passes there and fails on a runner that lacks it, or that has it without
 the privileges the test assumed. `hermetic` runs the suite with `PATH`
-reduced to the Go toolchain's own directory. If your tests need a system
-tool, name its directory, which makes the dependency visible instead of
-ambient:
+reduced to a directory of links to `go` and `gofmt`, taken from the
+toolchain's own `bin` directory, then the C toolchain shim under the race
+detector, then the directories `hermetic.allow` names. It does not put the
+directory that holds the `go` binary on `PATH`, because that directory can
+hold many other tools. A test that calls a tool which sat beside `go`
+fails until the repository adds that tool's directory to `hermetic.allow`.
+If your tests need a system tool, name its directory, which makes the
+dependency visible instead of ambient:
 
 ```yaml
 hermetic:
@@ -236,15 +249,34 @@ when the suite fails and also leaks, the leak is the verdict, because a
 red suite gets re-run while a leak that only surfaces on a green one is
 never seen.
 
-The sandbox is one directory per repository and user on a machine, at the
-same path on every run, and runs of one repository take turns through a
-file lock beside it. The go command keys a cached test result on the
+The sandbox is one directory per checkout and user on a machine, at the
+same path on every run, and runs of one checkout take turns through a
+file lock beside it. Its name carries a hash of the checkout's absolute
+path, so two checkouts whose directories share a name do not share a
+sandbox or a lock, and each warms its own test cache once. The go command keys a cached test result on the
 `TMPDIR` the test read, so a fresh directory per run would rerun every
 package that makes a temporary directory on every push; the fixed one lets
 an unchanged package replay its result. A run whose packages all replay
 still counts as having used the sandbox, because the go command makes its
 build directory there on every invocation. On a platform without `flock`
 each run makes a directory of its own instead.
+
+A leaked entry is reported once by the test result that made it, and the
+go command replays that result from its cache on the next run, which
+creates nothing and so passes. To keep the leak visible, a run that left
+something behind (an entry under `TMPDIR` or a container) records it beside
+the lock, and the runs after it add `-count=1` to `go test` so every
+package runs again. The first run that leaves nothing turns the cache back on. The
+output says when the cache is bypassed. With no `flock` there is no shared
+sandbox and nothing to bypass.
+
+The sandbox is removed at the end of every run. A tree a test left
+read-only, such as a Go module cache downloaded without `-modcacherw`, is
+made writable first and then removed; one this user cannot remove is named
+with the `chmod` that fixes it. Ctrl-C or `SIGTERM` during `suite` or
+`tempdir` releases the sandbox and removes the run's leftovers (under
+`suite`, the containers carrying the run's label too), then exits 130 or
+143.
 
 ## `containers`: tests that fill the engine
 
@@ -275,7 +307,11 @@ the `lateregate` run in `LATEREGATE_RUN` when there is one. A network the
 helper makes takes the same labels, `network.WithLabels(reap.Labels())`.
 `reap.Sweep` removes each labeled container, and then each labeled
 network, whose owner on this host has exited. It never judges by age, so
-it is safe while other suites on the machine are using theirs.
+it is safe while other suites on the machine are using theirs. Inside a
+`lateregate` run it also leaves alone whatever carries that run's own
+`LATEREGATE_RUN` label: the run's check names it after the suite ends, so a
+container a package leaks is reported by the suite and not removed by a
+package that starts later.
 
 Around `go test`, the gate does the same sweep, names the run, and after
 the run removes every container and network still carrying the run's
@@ -289,7 +325,8 @@ lateregate: the suite left 1 container behind after its tests exited, removed no
 ```
 
 What the opening sweep removes fails nothing: it was another run's leak. A
-run killed along with its gate, or a bare `go test`, leaves its containers
+removal the engine refuses during that sweep is printed as a warning and
+the watch still starts. A run killed along with its gate, or a bare `go test`, leaves its containers
 to the next sweep on the machine, in any repository.
 
 The run label is read with `syscall.Getenv`, because the go command keys a
@@ -297,10 +334,15 @@ cached test result on each variable the test reads through `os`, and a
 label that changes every run would keep every package that starts a
 container from replaying.
 
-With no engine socket the gate says so and claims nothing: nothing the
-suite runs can have started a container. The socket is the one the
-clients find: `DOCKER_HOST` when set, then `/var/run/docker.sock`, Docker
-Desktop's and rootless Podman's. An engine over TCP is not watched.
+The engine is the one the clients find: `DOCKER_HOST` when it is set, and
+only it; else a unix `docker.host` in `~/.testcontainers.properties`; else
+the default sockets, `/var/run/docker.sock`, Docker Desktop's per-user
+socket under `~/.docker/run` and rootless Podman's under
+`$XDG_RUNTIME_DIR/podman`. With no engine the gate reaches, it says so and
+claims nothing either way, because it cannot tell whether the suite started
+a container. It names the engine it skipped when the setting is a TCP or
+SSH host, which the gate does not watch, and otherwise lists the places it
+looked.
 
 ## `container-labels`: the helper keeps its half
 
@@ -608,19 +650,32 @@ No Go file imports `"C"`. The gate reads the source rather than trusting
 one build, because a file can import `"C"` behind a build tag this
 platform does not select: the promise a repository that ships static
 binaries or cross-compiles makes is that no supported build reaches cgo.
-`cgo_free.skip` names directories the scan does not enter, besides `.git`
-and `testdata`.
+It reads the Go files git tracks, not a directory walk, so it fails
+outside a git checkout. It reads the imports with the Go parser, so any
+spelling of `import "C"` counts: alone, in a block, renamed, blank or
+followed by a comment. A file it cannot parse fails the gate, since it
+cannot tell whether that file imports `"C"`. `cgo_free.skip` names
+directories the scan does not enter, besides `testdata` and
+`node_modules`.
 
 ## `otel-client`: a distributed trace stays connected
 
-Two shapes of outbound call lose the trace, both silently:
+These shapes of outbound call lose the trace, all silently:
+
+- an `http.Client` literal with no `Transport` field;
+- `new(http.Client)`;
+- a zero `var c http.Client`;
+- any use of `http.DefaultClient`;
+- the helpers `http.Get`, `http.Post`, `http.Head` and `http.PostForm`,
+  which send on `http.DefaultClient`.
 
 ```go
 c := &http.Client{Timeout: 5 * time.Second} // no Transport
 http.DefaultClient.Do(req)
+resp, err := http.Get(url)
 ```
 
-Either one calls out on the standard library transport, so no client span
+Each one calls out on the standard library transport, so no client span
 is recorded and no `traceparent` header is sent. The service on the other
 end opens a fresh trace rather than joining the caller's. Nothing fails
 and nothing is logged; the gap shows up later as a trace that stops at a
@@ -632,9 +687,11 @@ trace:
 ```go
 c := &http.Client{Timeout: 5 * time.Second, Transport: otel.Transport(nil)}
 c := otel.HTTPClient()
+resp, err := otel.HTTPClient().Do(req) // instead of http.Get(url)
 ```
 
-The scan parses each file rather than matching text. A `Transport` field
+The scan reads the Go files git tracks, not a directory walk, and fails
+outside a git checkout. It parses each file rather than matching text. A `Transport` field
 several lines below the opening brace still counts, a comment explaining
 this rule does not trip the gate, and `Timeout: cfg.Transport.Timeout`
 does not pass for a `Transport` field. Test files are excluded: a test
@@ -699,9 +756,14 @@ registers:
   user_surfaces: [internal/api.WriteError, cmd/latere.errorf]
 ```
 
-The gate parses each non-test file, finds calls to those functions by
-import path and name, and reads every string literal in their arguments,
-including one nested in a `fmt.Sprintf` or a concatenation. Four tells
+The gate parses each non-test Go file git tracks, finds calls to those
+functions by import path and name, and reads every string literal in their
+arguments, including one nested in a `fmt.Sprintf` or a concatenation. It
+also reads the package-level string constants the arguments name, in the
+same package or in another package of the module, so a message held in a
+constant is read where it is passed. A call through a versioned import
+path, such as `example.com/lib/v2`, is matched by the package's name. It
+fails outside a git checkout. Four tells
 fail it: a Go import path (`latere.ai/x/pkg/httpjson`; a URL is a page and
 passes), a package-qualified identifier (`store.Deploy`, `pgx.ErrNoRows`),
 a Kubernetes kind followed by an object name (`Deployment
@@ -769,8 +831,9 @@ URL is a platform route, or names `api.latere.ai` on any path. The scan
 follows constants, not variables: a route that reaches a request through
 a variable is reported where the string is written.
 
-Test files are not read, nor `testdata`, `vendor`, `.claude`,
-`node_modules`, the SDK's own module (a directory whose `go.mod` declares
+The gate reads the Go files git tracks, not a directory walk, and fails
+outside a git checkout. Test files are not read, nor `testdata`, `vendor`,
+`.claude`, `node_modules`, the SDK's own module (a directory whose `go.mod` declares
 `latere.ai/x/sdk-go`), or the directories `platform_via_sdk.skip` names.
 
 Turn the gate on, and write down each route that is not a call to the
@@ -810,6 +873,12 @@ words:
   person_facing: [frontend/src/i18n/en.ts]    # the string files a person reads
   spec_overview: true                         # each spec's title and Overview section
 ```
+
+A glob is slash-separated segments, each matched like `path.Match`, and a
+segment of `**` matches any number of directories, none included:
+`prompts/**/*.md` reads `prompts/a.md` and `prompts/x/y/a.md` alike. Only
+files git tracks match, so a scratch file or an ignored directory is read
+on no machine, and the gate fails outside a git checkout.
 
 What each reader reads:
 
@@ -895,7 +964,8 @@ and one written form per word per reader. A word or a form the embedded
 list already carries fails, since one hit would then have two reasons.
 
 The gate fails rather than passing over nothing: a glob that matches no
-file, `spec_overview` over a directory with no spec, and a
+file, which includes one that only an ignored or untracked file satisfies,
+`spec_overview` over a directory with no spec, and a
 `words.vocabulary` that names a missing file or a file with no
 `do_not_use` list.
 
@@ -1334,6 +1404,8 @@ laptop and a runner would disagree.
 fails naming each that does not render: a patch whose target is gone, a
 resource that moved, a base an overlay can no longer reach. A Component is
 left out, since it renders only through the kustomization that includes it.
+The `kind` is read as YAML, so a Component with a trailing comment, quotes
+or flow style is left out like any other.
 
 `rules` lifts the `spec` out of every `kind: PrometheusRule` document in
 the YAML files git tracks, outside `testdata/`, and checks the groups with
@@ -1510,8 +1582,12 @@ gets a random password, the user and database `lateregate`, and a URL with
 `sslmode=disable`. MinIO gets random keys, the region `us-east-1` and the
 `buckets` the entry lists. A value in `env` writes `${postgres.url}`,
 `${minio.endpoint}`, `${minio.access_key}`, `${minio.secret_key}` or
-`${minio.region}` to receive them. Every container is removed when the suite
-ends, passed or failed, and when the run is interrupted. Each carries the
+`${minio.region}` to receive them. A container's name carries a random
+suffix, so a container another run or another tool holds under a similar
+name is never taken for one of the suite's. Every container is removed when
+the suite ends, passed or failed, and when the run is interrupted, and only
+by the id its start printed. A container that does not start fails the
+suite with the engine's own reason. Each carries the
 owner label the `containers` gate sweeps, so a run that was killed outright
 leaves nothing the next run does not remove.
 
