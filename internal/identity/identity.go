@@ -181,10 +181,9 @@ func Run(cfg config.Identity, root string, out io.Writer, exec gates.Exec, now t
 		w, waived := cfg.Waive[r.name]
 		expired := ""
 		if waived {
-			// The date is inclusive, as a gate waiver's is: until 1 November
-			// covers all of 1 November.
-			until, _ := w.UntilDate()
-			if now.Before(until.AddDate(0, 0, 1)) {
+			// Live is the one definition of a waiver's date, shared with the
+			// plan and the other gates.
+			if w.Live(now) {
 				_, _ = fmt.Fprintf(out, "%-4s %-17s until %s: %s (%d finding(s))\n",
 					"WAIV", r.name, w.Until, w.Reason, len(res.findings))
 				if len(res.findings) == 0 {

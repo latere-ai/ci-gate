@@ -6,6 +6,7 @@ package identity
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/ci-gate/internal/config"
 )
@@ -54,5 +55,26 @@ func TestTheSummarySaysWhenEveryRuleWasSkipped(t *testing.T) {
 	}
 	if !strings.Contains(out, "all 5 rule(s) were skipped, so nothing of the shape was checked") {
 		t.Errorf("an all-skipped run must say so:\n%s", out)
+	}
+}
+
+// A waiver's last day is judged by the config package's Live, the one
+// definition every gate shares: until today holds today and not tomorrow.
+func TestAWaiverDateIsJudgedByTheSharedDefinition(t *testing.T) {
+	waiver := config.Waiver{Until: "2026-09-13", Reason: "today"}
+	core := config.Identity{Role: config.RoleCore, Audience: "cella", ConfigPrefix: "CELLA", APIGroup: "cella.latere.ai",
+		Waive: map[string]config.Waiver{"no-latere-value": waiver}, Present: true}
+	root := repo(t, map[string]string{
+		"deploy/base/app.yaml": deployment("        - name: CELLA_OIDC_ISSUERS\n          value: https://auth.latere.ai\n"),
+	})
+	for _, now := range []time.Time{
+		time.Date(2026, 9, 13, 23, 59, 0, 0, time.UTC),
+		time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC),
+	} {
+		var sb strings.Builder
+		_ = Run(core, root, &sb, noHistory(), now)
+		if got := strings.Contains(sb.String(), "WAIV no-latere-value"); got != waiver.Live(now) {
+			t.Errorf("at %s the gate says waived=%v, config says live=%v", now, got, waiver.Live(now))
+		}
 	}
 }
