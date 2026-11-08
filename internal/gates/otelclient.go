@@ -16,8 +16,10 @@ import (
 
 // OtelClient reports outbound HTTP clients that carry no tracing transport.
 //
-// Two shapes lose a trace. An &http.Client{...} literal with no Transport
-// field, and any use of http.DefaultClient, both call out with the stdlib
+// These shapes lose a trace: an http.Client literal with no Transport field,
+// new(http.Client), a zero-value var of type http.Client, any use of
+// http.DefaultClient, and the helpers http.Get, http.Post, http.Head and
+// http.PostForm, which send on it. Each calls out with the stdlib
 // transport: no client span is recorded and no traceparent header is sent, so
 // the service on the other end opens a fresh trace instead of joining the
 // caller's. The hop disappears, and it disappears silently, which is why this
@@ -123,6 +125,10 @@ func fileViolations(fset *token.FileSet, path string) []violation {
 	return violations(file)
 }
 
+// defaultClientHelpers are the package-level net/http functions that send on
+// http.DefaultClient.
+var defaultClientHelpers = []string{"Get", "Post", "Head", "PostForm"}
+
 // violations walks a parsed file for both losing shapes.
 func violations(file *ast.File) []violation {
 	// The import may be renamed. Resolve the local name for net/http first,
@@ -144,6 +150,32 @@ func violations(file *ast.File) []violation {
 				out = append(out, violation{
 					pos:    node.Pos(),
 					reason: "http.Client literal sets no Transport; use otel.Transport(...) or otel.HTTPClient()",
+				})
+			}
+		case *ast.CallExpr:
+			// http.Get and its siblings send on http.DefaultClient, and
+			// new(http.Client) is a client with the stdlib transport.
+			for _, fn := range defaultClientHelpers {
+				if isSelector(node.Fun, local, fn) {
+					out = append(out, violation{
+						pos:    node.Pos(),
+						reason: "http." + fn + " sends on http.DefaultClient, which is not instrumented; build the request and send it with otel.HTTPClient()",
+					})
+				}
+			}
+			if id, ok := node.Fun.(*ast.Ident); ok && id.Name == "new" && len(node.Args) == 1 && isSelector(node.Args[0], local, "Client") {
+				out = append(out, violation{
+					pos:    node.Pos(),
+					reason: "new(http.Client) sets no Transport; use otel.Transport(...) or otel.HTTPClient()",
+				})
+			}
+		case *ast.ValueSpec:
+			// var c http.Client is a zero client, which has no tracing
+			// transport until something sets one.
+			if len(node.Values) == 0 && isSelector(node.Type, local, "Client") {
+				out = append(out, violation{
+					pos:    node.Pos(),
+					reason: "zero http.Client sets no Transport; use otel.Transport(...) or otel.HTTPClient()",
 				})
 			}
 		case *ast.SelectorExpr:

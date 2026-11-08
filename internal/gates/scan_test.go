@@ -105,3 +105,40 @@ func TestSourceScansFailWhenGitCannotListFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestOtelClientReportsDefaultClientHelpersAndZeroClients(t *testing.T) {
+	cases := map[string]string{
+		"get":       "func f() { _, _ = http.Get(\"https://x\") }\n",
+		"post":      "func f() { _, _ = http.Post(\"https://x\", \"text/plain\", nil) }\n",
+		"head":      "func f() { _, _ = http.Head(\"https://x\") }\n",
+		"postform":  "func f() { _, _ = http.PostForm(\"https://x\", nil) }\n",
+		"new":       "var c = new(http.Client)\n",
+		"zero var":  "var c http.Client\n",
+		"local var": "func f() { var c http.Client; _ = c }\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := repo(t, map[string]string{"a.go": "package a\n\nimport \"net/http\"\n\n" + body})
+			var sb strings.Builder
+			err := OtelClient(root, &sb, nil)
+			if err == nil {
+				t.Fatalf("otel-client passed %q", body)
+			}
+			if !strings.Contains(sb.String(), "a.go:5") {
+				t.Errorf("output does not name a.go:5:\n%s", sb.String())
+			}
+		})
+	}
+}
+
+func TestOtelClientLeavesInstrumentedAndUnrelatedShapesAlone(t *testing.T) {
+	src := "package a\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/other\"\n)\n\n" +
+		"var c http.Client = *other.Client()\n" +
+		"var d = other.Get(\"x\")\n" +
+		"var e = http.NewRequest\n" +
+		"var f = new(other.Client)\n"
+	root := repo(t, map[string]string{"a.go": src})
+	if err := OtelClient(root, io.Discard, nil); err != nil {
+		t.Fatalf("otel-client reported an unrelated shape: %v", err)
+	}
+}
