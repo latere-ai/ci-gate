@@ -42,7 +42,7 @@ central decision is worth preserving and is not obvious: it gates
 `go list -deps` on named packages rather than reading `go.mod`, because a
 module graph says what *could* be reached while the import graph says what
 is actually built. That distinction is why pinning `lateregate` as a tool
-dependency does not trip `forma`'s own gate — a tool is never imported by
+dependency does not trip `forma`'s own gate: a tool is never imported by
 the packages it checks.
 
 Config would follow D2 and live in the consumer:

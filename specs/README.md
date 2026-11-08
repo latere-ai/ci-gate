@@ -35,7 +35,7 @@ Read [[000-bootstrap]] first for why the repository exists, then
 | 024 | [A failed rollout is history, not a veto on the next cut](024-a-failed-rollout-is-history.md) | complete | The previous tag's red Release run becomes a warning naming the run, the job and the actor; the window's push-triggered runs stay hard vetoes, and a green release run that published no GitHub Release still refuses |
 | 026 | [A core names two audiences, its own name and the origin](026-a-core-names-two-audiences.md) | complete | `core-audiences`, an `identity` rule for the core role: the declared production overlay names exactly `identity.audience` and `api.latere.ai`; a hosted-plane name, a wrong count, a duplicate or a missing patch is a finding; arca and origo carry a dated waiver until 027 and 029 land |
 | 025 | [A json parameter is not bytes, and the pooled endpoint is where that shows](025-json-parameters-are-not-bytes.md) | complete | `json-bytes`, a type-aware check in the `postgres` gate under every role: a byte slice bound into a parameter the statement casts to json, or carrying a json encoding, is the failure the pool reports and the direct endpoint hides; a `bytea` bind stays quiet |
-| 027 | [Gate the containers a test run leaves behind](027-container-leaks.md) | complete | A `containers` property of the suite and a `reap` package for test helpers: containers labelled with their owner process and the run, swept when the owner has exited, and removed and failed on when a run leaves them; a `container-labels` gate holds every package that imports testcontainers-go to importing `reap` |
+| 027 | [Gate the containers a test run leaves behind](027-container-leaks.md) | complete | A `containers` property of the suite and a `reap` package for test helpers: containers labeled with their owner process and the run, swept when the owner has exited, and removed and failed on when a run leaves them; a `container-labels` gate holds every package that imports testcontainers-go to importing `reap` |
 | 028 | [A client reaches the platform through the Go SDK](028-platform-via-sdk.md) | complete | A `platform-via-sdk` gate a client turns on: a string naming a platform route, folded through concatenation, the module's constants and fmt formats, and a `net/http` request or `url.URL` addressed to one or to `api.latere.ai`, fail outside the SDK's module and tests; each finding names the SDK call or says to add it; `platform_via_sdk.allow` takes a route with its reason |
 | 029 | [A repository's Lean proofs build](029-lean-proofs-build.md) | complete | A `lean` gate for a repository that tracks a Lake project: `lake build --wfail` in each project's own directory, so a `sorry` fails it; a `lake` on `PATH`, or elan at a pinned version and digest installed under the cache directory, which fetches the toolchain each project names |
 | 030 | [What a model or a person reads keeps to the do-not-use list](030-do-not-use-words.md) | complete | A `words` gate a repository turns on by naming what its readers read, over a do-not-use list the binary embeds and a repository may add to: each form, matched as whole words, fails in the files a model reads and their tool names, the string values a person reads, and spec titles and Overview sections; each finding names the reason and the preferred words; `words.allow` takes a word, a text or a path with its reason |
@@ -54,9 +54,9 @@ Read [[000-bootstrap]] first for why the repository exists, then
 Status is one of three values, and the difference is meant to be legible
 from the word alone:
 
-- `draft` — nothing of it is in the product
-- `partial` — in the product, a named criterion still open
-- `complete` — in the product, every criterion holds
+- `draft`: nothing of it is in the product
+- `partial`: in the product, a named criterion still open
+- `complete`: in the product, every criterion holds
 
 Frontmatter carries `title`, `status`, `depends_on`, `affects`, `effort`,
 `created`, `updated`, `author` and `dispatched_task_id`. Cross-references

@@ -13,8 +13,8 @@
 // vocabulary: frontmatter parses, required keys are present, status comes
 // from a closed set, dependency edges resolve, the graph is acyclic, the
 // index agrees with the specs, and cross-references point at something. A
-// repository whose lifecycle carries more meaning than this — decision
-// records, layers, outcome rules — keeps those checks itself, because they
+// repository whose lifecycle carries more meaning than this (decision
+// records, layers, outcome rules) keeps those checks itself, because they
 // are conventions rather than hygiene.
 package speclint
 

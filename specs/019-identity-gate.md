@@ -172,8 +172,8 @@ with a false-positive rate, so the gate holds the first half from the block's
 **Two heuristics, named as such in the report and the README.** A file that
 both decodes unpadded base64 and splits a string on `.` is taking a token
 apart; neither half alone is evidence. A container runs this repository when
-its image names a directory under `cmd/` — exactly, since the 2026-09-16
-amendment below. A path either reads wrong goes in `skip`.
+its image names a directory under `cmd/` (exactly, since the 2026-09-16
+amendment below). A path either reads wrong goes in `skip`.
 
 **Three corrections to the text above, made so the spec describes what
 shipped.** `skip` is a bare list of paths, as every other `skip` in this tool
@@ -206,8 +206,8 @@ the question "is this container this repository":
    ran the command `origo`. A name built beside a repository's own is the
    normal shape of a stub, a debug build, or a migration image.
 3. `initContainers` were never read, so a container that verifies a token
-   before the workload starts — origo's `check`, which runs `origod check`
-   against the node's environment — was outside the rule the workload
+   before the workload starts (origo's `check`, which runs `origod check`
+   against the node's environment) was outside the rule the workload
    beside it is held to.
 
 **The decision.** A container runs this repository when the name its image
@@ -221,9 +221,9 @@ repository, and the rule reports why rather than finding against it.
 
 A container with no image is an overlay's patch of one declared elsewhere,
 which kustomize merges by name, so it is read as the container whose name
-it carries. That keeps the decision of v0.32.2 — a container is judged
+it carries. That keeps the decision of v0.32.2, that a container is judged
 across every file that names it, so an audience set in an overlay counts
-for the base — and keeps an address named in an overlay a finding.
+for the base, and keeps an address named in an overlay a finding.
 
 `initContainers` are read beside `containers`, and an init container is
 held to the audience when it declares any variable of the repository's own

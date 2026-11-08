@@ -18,8 +18,8 @@ dispatched_task_id: null
 
 ## Why this repository exists
 
-`latere-ai/ci` centralized **release** — three `workflow_call` pipelines
-triggered by a version tag — and nothing about the gates that run on every
+`latere-ai/ci` centralized **release**, three `workflow_call` pipelines
+triggered by a version tag, and nothing about the gates that run on every
 push. So every Go repository built those itself, or went without.
 
 A survey of all 21 Go repositories in the org on 2026-08-29:
@@ -36,7 +36,7 @@ A survey of all 21 Go repositories in the org on 2026-08-29:
 Two numbers decided the shape. **Seventeen of eighteen spec-driven
 repositories lint nothing**, so their frontmatter, indexes and dependency
 edges are maintained by hand. And **one repository of twenty-one** had the
-full gate set, so the cost is adoption, not duplication — a contract
+full gate set, so the cost is adoption, not duplication. A contract
 demanding seven hand-written make targets would have moved the duplication
 from workflows into Makefiles rather than removing it.
 
@@ -79,7 +79,7 @@ The reasoning behind each decision is [[001-gate-principles]].
 first consumer: its workflow went from 112 lines to 27, its two internal
 tools were deleted, and all ten pipeline jobs pass including macOS,
 cross-compile and validate. Its coverage now clears 90% in all eight
-packages with **no exemptions at all** — the single entry it had was for
+packages with **no exemptions at all**. The single entry it had was for
 the `covercheck` package this work removed.
 
 Two things the build changed:
@@ -90,7 +90,7 @@ Two things the build changed:
 - **A public repository cannot call a private repository's reusable
   workflow.** This was not in the design and blocked everything: callers
   failed at startup with zero jobs and no log to read. It predated the
-  work — another public repository had been failing the same way and just
+  work: another public repository had been failing the same way and just
   as silently. `latere-ai/ci` is public now.
 
 Not done: the adoption ramp past `fornax`. Fifteen repositories need a

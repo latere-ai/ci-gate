@@ -175,7 +175,7 @@ func (e *Engine) Remove(ctx context.Context, id string) error {
 
 // RemoveNetwork deletes the network id. One already gone is not an error. One
 // that still has a container attached is, and says so: the containers go
-// first, so a network left in use holds a container nothing labelled.
+// first, so a network left in use holds a container nothing labeled.
 func (e *Engine) RemoveNetwork(ctx context.Context, id string) error {
 	resp, err := e.do(ctx, http.MethodDelete, "/networks/"+url.PathEscape(id))
 	if err != nil {

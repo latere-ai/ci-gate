@@ -177,8 +177,8 @@ func TestADownloadOverTheLimitIsRefused(t *testing.T) {
 	}
 }
 
-// A cancelled run does not download.
-func TestACancelledRunDoesNotFetch(t *testing.T) {
+// A canceled run does not download.
+func TestACanceledRunDoesNotFetch(t *testing.T) {
 	kubectl, archive := []byte("kubectl"), helmArchive(t, "helm")
 	srv, hits := release(t, kubectl, archive)
 	ctx, cancel := context.WithCancel(context.Background())

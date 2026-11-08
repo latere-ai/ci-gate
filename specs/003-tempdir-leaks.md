@@ -79,7 +79,7 @@ names whatever runs the suite, so a Python or Rust repository gets the same
 check with the same one-line config. This is a standard for every repository,
 not a fix for the one that was measured.
 
-## D1 — the empty-sandbox case must fail, not pass
+## D1: the empty-sandbox case must fail, not pass
 
 [[001-gate-principles]] P4 says nothing passes vacuously, and an empty
 sandbox is the exact shape that would: a suite launched through a wrapper
@@ -93,7 +93,7 @@ still distinguishable from one that was never there. `go test` writes its
 build work directory under `TMPDIR` on every run, so the signal is reliable
 for the default command.
 
-## D2 — allowances carry a reason, as everywhere else
+## D2: allowances carry a reason, as everywhere else
 
 `tempdir.allow` is `map[prefix]reason`, matching `cover.exempt` and
 `depcheck.allow`, and `config.Load` rejects an empty reason. Matching is by
@@ -105,13 +105,13 @@ directory that outlives the test run is a directory nobody will ever delete.
 The honest entry is a run that keeps its work on purpose, such as a
 `go build -work` under test.
 
-## D3 — the leak is reported before the suite's own failure
+## D3: the leak is reported before the suite's own failure
 
 When the suite fails *and* leaks, the gate reports the leak. A red suite gets
 re-run and fixed; a leak that only surfaces on a green run is a leak nobody
 ever sees.
 
-## D4 — the gate removes its own sandbox
+## D4: the gate removes its own sandbox
 
 On every path, including the one where the suite failed. A gate that leaked
 while checking for leaks would be worse than no gate.

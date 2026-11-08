@@ -182,7 +182,7 @@ refuses on three things:
   run on the default branch at `HEAD` or an ancestor back to the previous
   release tag, the latest such run must have ended on an answer.
   `failure`, `cancelled`, `timed_out`, `startup_failure` and
-  `action_required` are not answers. A run cancelled because a newer run
+  `action_required` are not answers. A run canceled because a newer run
   of the same workflow replaced it is read past, the way the newer run is
   while it is still in progress, so a concurrency group that cancels
   superseded runs changes nothing here.

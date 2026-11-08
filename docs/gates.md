@@ -273,7 +273,7 @@ if err != nil && ctr != nil {
 `reap.Labels` marks the container with its owner, `<pid>@<host>`, and with
 the `lateregate` run in `LATEREGATE_RUN` when there is one. A network the
 helper makes takes the same labels, `network.WithLabels(reap.Labels())`.
-`reap.Sweep` removes each labelled container, and then each labelled
+`reap.Sweep` removes each labeled container, and then each labeled
 network, whose owner on this host has exited. It never judges by age, so
 it is safe while other suites on the machine are using theirs.
 
@@ -327,7 +327,7 @@ skipped with that reason before.
 
 It checks the import, not the call. It cannot follow labels through
 option slices and helpers, so it does not prove that every container is
-labelled. A package that imports `reap` and starts a container without
+labeled. A package that imports `reap` and starts a container without
 `WithLabels(reap.Labels())` passes, and so does `import _` of `reap`. A
 package that imports testcontainers-go only for a type owes the import
 too. Such a package has no reason to call `reap`, and Go refuses an

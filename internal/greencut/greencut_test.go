@@ -396,8 +396,8 @@ func TestAFirstTagReadsNoPreviousTag(t *testing.T) {
 	}
 }
 
-// A cancelled run is red exactly as a failure is.
-func TestACancelledRunIsRed(t *testing.T) {
+// A canceled run is red exactly as a failure is.
+func TestACanceledRunIsRed(t *testing.T) {
 	a := green()
 	a.runs = []run{redRun(1284, "ci", "cancelled")}
 	a.jobs[1284] = []job{{ID: 77, Name: "gate (race)", Conclusion: "cancelled"}}
@@ -406,29 +406,29 @@ func TestACancelledRunIsRed(t *testing.T) {
 	var out strings.Builder
 	err := guard(t, a, false, &out).Check()
 	if err == nil || !strings.Contains(err.Error(), "ci #1284 cancelled, job \"gate (race)\"") {
-		t.Fatalf("Check() = %v, want a cancelled run refused", err)
+		t.Fatalf("Check() = %v, want a canceled run refused", err)
 	}
 }
 
 // supersededWindow is one workflow with a run still in progress, the run it
-// cancelled, and an older green run below both.
+// canceled, and an older green run below both.
 func supersededWindow() []run {
 	running := greenRun(1290, "ci")
 	running.Status, running.Conclusion = "in_progress", ""
-	cancelled := redRun(1286, "ci", "cancelled")
+	canceled := redRun(1286, "ci", "cancelled")
 	older := greenRun(1280, "ci")
 	older.HeadSHA = oldSHA
-	for _, r := range []*run{&running, &cancelled, &older} {
+	for _, r := range []*run{&running, &canceled, &older} {
 		r.WorkflowID = 42
 	}
-	return []run{running, cancelled, older}
+	return []run{running, canceled, older}
 }
 
 // A concurrency group cancels a run the moment a newer push supersedes it.
 // That run is not an answer: the guard reads past it exactly as it reads past
 // the newer run still in progress, so turning cancellation on does not change
 // what a cut decides.
-func TestASupersededCancelledRunDefersToTheRunBeforeIt(t *testing.T) {
+func TestASupersededCanceledRunDefersToTheRunBeforeIt(t *testing.T) {
 	a := green()
 	a.runs = supersededWindow()
 

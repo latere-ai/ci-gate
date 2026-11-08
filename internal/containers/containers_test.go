@@ -163,7 +163,7 @@ func TestSweepRemovesOnlyWhatAnExitedOwnerOnThisHostLeft(t *testing.T) {
 		owned("alive-here", "200@box", ""),
 		owned("dead-elsewhere", "100@other", ""),
 		owned("unreadable", "nobody", ""),
-		{ID: "unlabelled", Labels: map[string]string{"org.testcontainers": "true"}},
+		{ID: "unlabeled", Labels: map[string]string{"org.testcontainers": "true"}},
 	}}
 	alive := func(pid int) bool { return pid == 200 }
 	gone, err := Sweep(context.Background(), serve(t, f), "box", alive)
@@ -200,7 +200,7 @@ func TestSweepReportsAnEngineThatDoesNotList(t *testing.T) {
 	}
 }
 
-func TestLeftoversRemovesEverythingTheRunLabelled(t *testing.T) {
+func TestLeftoversRemovesEverythingTheRunLabeled(t *testing.T) {
 	f := &fakeEngine{
 		list: []Container{
 			owned("mine-1", "1@box", "run-a"),

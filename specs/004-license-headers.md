@@ -78,7 +78,7 @@ a shebang, `1` otherwise:
 
 with `<holder>` and `<spdx>` from `.lateregate.yaml`, matched literally.
 
-## D1 — the identifier is declared, and an undeclared repository fails
+## D1: the identifier is declared, and an undeclared repository fails
 
 `license.spdx` has no default. A repository that runs the gate without
 declaring one gets an error naming the field, not a pass.
@@ -96,7 +96,7 @@ silently picks `AGPL-3.0-only` for a repository that meant
 exists to prevent. It does check that a root `LICENSE` file exists, because
 a header pointing at terms that are not in the tree names nothing.
 
-## D2 — the blank third line is part of the check
+## D2: the blank third line is part of the check
 
 In Go, a comment block immediately above `package` *is* the package
 documentation. Without a blank line separating them, the license text
@@ -114,7 +114,7 @@ package audit
 The mistake is invisible in review and permanent once it is in 300 files, so
 the gate checks the separation rather than only the two lines above it.
 
-## D3 — the year is a pattern, not a value
+## D3: the year is a pattern, not a value
 
 Checking `2026` literally turns every 1 January into a 300-file diff, and a
 gate that fails for a reason nobody caused is a gate people learn to skip.
@@ -122,7 +122,7 @@ The check accepts a year or a range, so `2026`, `2024-2026` and a file
 written next year all pass. What the gate asserts is that a human wrote a
 year, not which one.
 
-## D4 — one file-type list, `.go` by default
+## D4: one file-type list, `.go` by default
 
 The gate is written for a Go tool, so `.go` is what it checks when nothing
 says otherwise. A repository that ships more than Go lists what it ships:
@@ -146,14 +146,14 @@ time. This is the one that would fail silently: `//` is a legal comment in
 most languages, so a mismatched marker matches nothing and reports a clean
 pass over files nobody checked.
 
-## D5 — nothing passes vacuously
+## D5: nothing passes vacuously
 
 [[001-gate-principles]] D4. A scan that matched no file fails, which is what
 catches a wrong `extensions` entry or a root pointed at the wrong directory.
 A gate reporting "0 files, all correct" is the failure mode that makes every
 other gate here suspicious.
 
-## D6 — a shebang keeps line 1
+## D6: a shebang keeps line 1
 
 The kernel honors `#!` only as the first two bytes of the file, so a notice
 pushed above it makes the script unexecutable:

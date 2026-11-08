@@ -134,8 +134,8 @@ force every tree onto one label vocabulary and catch no error, so it checks
 the claim it can check: the row points at a file that exists.
 
 Whether the index covers the archive at all is the tree's decision, and the
-index states it by what it holds. auth's says it "lists **every** spec —
-active and archived — in one number space"; agents' is a view of where the
+index states it by what it holds. auth's says it lists **every** spec,
+active and archived, in one number space; agents' is a view of where the
 platform is now and names retired specs only in prose. Both are defensible,
 so the rule is read off the table rather than configured: an index holding at
 least one archive row is an index of the whole tree and must hold them all,

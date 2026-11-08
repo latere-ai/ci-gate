@@ -57,7 +57,7 @@ job's token; the compare endpoint answers ancestry). The commit is fetched
 at depth 1 if the checkout lacks it. `-since <rev>` names a commit directly.
 Whenever the base cannot be had (no token, no green run, an API error, a
 fetch that fails) the run checks the whole tree and the plan's first line
-says why. A cancelled run is never a base: it verified nothing.
+says why. A canceled run is never a base: it verified nothing.
 
 Main stays held to the whole bar by induction. Each green run passed every
 gate whose inputs changed since a green commit, and `lateregate release`
@@ -135,7 +135,7 @@ Each is its own spec, and lands only after the one before it is live:
   `vuln` for a change of only inert files, runs them over the whole tree
   otherwise, and names the base in the plan.
 - `-since green` with no token, no green run or an unreachable base checks
-  the whole tree and says why; a cancelled run is never chosen.
+  the whole tree and says why; a canceled run is never chosen.
 - For each of the 21 path filters in use on 2026-11-05, every path the
   filter re-includes is judged read by Go or named by `frontend.reads`,
   and a test fixture holds each shape: a test naming a spec by relative

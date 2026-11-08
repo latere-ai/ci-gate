@@ -93,7 +93,7 @@ on it, newest first. The base is the first run whose commit is `HEAD` or an
 ancestor of it, which the compare endpoint answers. A commit the checkout
 lacks is fetched at depth 1. Anything that goes wrong (no token, a missing
 variable, an API error, no matching run, a failed fetch) checks the whole
-tree, and `base` says why on stderr. A cancelled run is never a base.
+tree, and `base` says why on stderr. A canceled run is never a base.
 
 `-since REV` names the commit directly. On a laptop the scope then narrows
 as above, measured from `REV`. With `CI` set, packages never narrow: each

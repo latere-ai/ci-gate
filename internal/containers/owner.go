@@ -54,7 +54,7 @@ type Removed struct {
 // Len is how many containers and networks were removed.
 func (r Removed) Len() int { return len(r.Containers) + len(r.Networks) }
 
-// Sweep removes each labelled container, then each labelled network, whose
+// Sweep removes each labeled container, then each labeled network, whose
 // owner ran on host and is no longer alive, and returns what it removed.
 //
 // Liveness is the only test. A container is never judged by its age, because
@@ -69,7 +69,7 @@ func Sweep(ctx context.Context, e *Engine, host string, alive func(pid int) bool
 	return remove(ctx, e, OwnerLabel, orphaned)
 }
 
-// Leftovers removes every container and network labelled with run, whoever
+// Leftovers removes every container and network labeled with run, whoever
 // owns it, and returns what it removed. It is for after the run: once every
 // process of the run has exited, each one still carrying its label is one
 // nothing stopped.

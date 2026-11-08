@@ -223,8 +223,8 @@ func TestStopReturnsWhatItCouldNotRemove(t *testing.T) {
 	}
 }
 
-// A cancelled run stops waiting.
-func TestACancelledRunStopsWaiting(t *testing.T) {
+// A canceled run stops waiting.
+func TestACanceledRunStopsWaiting(t *testing.T) {
 	e := scripted()
 	e.fail["exec"] = true
 	h := testHost(e, io.Discard)

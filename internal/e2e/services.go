@@ -83,7 +83,7 @@ type Host struct {
 	started []string
 }
 
-// NewHost is a host for suite on engine, labelled the way a test helper
+// NewHost is a host for suite on engine, labeled the way a test helper
 // labels its containers.
 func NewHost(engine, suite string, out io.Writer, run gates.Exec) *Host {
 	labels := containers.Labels(os.Getpid(), hostname(), os.Getenv(containers.RunEnv))

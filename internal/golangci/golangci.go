@@ -117,7 +117,7 @@ func Render(module string, disable []string, sl *config.Sloglint, extra map[stri
 	// constructed path, and marshal literals written a line earlier. None of
 	// that is a finding there, and replichai's config had already argued so.
 	//
-	// bodyclose is here for a different reason: it analyses the call site and
+	// bodyclose is here for a different reason: it analyzes the call site and
 	// does not follow into helpers, and a test suite is built out of helpers.
 	// Measured on service-template, all 33 of its findings were wrong -- 29
 	// were httptest recorder results, whose Body is a NopCloser over a byte

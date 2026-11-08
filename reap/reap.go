@@ -44,7 +44,7 @@ func Labels() map[string]string {
 	return containers.Labels(os.Getpid(), host, run)
 }
 
-// Sweep removes each labelled container, and then each labelled network, on
+// Sweep removes each labeled container, and then each labeled network, on
 // this machine's engine whose owner has exited, and returns how many it
 // removed. One whose owner is alive is never touched, however old it is, so a
 // sweep is safe while other suites run. With no engine socket there is

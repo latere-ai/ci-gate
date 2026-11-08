@@ -62,7 +62,7 @@ flowchart LR
 
 Three consequences follow, each of which is a section below.
 
-### D1 — Every gate has a recipe, and the binary owns it
+### D1: Every gate has a recipe, and the binary owns it
 
 The gates 006 left to the Makefile move into the binary:
 
@@ -82,7 +82,7 @@ away with them: one version, in one place, moved by one commit.
 tiers it runs itself. Without the flag it collects the profile, so the
 default is the whole suite and not whichever file was lying around.
 
-### D2 — The set is decided by probing, not by configuring
+### D2: The set is decided by probing, not by configuring
 
 A gate applies unless the tree has no subject for it, and the tree is asked
 directly:
@@ -113,7 +113,7 @@ An unknown key fails the load, and an expired waiver makes the gate run and
 fail on its own terms rather than as an expiry: the reason for the work is
 then in the gate's own output.
 
-### D3 — A default is a decision made once
+### D3: A default is a decision made once
 
 Every consumer restated the same values. They become defaults:
 

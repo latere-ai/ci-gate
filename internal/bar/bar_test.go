@@ -513,7 +513,7 @@ func TestAWaiverNarrowsTheSuite(t *testing.T) {
 		"race":       {Reason: "flaky under load", Until: "2026-09-30"},
 		"hermetic":   {Reason: "needs git", Until: "2026-09-30"},
 		"tempdir":    {Reason: "fixtures leak", Until: "2026-09-30"},
-		"containers": {Reason: "helpers unlabelled", Until: "2026-09-30"},
+		"containers": {Reason: "helpers unlabeled", Until: "2026-09-30"},
 		"cover":      {Reason: "was behind", Until: "2026-08-01"},
 	}
 	plan, err := Plan(c)
@@ -525,7 +525,7 @@ func TestAWaiverNarrowsTheSuite(t *testing.T) {
 		"without -race (race waived until 2026-09-30: flaky under load)",
 		"with the full PATH (hermetic waived until 2026-09-30: needs git)",
 		"outside the TMPDIR sandbox (tempdir waived until 2026-09-30: fixtures leak)",
-		"without watching its containers (containers waived until 2026-09-30: helpers unlabelled)",
+		"without watching its containers (containers waived until 2026-09-30: helpers unlabeled)",
 		"cover waiver expired 2026-08-01: was behind",
 	} {
 		if s.Status != Run || !strings.Contains(s.Reason, want) {

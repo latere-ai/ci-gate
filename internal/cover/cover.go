@@ -7,7 +7,7 @@
 // An average lets a well-tested package carry an untested one and reports a
 // number nobody can act on. That is not hypothetical: when this check was
 // first written one repository sat at 90.4% and passed, while two packages
-// inside it were at 85.7% and 87.8% — both below the floor, both invisible
+// inside it were at 85.7% and 87.8%, both below the floor, both invisible
 // behind the average.
 package cover
 

@@ -51,10 +51,10 @@ func ContainerLabels(root string, out io.Writer) error {
 		_, _ = fmt.Fprintf(out, "no package imports testcontainers-go, across %d Go file(s), so none owes the reap labels\n", scanned)
 		return nil
 	}
-	var missing, labelled []string
+	var missing, labeled []string
 	for _, p := range pkgs {
 		if p.reap {
-			labelled = append(labelled, p.dir)
+			labeled = append(labeled, p.dir)
 			continue
 		}
 		missing = append(missing, fmt.Sprintf("%s:%d: imports %s, and no file of the package imports %s",
@@ -72,7 +72,7 @@ func ContainerLabels(root string, out io.Writer) error {
 			"label each container and network with reap.Labels() and sweep with reap.Sweep(ctx)",
 			ofNoun(len(missing), "package"), verb)
 	}
-	_, _ = fmt.Fprintf(out, "every package that imports testcontainers-go imports reap: %s\n", strings.Join(labelled, ", "))
+	_, _ = fmt.Fprintf(out, "every package that imports testcontainers-go imports reap: %s\n", strings.Join(labeled, ", "))
 	return nil
 }
 

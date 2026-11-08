@@ -224,7 +224,7 @@ func (g *Guard) window(prev string) (map[string]bool, error) {
 // under .github/workflows: a workflow that triggers only on tags has no run on
 // the default branch, and demanding one would refuse every cut forever.
 //
-// A run cancelled while a newer run of the same workflow exists was replaced,
+// A run canceled while a newer run of the same workflow exists was replaced,
 // by a concurrency group that cancels superseded runs or by hand. Its answer
 // is the newer run's, so it is passed over the way the newer run is while it
 // is still in progress, and turning cancellation on for a workflow does not
