@@ -30,17 +30,17 @@ const (
 
 // trackedFiles lists the files git tracks that match pathspecs, skipping any
 // under a directory named in skip.
+//
+// The list is NUL separated: without -z, git quotes a path that holds a byte
+// outside ASCII or a space at either end, and the quoted name is a file that
+// does not exist.
 func trackedFiles(run Exec, what string, skip []string, pathspecs ...string) ([]string, error) {
-	out, err := run(nil, false, "git", append([]string{"ls-files", "--"}, pathspecs...)...)
+	out, err := run(nil, false, "git", append([]string{"ls-files", "-z", "--"}, pathspecs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot list %s with git: %w", what, err)
 	}
 	var files []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		p := strings.TrimSpace(line)
-		if p == "" {
-			continue
-		}
+	for _, p := range nulSeparated(string(out)) {
 		parts := strings.Split(path.Dir(p), "/")
 		if slices.ContainsFunc(skip, func(s string) bool { return slices.Contains(parts, s) }) {
 			continue

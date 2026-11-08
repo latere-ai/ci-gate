@@ -165,3 +165,27 @@ func TestKustomizationsLeaveOutAComponentWhateverItsSpelling(t *testing.T) {
 		}
 	}
 }
+
+// git quotes a path with bytes outside ASCII unless it is asked for NUL
+// separated output. Read quoted, such a file would be a name that does not
+// exist, and every gate that reads tracked files would pass over it.
+func TestTrackedFilesListsAPathOutsideASCII(t *testing.T) {
+	root := t.TempDir()
+	for _, p := range []string{"i18n/中文.json", "i18n/en.json", "a b.json"} {
+		full := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitTrack(t, root)
+	files, err := TrackedFiles(root, "JSON files", nil, "*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(files, ","), "a b.json,i18n/en.json,i18n/中文.json"; got != want {
+		t.Errorf("tracked = %q, want %q", got, want)
+	}
+}

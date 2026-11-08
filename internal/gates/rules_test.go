@@ -41,7 +41,7 @@ func TestPrometheusRulesLiftsEverySpec(t *testing.T) {
 	}
 	read := func(f string) ([]byte, error) { return []byte(files[f]), nil }
 	var calls []call
-	got, err := PrometheusRules(fake(t, &calls, "deploy/base/rules.yaml\ndeploy/other.yml\ndocs/list.yaml\nx/testdata/r.yaml\n"), read)
+	got, err := PrometheusRules(fake(t, &calls, "deploy/base/rules.yaml\x00deploy/other.yml\x00docs/list.yaml\x00x/testdata/r.yaml\x00"), read)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,11 +52,11 @@ func TestPrometheusRulesLiftsEverySpec(t *testing.T) {
 		t.Fatalf("spec %q", spec)
 	}
 	files["bad.yaml"] = "kind: PrometheusRule\nspec: [\n"
-	if _, err := PrometheusRules(fake(t, &calls, "bad.yaml\n"), read); err == nil || !strings.Contains(err.Error(), "does not parse") {
+	if _, err := PrometheusRules(fake(t, &calls, "bad.yaml\x00"), read); err == nil || !strings.Contains(err.Error(), "does not parse") {
 		t.Fatalf("a broken rule file: %v", err)
 	}
 	files["empty.yaml"] = "kind: PrometheusRule\nmetadata: {name: x}\n"
-	if _, err := PrometheusRules(fake(t, &calls, "empty.yaml\n"), read); err == nil || !strings.Contains(err.Error(), "no spec") {
+	if _, err := PrometheusRules(fake(t, &calls, "empty.yaml\x00"), read); err == nil || !strings.Contains(err.Error(), "no spec") {
 		t.Fatalf("a rule with no spec: %v", err)
 	}
 }
@@ -78,7 +78,7 @@ func (m *promMachine) exec(env []string, stream bool, name string, args ...strin
 	}
 	switch base {
 	case "git":
-		return []byte("deploy/rules.yaml\n"), nil
+		return []byte("deploy/rules.yaml\x00"), nil
 	case "curl":
 		return nil, os.WriteFile(args[slices.Index(args, "-o")+1], m.archive, 0o644)
 	case "promtool":

@@ -16,7 +16,7 @@ import (
 // trees, and a git that cannot answer is an error rather than no modules.
 func TestGoModulesAreTheTrackedGoMods(t *testing.T) {
 	var calls []call
-	listed := "go.mod\ntools/gen/go.mod\ninternal/x/testdata/mod/go.mod\nvendor/a/go.mod\ndocs/go.mod.md\n"
+	listed := "go.mod\x00tools/gen/go.mod\x00internal/x/testdata/mod/go.mod\x00vendor/a/go.mod\x00docs/go.mod.md\x00"
 	dirs, err := GoModules(fake(t, &calls, listed))
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func TestTidyChecksEveryModuleAndNamesTheUntidy(t *testing.T) {
 	var calls []call
 	var out strings.Builder
 	// git's list sorts to a, b, then the root.
-	err := Tidy("go", &out, fake(t, &calls, "go.mod\na/go.mod\nb/go.mod\n", errors.New("diff"), nil, nil))
+	err := Tidy("go", &out, fake(t, &calls, "go.mod\x00a/go.mod\x00b/go.mod\x00", errors.New("diff"), nil, nil))
 	if err == nil || !strings.Contains(err.Error(), "1 of 3 modules: a") {
 		t.Fatalf("Tidy = %v", err)
 	}
@@ -51,7 +51,7 @@ func TestTidyChecksEveryModuleAndNamesTheUntidy(t *testing.T) {
 	}
 	calls = nil
 	out.Reset()
-	if err := Tidy("go", &out, fake(t, &calls, "go.mod\n")); err != nil || !strings.Contains(out.String(), "1 module(s) are tidy") {
+	if err := Tidy("go", &out, fake(t, &calls, "go.mod\x00")); err != nil || !strings.Contains(out.String(), "1 module(s) are tidy") {
 		t.Fatalf("a tidy module: %v %q", err, out.String())
 	}
 	if err := Tidy("go", &out, fake(t, &calls, "")); err == nil {
@@ -65,7 +65,7 @@ func TestTidyChecksEveryModuleAndNamesTheUntidy(t *testing.T) {
 func TestActionlintLintsTheTrackedWorkflowsAtThePin(t *testing.T) {
 	var calls []call
 	var out strings.Builder
-	listed := ".github/workflows/verify.yml\n.github/workflows/release.yaml\n.github/workflows/sub/x.yml\n"
+	listed := ".github/workflows/verify.yml\x00.github/workflows/release.yaml\x00.github/workflows/sub/x.yml\x00"
 	if err := Actionlint("go", &out, fake(t, &calls, listed, nil)); err != nil {
 		t.Fatal(err)
 	}
@@ -88,8 +88,8 @@ func TestActionlintLintsTheTrackedWorkflowsAtThePin(t *testing.T) {
 // Component is rendered only through its includer, so it is left out.
 func TestKustomizationsLeaveComponentsOut(t *testing.T) {
 	var calls []call
-	listed := "deploy/base/kustomization.yaml\ndeploy/prod/kustomization.yml\ndeploy/c/kustomization.yaml\n" +
-		"deploy/old/Kustomization\nx/testdata/k/kustomization.yaml\ndocs/kustomization.yaml.md\n"
+	listed := "deploy/base/kustomization.yaml\x00deploy/prod/kustomization.yml\x00deploy/c/kustomization.yaml\x00" +
+		"deploy/old/Kustomization\x00x/testdata/k/kustomization.yaml\x00docs/kustomization.yaml.md\x00"
 	files := map[string]string{
 		"deploy/base/kustomization.yaml": "resources:\n- a.yaml\n",
 		"deploy/prod/kustomization.yml":  "kind: Kustomization\nresources:\n- ../base\n",
@@ -110,11 +110,11 @@ func TestKustomizationsLeaveComponentsOut(t *testing.T) {
 	if !slices.Equal(dirs, []string{"deploy/base", "deploy/old", "deploy/prod"}) {
 		t.Fatalf("kustomizations %v", dirs)
 	}
-	if _, err := Kustomizations(fake(t, &calls, "a/kustomization.yaml\n"), read); err == nil {
+	if _, err := Kustomizations(fake(t, &calls, "a/kustomization.yaml\x00"), read); err == nil {
 		t.Fatal("an unreadable kustomization was skipped")
 	}
 	gone := func(string) ([]byte, error) { return nil, os.ErrNotExist }
-	if dirs, err := Kustomizations(fake(t, &calls, "a/kustomization.yaml\n"), gone); err != nil || len(dirs) != 0 {
+	if dirs, err := Kustomizations(fake(t, &calls, "a/kustomization.yaml\x00"), gone); err != nil || len(dirs) != 0 {
 		t.Fatalf("a kustomization deleted in the working tree: %v %v", dirs, err)
 	}
 }
@@ -127,7 +127,7 @@ func TestManifestsRenderEveryKustomization(t *testing.T) {
 	writeFile(t, root, "b/kustomization.yaml", "resources: []\n")
 	var calls []call
 	var out strings.Builder
-	err := Manifests("go", root, &out, fake(t, &calls, "a/kustomization.yaml\nb/kustomization.yaml\n", errors.New("bad patch"), nil))
+	err := Manifests("go", root, &out, fake(t, &calls, "a/kustomization.yaml\x00b/kustomization.yaml\x00", errors.New("bad patch"), nil))
 	if err == nil || !strings.Contains(err.Error(), "1 of 2 kustomizations: a") {
 		t.Fatalf("Manifests = %v", err)
 	}
@@ -156,9 +156,9 @@ func writeFile(t *testing.T, root, rel, body string) {
 // and every action.yml or action.yaml, and nothing under testdata.
 func TestActionFilesReadWorkflowsAndActions(t *testing.T) {
 	var calls []call
-	listed := ".github/workflows/ci.yml\n.github/workflows/nested/x.yml\n.github/workflows/r.yaml\n" +
-		"action.yml\nactions/setup/action.yaml\nactions/setup/README.md\n" +
-		"internal/x/testdata/action.yml\ninternal/x/testdata/.github/workflows/w.yml\n"
+	listed := ".github/workflows/ci.yml\x00.github/workflows/nested/x.yml\x00.github/workflows/r.yaml\x00" +
+		"action.yml\x00actions/setup/action.yaml\x00actions/setup/README.md\x00" +
+		"internal/x/testdata/action.yml\x00internal/x/testdata/.github/workflows/w.yml\x00"
 	got, err := ActionFiles(fake(t, &calls, listed))
 	if err != nil {
 		t.Fatal(err)
