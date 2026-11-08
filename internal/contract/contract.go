@@ -559,26 +559,66 @@ func checkPin(root, module string) string {
 	return ""
 }
 
+// anyCaller matches a call of the shared workflow at any ref. Run accepts
+// only v1 and a commit, and reports the others as drift; init only needs to
+// know that somebody already wrote a caller, so it never writes over one.
+var anyCaller = regexp.MustCompile(`latere-ai/ci/\.github/workflows/lateregate\.yml@`)
+
+// hasCaller reports whether any workflow file calls the shared workflow at
+// any ref, or still calls the pipeline it replaces.
+func hasCaller(root string) (bool, error) {
+	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.y*ml"))
+	if err != nil {
+		return false, err
+	}
+	for _, f := range files {
+		body, err := os.ReadFile(f)
+		if err != nil {
+			return false, err
+		}
+		if anyCaller.Match(body) || strings.Contains(string(body), oldWorkflow) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Init writes what Run checks for, and never a file already in shape.
 //
 // It does not touch Makefile or .lateregate.yaml: those hold decisions, and
 // a tool that writes decisions for a repository has made them for it.
 func Init(root string, cfg *config.Config, out io.Writer, exec gates.Exec) error {
 	wrote := 0
-	// The caller, only when no workflow calls either the new or the old
-	// pipeline. An old caller carries inputs somebody chose, so it is edited
-	// by hand and reported by Run until it is. A repository that ships from
-	// a workstation runs no push workflow, so it is given none.
-	if _, _, f := checkWorkflow(root, nil); isNoCaller(f) && !cfg.Ships() {
-		p := filepath.Join(root, ".github", "workflows", "ci.yml")
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	// The caller, only when no workflow calls the shared pipeline at any ref
+	// or the old one, and ci.yml does not exist. An existing caller carries
+	// inputs somebody chose, so it is edited by hand and reported by Run
+	// until it is; a ci.yml that calls nothing shared is the repository's
+	// own, and replacing it is for the person to do. A repository that
+	// ships from a workstation runs no push workflow, so it is given none.
+	if !cfg.Ships() {
+		const callerRel = ".github/workflows/ci.yml"
+		p := filepath.Join(root, filepath.FromSlash(callerRel))
+		called, err := hasCaller(root)
+		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(p, []byte(Caller), 0o644); err != nil {
-			return err
+		_, statErr := os.Stat(p)
+		switch {
+		case statErr == nil && !called:
+			_, _ = fmt.Fprintf(out, "%s exists and does not call %s; replace it with the shared caller yourself, init leaves it as it is\n", callerRel, Workflow)
+		case statErr != nil && !called:
+			if !errors.Is(statErr, os.ErrNotExist) {
+				return statErr
+			}
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(p, []byte(Caller), 0o644); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(out, "wrote "+callerRel)
+			wrote++
 		}
-		_, _ = fmt.Fprintln(out, "wrote .github/workflows/ci.yml")
-		wrote++
 	}
 
 	if f := checkHook(root); f != "" {
