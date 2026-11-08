@@ -380,27 +380,18 @@ committed: the commit log already holds that.
   what was forgotten and its restore, export, import, and one memory of
   You or of a project. The memory base followed by a path the source does
   not fix names the package.
-
-### Upgrading
-
-- Nothing to change. A memory route a client writes was already a
-  finding; only what the finding says to use is new.
+  A repository changes nothing: a memory route a client writes was already a finding, and only what the finding says to use is new.
 
 ## v0.57.0 - 2026-10-29
 
 ### Added
 
-- **`words`: what a model or a person reads keeps to the do-not-use list.** The binary carries the organization's do-not-use list, `internal/words/do-not-use.yaml`: twenty-one words, each with the readers it is banned for (model-facing, person-facing, spec-overview), the forms matched, the reason and the words to write instead. In a repository that names a place to read, each form fails the gate where its reader reads it: the files `words.model_facing` matches and their names, read as tool names, with only the highest `-vN` of each tool's description read, since a released version is kept for replay and no longer offered (`words.older_versions` keeps an older one a repository still offers); the string files `words.person_facing` matches; and, with `words.spec_overview`, each spec's frontmatter title and `## Overview` section. Matching is by whole word and case-insensitive, with identifiers split at `_`, `-` and a change of case. In a `.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` or `.json` file only the strings are read, not code, comments, an object's keys or a `{name}` placeholder; in a spec, neither a link's target nor a `[[wikilink]]`'s file name is read. Each finding names the file, the line, the word, the reader, the reason and the words to write instead. `words.allow` takes a list word, a longer text such as a wire name, a path glob or a text and a path, each with its reason; an entry no hit needs fails the gate. `words.vocabulary` adds a list of the repository's own in the same shape; a word or a form the carried list already has fails. A glob that matches nothing, and a `words.vocabulary` file that is missing or holds no list, fail with what to do.
+- **`words`: what a model or a person reads keeps to the do-not-use list.** The binary carries the organization's do-not-use list, `internal/words/do-not-use.yaml`: twenty-one words, each with the readers it is banned for (model-facing, person-facing, spec-overview), the forms matched, the reason and the words to write instead. In a repository that names a place to read, each form fails the gate where its reader reads it: the files `words.model_facing` matches and their names, read as tool names, with only the highest `-vN` of each tool's description read, since a released version is kept for replay and no longer offered (`words.older_versions` keeps an older one a repository still offers); the string files `words.person_facing` matches; and, with `words.spec_overview`, each spec's frontmatter title and `## Overview` section. Matching is by whole word and case-insensitive, with identifiers split at `_`, `-` and a change of case. In a `.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` or `.json` file only the strings are read, not code, comments, an object's keys or a `{name}` placeholder; in a spec, neither a link's target nor a `[[wikilink]]`'s file name is read. Each finding names the file, the line, the word, the reader, the reason and the words to write instead. `words.allow` takes a list word, a longer text such as a wire name, a path glob or a text and a path, each with its reason; an entry no hit needs fails the gate. `words.vocabulary` adds a list of the repository's own in the same shape; a word or a form the carried list already has fails. A glob that matches nothing, and a `words.vocabulary` file that is missing or holds no list, fail with what to do. Nothing changes for a repository whose `.lateregate.yaml` has no `words` block: the gate is skipped with that reason. The list is in the binary, so the gate needs no other checkout on a runner.
 
 ### Changed
 
-- **`enum-typescript` reads TypeScript and TSX only.** It no longer reads Vue single-file components and needs no `@vue/compiler-sfc`: a project's installed `typescript` is all it loads. A selector under `enums.typescript` names a `.ts` or `.tsx` file; one that names a `.vue` file is refused when `.lateregate.yaml` is read.
-- **The `identity` gate's `roles` rule no longer reads `.vue` files.** It reads `.ts`, `.tsx`, `.jsx`, `.svelte`, `.js`, `.mjs` and `.cjs`.
-
-### Upgrading
-
-- Nothing changes for a repository whose `.lateregate.yaml` has no `words` block: the gate is skipped with that reason. The list is in the binary, so the gate needs no other checkout on a runner.
-- Nothing changes for a repository that holds no `.vue` file. In one that does, `enum-typescript` and the `roles` rule no longer check those files, and an `enums.typescript` selector that names one is refused until it names a `.ts` or `.tsx` file.
+- **`enum-typescript` reads TypeScript and TSX only.** It no longer reads Vue single-file components and needs no `@vue/compiler-sfc`: a project's installed `typescript` is all it loads. A selector under `enums.typescript` names a `.ts` or `.tsx` file; one that names a `.vue` file is refused when `.lateregate.yaml` is read. Nothing changes for a repository that holds no `.vue` file. In one that does, `enum-typescript` no longer checks those files, and an `enums.typescript` selector that names one is refused until it names a `.ts` or `.tsx` file.
+- **The `identity` gate's `roles` rule no longer reads `.vue` files.** It reads `.ts`, `.tsx`, `.jsx`, `.svelte`, `.js`, `.mjs` and `.cjs`. In a repository that holds `.vue` files, those are no longer checked.
 
 ## v0.56.0 - 2026-10-23
 
@@ -412,11 +403,7 @@ committed: the commit log already holds that.
 
 ### Added
 
-- **`platform-via-sdk`: a client reaches the platform through the Go SDK.** In a repository that sets `platform_via_sdk.enabled`, a string that names a platform route fails the gate: `/v1/` and a segment the platform origin serves, such as `agents`, `account` or `storage`, read through concatenation, the module's own constants in any package, and fmt formats. So does a `net/http` request or a `url.URL` addressed to a platform route or to `api.latere.ai`. Test files and the SDK's own module are not read. Each finding names the file, the line and the route, and the call of SDK v0.7.0 that makes it, or says to add the call to `latere.ai/x/sdk-go`. `platform_via_sdk.allow` takes a route with the reason it is not a call to the platform; an entry no finding needs fails the gate.
-
-### Upgrading
-
-- Nothing changes for a repository that does not set `platform_via_sdk.enabled`: the gate is skipped with that reason. A client turns it on once its calls go through the SDK.
+- **`platform-via-sdk`: a client reaches the platform through the Go SDK.** In a repository that sets `platform_via_sdk.enabled`, a string that names a platform route fails the gate: `/v1/` and a segment the platform origin serves, such as `agents`, `account` or `storage`, read through concatenation, the module's own constants in any package, and fmt formats. So does a `net/http` request or a `url.URL` addressed to a platform route or to `api.latere.ai`. Test files and the SDK's own module are not read. Each finding names the file, the line and the route, and the call of SDK v0.7.0 that makes it, or says to add the call to `latere.ai/x/sdk-go`. `platform_via_sdk.allow` takes a route with the reason it is not a call to the platform; an entry no finding needs fails the gate. Nothing changes for a repository that does not set `platform_via_sdk.enabled`: the gate is skipped with that reason. A client turns it on once its calls go through the SDK.
 
 ### Fixed
 
@@ -427,47 +414,40 @@ committed: the commit log already holds that.
 
 ### Added
 
-- **`container-labels`: a package that imports testcontainers-go imports `reap`.** The `containers` watch sees only containers and networks carrying the `reap` labels, so a helper that never adopted the contract leaked as before while the suite reported nothing left behind. The new gate reads every Go package of the tree, test files included, and names each one that imports a testcontainers-go package and no file of which imports `latere.ai/x/ci-gate/reap`. It applies once a package imports testcontainers-go, and is skipped with that reason before. A nested checkout under the tree, such as an agent's worktree, is another repository and is not read.
-
-### Upgrading
-
-- A repository whose tests start containers through testcontainers-go and do not use `reap` fails `container-labels`. Adopt the contract in the helper, as the `containers` section of `docs/gates.md` shows, or write a dated waiver while it is behind.
+- **`container-labels`: a package that imports testcontainers-go imports `reap`.** The `containers` watch sees only containers and networks carrying the `reap` labels, so a helper that never adopted the contract leaked as before while the suite reported nothing left behind. The new gate reads every Go package of the tree, test files included, and names each one that imports a testcontainers-go package and no file of which imports `latere.ai/x/ci-gate/reap`. It applies once a package imports testcontainers-go, and is skipped with that reason before. A nested checkout under the tree, such as an agent's worktree, is another repository and is not read. A repository whose tests start containers through testcontainers-go and do not use `reap` fails this gate: adopt the contract in the helper, as the `containers` section of `docs/gates.md` shows, or write a dated waiver while it is behind.
 
 ## v0.53.0 - 2026-10-14
 
 ### Added
 
-- **`containers` covers networks.** A network a test helper makes with `network.WithLabels(reap.Labels())` is swept once its owner process has exited, after that owner's containers, and a network a run leaves is named, removed and fails the suite beside its containers. `reap.Sweep` counts the networks it removed.
-
-### Upgrading
-
-- A helper that puts its containers on a network of its own labels the network too. Until it does, a killed run's network stays on the engine; it holds no memory, but nothing removes it.
+- **`containers` covers networks.** A network a test helper makes with `network.WithLabels(reap.Labels())` is swept once its owner process has exited, after that owner's containers, and a network a run leaves is named, removed and fails the suite beside its containers. `reap.Sweep` counts the networks it removed. A helper that puts its containers on a network of its own labels the network too; until it does, a killed run's network stays on the engine. It holds no memory, but nothing removes it.
 
 ## v0.52.0 - 2026-10-13
 
 ### Added
 
-- **`containers`: the suite leaves no container behind.** A test helper that starts a container labels it with `reap.Labels()` and sweeps with `reap.Sweep(ctx)`, from the new package `latere.ai/x/ci-gate/reap`. The suite then sweeps what exited test binaries left on the machine, names its run in `LATEREGATE_RUN`, and after `go test` exits removes every container still carrying the run's label and fails on it. A container is removed when its owner process is gone, never for its age. This covers what testcontainers' Ryuk covers, a panic on `-timeout`, a kill, a package with no `TestMain`, on engines where Ryuk cannot start, such as Podman. With no engine socket the suite runs as before and says nothing was watched. `containers` folds into `suite`; a waiver on it turns the watch off.
-
-### Upgrading
-
-- A helper that starts containers adopts both calls, and stops the container a failed start returns along with its error. Until it does, its containers carry no label, and the suite neither sweeps nor checks them.
+- **`containers`: the suite leaves no container behind.** A test helper that starts a container labels it with `reap.Labels()` and sweeps with `reap.Sweep(ctx)`, from the new package `latere.ai/x/ci-gate/reap`. The suite then sweeps what exited test binaries left on the machine, names its run in `LATEREGATE_RUN`, and after `go test` exits removes every container still carrying the run's label and fails on it. A container is removed when its owner process is gone, never for its age. This covers what testcontainers' Ryuk covers, a panic on `-timeout`, a kill, a package with no `TestMain`, on engines where Ryuk cannot start, such as Podman. With no engine socket the suite runs as before and says nothing was watched. `containers` folds into `suite`; a waiver on it turns the watch off. A helper that starts containers adopts both calls, and stops the container a failed start returns along with its error. Until it does, its containers carry no label, and the suite neither sweeps nor checks them.
 
 ## v0.51.0 - 2026-10-09
 
 ### Changed
 
-- **The lint gate runs golangci-lint v2.14.0.** v2.13.1 is built against a golang.org/x/tools that cannot read the export data Go 1.27.2 writes, so on Go 1.27.2 it failed every package with "export data version 5 is greater than maximum supported version 4". v2.14.0 also brings the `stringscut` modernizer, which asks for `strings.Cut`, `strings.CutLast` and the like over an index and two slices.
+- **The lint gate runs golangci-lint v2.14.0.** v2.13.1 is built against a golang.org/x/tools that cannot read the export data Go 1.27.2 writes, so on Go 1.27.2 it failed every package with "export data version 5 is greater than maximum supported version 4". v2.14.0 also brings the `stringscut` modernizer, which asks for `strings.Cut`, `strings.CutLast` and the like over an index and two slices. A repository moving to this release on Go 1.27.2 may see new `stringscut` findings; `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --fix ./...` rewrites them.
 
 ### Security
 
 - Built with Go 1.27.2 and golang.org/x/net v0.60.0 (GO-2026-6611, GO-2026-6612, GO-2026-6613, GO-2026-6617).
 
-### Upgrading
-
-- A consumer moving to this release on Go 1.27.2 may see new `stringscut` findings; `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --fix ./...` rewrites them.
-
 ## v0.50.3 - 2026-10-03
+
+### Changed
+
+- `docs/gates.md` says the rule that compares a started spec with its
+  dependencies runs only when `spec.started` is set, and that Latere's
+  repositories leave it unset: a spec's status records its own criteria
+  and review holds the order `depends_on` states. This repository's own
+  `.lateregate.yaml` drops `started` and keeps `settled` for the identity
+  gate. No behavior changed.
 
 ### Fixed
 
@@ -484,15 +464,6 @@ committed: the commit log already holds that.
   installed and passed on a runner without them. The profile's rows and
   the list of packages that must be measured both skip the directory, as
   `modernize` already did.
-
-### Changed
-
-- `docs/gates.md` says the rule that compares a started spec with its
-  dependencies runs only when `spec.started` is set, and that Latere's
-  repositories leave it unset: a spec's status records its own criteria
-  and review holds the order `depends_on` states. This repository's own
-  `.lateregate.yaml` drops `started` and keeps `settled` for the identity
-  gate. No behavior changed.
 
 ## v0.50.2 - 2026-09-26
 
@@ -613,31 +584,13 @@ committed: the commit log already holds that.
 
 ### Fixed
 
-- `release` reads past a run cancelled because a newer run of the same
+- `release` reads past a run canceled because a newer run of the same
   workflow replaced it, the way it reads past that newer run while it is in
-  progress. Once a concurrency group cancelled superseded runs, the cancelled
+  progress. Once a concurrency group canceled superseded runs, the canceled
   run was the newest completed one and the cut was refused as red while the
   run that replaced it was still going.
 
 ## v0.47.0 - 2026-09-20
-
-### Fixed
-
-- `json-bytes` no longer reports `json.RawMessage`. pgx registers that type to
-  the json column type and sends it correctly, so the finding was noise:
-  seven of the nine it reported in `llm-gateway` and one of `insula`'s were
-  this, and a check that is mostly noise gets waived and then guards nothing.
-  A pointer to one, a string under any name, a value with a text or a
-  database value of its own, a number and an untyped nil are accepted for the
-  same reason, each of them measured against a server with parameters sent in
-  the text format rather than reasoned about.
-
-  The rule now names what a json parameter **takes** instead of listing what
-  it refuses, so a Go type nobody measured is reported rather than let
-  through. A byte slice under any other name, a bool, a list and a clock
-  reading are refused, all four measured. A method named `Value` returning
-  something narrower than the standard library's database value is not that
-  method and is no longer read as one.
 
 ### Added
 
@@ -690,13 +643,31 @@ committed: the commit log already holds that.
   the family at `origin/main` it finds ten more that nobody had seen, which
   takes the fleet from 10 findings to 19: a `map[string]string` bound to a
   labels column in `cella` three times and in `lux` four, and a list of a
-  named identifier type in `arca` and in `insula`.
+  named identifier type in `arca` and in a private repository.
 
 - `json-bytes` reads a helper whose declared result is `any`, by the concrete
   types it can return, and across the whole module rather than one package at
-  a time. `llm-gateway` laundered six binds through one such helper an import
+  a time. A private repository laundered six binds through one such helper an import
   away from every statement that bound it. A value whose concrete type is out
   of reach is still reported as nothing.
+
+### Fixed
+
+- `json-bytes` no longer reports `json.RawMessage`. pgx registers that type to
+  the json column type and sends it correctly, so the finding was noise:
+  seven of the nine it reported in one private repository and one of a second one's were
+  this, and a check that is mostly noise gets waived and then guards nothing.
+  A pointer to one, a string under any name, a value with a text or a
+  database value of its own, a number and an untyped nil are accepted for the
+  same reason, each of them measured against a server with parameters sent in
+  the text format rather than reasoned about.
+
+  The rule now names what a json parameter **takes** instead of listing what
+  it refuses, so a Go type nobody measured is reported rather than let
+  through. A byte slice under any other name, a bool, a list and a clock
+  reading are refused, all four measured. A method named `Value` returning
+  something narrower than the standard library's database value is not that
+  method and is no longer read as one.
 
 ## v0.46.0 - 2026-09-20
 
@@ -721,7 +692,7 @@ committed: the commit log already holds that.
   fails with SQLSTATE 22P02 against the pool and succeeds against the direct
   endpoint, which is why no test on a direct connection can see it. `auth`
   v0.37.0 deployed and crash-looped at start-up on two such parameters; a
-  hand audit of `agents` found nine more.
+  hand audit of one repository found nine more.
 
   A `[]byte` bound to a `bytea` column is correct and is not reported. The
   check asks what the value is and what the statement does with it, not what
@@ -747,7 +718,7 @@ committed: the commit log already holds that.
 
   To adopt: a repository with findings binds a `string`, or a `*string`
   where SQL NULL and the empty document have to stay apart. A sweep of the
-  organisation's Go repositories at this release reports 53 binds across
+  organization's Go repositories at this release reports 53 binds across
   twelve of them.
 
 ### Changed
@@ -932,24 +903,6 @@ committed: the commit log already holds that.
 
 ## v0.40.0 - 2026-09-17
 
-### Fixed
-
-- The `identity` gate reads a Go file's string literals without descending
-  into its import declarations. An import path is a string in the grammar and
-  a dependency in the file, and reading it as a literal made the `authorizer`
-  rule report a file that imports a test double whose path holds `authorize`,
-  and the `claims` rule report a package whose path holds a membership claim.
-  Repositories had been putting those files in `identity.skip`, which stopped
-  every other rule from reading them too; from v0.40.0 those entries can go.
-- The `identity` gate's `audience` and `bearers` rules see a repository whose
-  only command is at the module root. They recognise a container by the name
-  its image was built under, and that name was read from the directories
-  under `cmd/` alone, so a repository that moved its `main` to the root
-  reported `SKIP audience no container in the deployment runs a command this
-  repository builds` and its `AUTH_AUDIENCE` went unchecked. A module root
-  that is `package main` now names a command, called after the module's last
-  segment, which is the name `go build` gives the binary.
-
 ### Added
 
 - The `identity` gate holds an `envelope` rule, which every role but `none`
@@ -977,6 +930,24 @@ committed: the commit log already holds that.
   a digest in it is refused, and so is the key outside `issuer`, `core`,
   `service` and `platform`, the roles whose deployments the `audience` and
   `bearers` rules read.
+
+### Fixed
+
+- The `identity` gate reads a Go file's string literals without descending
+  into its import declarations. An import path is a string in the grammar and
+  a dependency in the file, and reading it as a literal made the `authorizer`
+  rule report a file that imports a test double whose path holds `authorize`,
+  and the `claims` rule report a package whose path holds a membership claim.
+  Repositories had been putting those files in `identity.skip`, which stopped
+  every other rule from reading them too; from v0.40.0 those entries can go.
+- The `identity` gate's `audience` and `bearers` rules see a repository whose
+  only command is at the module root. They recognize a container by the name
+  its image was built under, and that name was read from the directories
+  under `cmd/` alone, so a repository that moved its `main` to the root
+  reported `SKIP audience no container in the deployment runs a command this
+  repository builds` and its `AUTH_AUDIENCE` went unchecked. A module root
+  that is `package main` now names a command, called after the module's last
+  segment, which is the name `go build` gives the binary.
 
 ## v0.39.0 - 2026-09-17
 
@@ -1031,12 +1002,20 @@ committed: the commit log already holds that.
 
 ## v0.37.0 - 2026-09-16
 
+### Changed
+
+- A deployment whose image name is not a directory under `cmd/` now reports
+  `SKIP audience` with the reason, where the single-container shortcut used
+  to read that container as the workload. A rule that reads nothing says so
+  rather than passing: name the image after the command it runs, or put the
+  path in `identity.skip` as a decision.
+
 ### Fixed
 
 - The `identity` gate's `audience` rule reads which containers of a manifest
   are this repository's workload. A container runs the repository when the
-  name its image was built under — the last path segment of the reference,
-  without the registry, the tag or the digest — is exactly a command under
+  name its image was built under, the last path segment of the reference,
+  without the registry, the tag or the digest, is exactly a command under
   `cmd/`. It was a substring of the image, so `ghcr.io/latere-ai/origo-stubs`
   counted as the command `origo`; and every document holding a single
   container was read as this repository's whatever that container was. A
@@ -1055,22 +1034,14 @@ committed: the commit log already holds that.
   containers too, so a credential shared between two of their variables is a
   finding where it was not seen.
 
-### Changed
-
-- A deployment whose image name is not a directory under `cmd/` now reports
-  `SKIP audience` with the reason, where the single-container shortcut used
-  to read that container as the workload. A rule that reads nothing says so
-  rather than passing: name the image after the command it runs, or put the
-  path in `identity.skip` as a decision.
-
 ## v0.36.0 - 2026-09-15
 
 ### Added
 
 - `release.stamp` in `.lateregate.yaml`: a list of `{file, pattern}` whose
   `vX.Y.Z` `lateregate release` rewrites to the version it is cutting, staged
-  into the same commit as the changelog. A file that names the release — a
-  `SECURITY.md` line, a deploy overlay's `newTag` — no longer lags the tag,
+  into the same commit as the changelog. A file that names the release, such as a
+  `SECURITY.md` line or a deploy overlay's `newTag`, no longer lags the tag,
   so main does not go red after a cut waiting for a hand-edit. Each pattern
   must match its file exactly once and hold one `vX.Y.Z`; a pattern that does
   not refuses the cut with a clean tree, like every other release refusal.
@@ -1096,6 +1067,13 @@ committed: the commit log already holds that.
 
 ## v0.33.0 - 2026-09-13
 
+### Added
+
+- `identity.reached_by`: `clients` (the default) or `services`. A service
+  no client acts at for a person declares `services`, and the family check
+  then expects no client registry row for its audience instead of failing
+  on the missing one.
+
 ### Changed
 
 - `identity`, the delegation rule: `act`, `agent_id` and `actor_id` as a
@@ -1104,13 +1082,6 @@ committed: the commit log already holds that.
   render an audit row with an `actor_id` field. A bare occurrence in a
   file about claims, and a tag beside `sub`, `aud` or `exp`, are findings
   as before.
-
-### Added
-
-- `identity.reached_by`: `clients` (the default) or `services`. A service
-  no client acts at for a person declares `services`, and the family check
-  then expects no client registry row for its audience instead of failing
-  on the missing one.
 
 ## v0.32.2 - 2026-09-13
 
@@ -1197,13 +1168,17 @@ committed: the commit log already holds that.
 
 ## v0.31.2 - 2026-09-06
 
+### Changed
+
 - `lateregate release` runs the full gate before it tags. v0.31.1 was cut
   with the modernize and lint gates red on the release commit; a release is
   the one push that must never go out red.
 
 ## v0.31.1 - 2026-09-06
 
-- The licence check on staged files (the pre-commit hook) honours
+### Fixed
+
+- The license check on staged files (the pre-commit hook) honours
   `license.skip` the way the full walk does, so a file under a skipped
   directory such as a template skeleton no longer blocks a commit that the
   gate itself passes.
@@ -1225,21 +1200,25 @@ committed: the commit log already holds that.
 
 ## v0.30.0 - 2026-09-06
 
-- The licence gate accepts `license.spdx: LicenseRef-Proprietary`, the SPDX
-  form for terms not on the licence list. The root `LICENSE` must then reserve
-  all rights and grant no licence, and every file carries the identifier the
-  same way an open source repository does, so a proprietary repository is
-  checked instead of waived.
-
 ### Added
 
 - `license` checks the root `LICENSE` text against `license.spdx` through a
-  fingerprint per identifier, so a declaration that names one licence over a
+  fingerprint per identifier, so a declaration that names one license over a
   root file carrying another fails with both named. An identifier the table
   does not know fails closed. This is the mismatch pkg carried for four
   days: `Apache-2.0` on 264 files above an MIT `LICENSE`.
 
+### Changed
+
+- The license gate accepts `license.spdx: LicenseRef-Proprietary`, the SPDX
+  form for terms not on the license list. The root `LICENSE` must then reserve
+  all rights and grant no license, and every file carries the identifier the
+  same way an open source repository does, so a proprietary repository is
+  checked instead of waived.
+
 ## v0.29.2 - 2026-09-06
+
+### Fixed
 
 - The pre-push hook no longer fails a push that changes a Go file under a
   nested module (a directory with its own `go.mod`, such as a spike tool or
@@ -1248,9 +1227,9 @@ committed: the commit log already holds that.
 
 ## v0.29.1 - 2026-09-06
 
-This repository now publishes its own GitHub releases from this file,
-through `notes-release.yml` in latere-ai/ci. v0.29.0 was tagged before that
-pipeline existed and has no release object; its section below is the note.
+### Changed
+
+- **Nothing changes for a repository that runs the bar.** This repository now publishes its own GitHub releases from this file, through `notes-release.yml` in latere-ai/ci. v0.29.0 was tagged before that pipeline existed and has no release object; its section below is the note.
 
 ## v0.29.0 - 2026-09-06
 
@@ -1278,3 +1257,258 @@ three shell scripts is now in the binary, for every repository.
   `## Unreleased` heading, and reports a `Makefile` target named `release`
   or `release-notes` that does not delegate. `lateregate init` writes the
   seed changelog when there is none.
+
+## v0.28.0 - 2026-09-06
+
+### Added
+
+- **`lateregate prepush` is the pre-push hook: golangci-lint over the packages the push changes.** It reads the refs git hands the hook, diffs each branch against the remote's commit (or the merge base with `origin/main` for a new branch), and lints exactly the packages the changed Go files sit in, against the config rendered as the full gate renders it. Tags run nothing. It runs with `--allow-parallel-runners`, so a lint in another checkout neither blocks a push nor aborts it. `lateregate init` writes `.githooks/pre-push`, never overwrites one that exists, and `contract` reports a pre-push that does not run `lateregate prepush` until the delegation line is added by hand. A repository that adds its own check below the delegation reads the saved `$refs`, not stdin.
+
+### Changed
+
+- **The pre-commit hook holds every cheap file-scan gate over the staged files.** In order: `gofmt`; `goimports` grouping with the module path as the local prefix; the license notice, when `license.spdx` is declared; the outbound HTTP client rule; then `go fix` for the packages that hold them. Each scan reads only the staged files, so the hook stays a few seconds. `vuln`, `tempdir`, `race`, `cover` and `hermetic` are in neither hook. On upgrading, run `go tool lateregate init` to add the pre-push hook; `contract` reports it until then.
+
+## v0.27.4 - 2026-09-02
+
+### Fixed
+
+- **`license` stays out of an untracked directory and a nested checkout.** git lists an untracked directory once, not its files, and an agent worktree under `.claude` is a checkout with its own history; `license -w` had written notices into both.
+
+## v0.27.3 - 2026-09-02
+
+### Fixed
+
+- **`license` skips a file git does not track.** Another change's work in progress in the tree no longer fails the gate, and `license -w` no longer gives it a notice it did not ask for. `fmt-check` already held the same rule.
+
+## v0.27.2 - 2026-09-02
+
+### Fixed
+
+- **A README listed in `spec.exclude` is no longer taken as the default index.** A repository that keeps `specs/README.md` as prose and excludes it had it read as an index table nobody wrote, and the tree failed for it.
+
+## v0.27.1 - 2026-09-02
+
+### Fixed
+
+- **The pre-commit hook holds a staged file under `testdata` to `gofmt` only.** Its package is outside `./...`, so the full `modernize` gate never reads it, and the hook was applying a rule no gate holds.
+
+## v0.27.0 - 2026-09-02
+
+### Added
+
+- **`lateregate license -w` writes the declared notice on every file that has none.** The identifier and holder come from `license.spdx` and `license.holder`, the year is the year it is written in, and the notice goes below a shebang when there is one. A notice that disagrees with the declaration is reported, not rewritten, because replacing a holder is a legal edit.
+
+## v0.26.2 - 2026-09-02
+
+### Changed
+
+- Nothing changes for a repository that runs the bar; this release updates one of this repository's own tests to the config the race gate now takes.
+
+## v0.26.1 - 2026-09-02
+
+### Added
+
+- **`race.timeout` sets the race detector's budget.** A suite that costs the detector far more than the toolchain's 10 minute default sets the figure, with its reason, in `.lateregate.yaml`, instead of failing for the wrong reason.
+
+## v0.26.0 - 2026-09-01
+
+### Added
+
+- **`lateregate` with no arguments runs the whole bar.** It runs every gate that applies, does not stop at the first failure, and ends with a summary line. The recipes for `test`, `race`, `cover`, `lint` and `vuln` are in the binary, so a repository no longer keeps them in its Makefile. `lateregate list` prints the plan and `list -json` is what the pipeline builds its job matrix from. A Makefile target named for a gate must delegate to `lateregate` or not exist.
+- **`lateregate init` writes the wiring and `lateregate contract` reports every difference.** `init` writes the caller workflow for `latere-ai/ci/.github/workflows/lateregate.yml@v1`, `.githooks/pre-commit`, the gitignore lines for `.golangci.yml` and `coverage.out`, and `git config core.hooksPath .githooks`. It never touches `Makefile` or `.lateregate.yaml`. `contract` names drift in the workflow, the hook, the ignore lines, the `tool` line in `go.mod` and any key that restates a default.
+- **`lateregate hook` is the pre-commit.** It runs `gofmt` over the staged Go files and the modernizers over the packages that hold them, reading `modernize.disable` from the same config the full gate reads.
+
+### Changed
+
+- **A repository that was behind on a gate writes `waive`, keyed by gate name, instead of `contract.exempt`.** `waive.<gate>` takes the same `reason` and `until`. A waiver keyed on a name that is not a gate fails the run, and the old `contract.exempt` key is refused with a message that says where it went. On upgrading, move each entry to the top-level `waive` map under its gate name. After `until`, the gate runs and fails on its own terms and the summary says the waiver ran out.
+
+### Removed
+
+- **`contract.exempt` is gone.** `waive` replaces it, as described above.
+
+## v0.25.2 - 2026-09-01
+
+### Fixed
+
+- **`spec-lint` ignores an edge into another repository's archive.** A path such as `../../other/specs/.archive/name.md` matched the archive by its last directory and was reported as a missing file. The path must now be the archive relative to the spec directory or the repository root; a `..` segment anywhere means the edge left the tree.
+
+## v0.25.1 - 2026-09-01
+
+### Fixed
+
+- **`spec-lint` takes the index's own word on whether it covers the archive.** An index that holds at least one archive row is an index of the whole tree and must hold them all; an index that holds none is asked for nothing. Requiring a row for every archived spec had encoded one tree's convention as a rule. Rows that exist are still checked for resolution.
+
+## v0.25.0 - 2026-09-01
+
+### Added
+
+- **`spec-lint` lints the archive and fails a finished spec that never moved into it.** `spec.archive.dir` names the folder and `spec.archive.statuses` the terminal statuses; `statuses` must be a subset of `status`, and there is no default, because the same word means done in one tree and shipped with work outstanding in another. A terminal spec at the root fails, and so does an archived spec at a working status. Archived specs are now parsed, held to `require` and `status`, resolved for `depends_on`, numbered and required in the index, but not held to the section, marker or register rules, which a record written before the rule cannot satisfy. An archive folder that does not exist yet counts as empty, so adopting the rule waits on nothing.
+
+## v0.24.0 - 2026-08-31
+
+### Changed
+
+- **`contract` requires `spec-lint` only in a repository that tracks specs.** It asks git whether `specs/` files are tracked rather than reading the config, so a repository that keeps no specs needs no exemption, and one that tracks specs cannot avoid the gate by deleting its `spec` block.
+
+## v0.23.0 - 2026-08-31
+
+### Added
+
+- **`contract`: the gate set is declared, and a missing gate fails.** The shared pipeline runs whichever optional Makefile targets it finds, so a repository with no `cover` target was not gated on coverage and the run still reported success; nine of eighteen migrated repositories had no coverage gate at all. The required set is compiled into the binary. A repository that is behind records it under `contract.exempt` with a `reason` and an `until` date (`YYYY-MM-DD`); an entry without either fails when the file is read, and the date covers its whole day. Retiring the exemptions is therefore checked rather than remembered. A repository with a missing required target adds it or writes the exemption. The target probe reads make's rule database, so a file named like a target, such as a `test/` directory or a `LICENSE` file, does not stand in for it.
+
+## v0.22.0 - 2026-08-31
+
+### Changed
+
+- **`bodyclose` is off in test files.** It does not follow a response into a test helper, so it reported a close that the helper makes.
+
+## v0.21.0 - 2026-08-30
+
+### Fixed
+
+- **`modernize` leaves out a vendored JavaScript tree.** A JavaScript package can ship Go source, and a repository with a frontend has a tree of them under `node_modules` once dependencies are installed. The gate named them all, so it failed on every workstation with the frontend set up and passed on a runner without it. It now lists the module's packages and drops any under `node_modules`.
+
+## v0.20.0 - 2026-08-30
+
+### Added
+
+- **`cover` fails a package that no profile measured, and merges test tiers.** A package with no test file produces no records, so the floor cleared it by never measuring it. The gate now lists the module's packages and fails on the ones the profiles never mention, as `MISS internal/notify - no coverage data`. A package that declares no function with a body is left out, since no test can produce data for it. Repeat `-profile` for a repository whose coverage is split across tiers, such as unit and integration tests; the tiers merge as a union, not a sum.
+- **`spec-lint` can gate stable spec numbers and the ordering `depends_on` states.** `spec.numbered: true` requires every file to be `NNN-name.md` and no two to share a number. `spec.started` and `spec.settled` list the statuses where work has begun and where it is done, and a spec at a started status whose dependency has not settled fails. `started` without `settled` is refused when the file is read. Both are off by default.
+
+### Changed
+
+- **The shared lint set is raised to the bar the strictest repository already held.** Nothing is truncated (`max-issues-per-linter` and `max-same-issues` are zero), every vet analyzer runs except `fieldalignment` and `shadow`, unchecked type assertions are findings, and `io/ioutil`, `math/rand`, `log` and `github.com/pkg/errors` are denied with the replacement named, while `log/slog` stays allowed. Expect new findings in a repository that had not yet adopted these on its own.
+
+## v0.19.0 - 2026-08-30
+
+### Fixed
+
+- **`fmt-check` takes its file list from git.** `gofmt -l .` descended into a nested checkout, such as an agent worktree parked under `.claude`, and reported an unformatted file the repository neither owns nor can fix. The gate now checks the tracked Go files, and a checkout with no tracked Go file fails rather than reporting a formatted tree.
+
+## v0.18.0 - 2026-08-30
+
+### Fixed
+
+- **`spec-lint` leaves alone an index row that links into a subdirectory.** An archive is outside the linted set, so the index cannot be asked to agree with it, the same way a `depends_on` edge into another repository is not.
+
+## v0.17.0 - 2026-08-30
+
+### Added
+
+- **`otel-client`: no outbound HTTP client is built without a tracing transport.** It fails on an `http.Client` with no `Transport` field and on `http.DefaultClient`. The gate parses the file, so a `Transport` several lines down still counts, comments and string literals cannot trip it, and a renamed `net/http` import is still checked. `otel_client.skip` names directories it does not read; `.git` and `.claude` are always skipped. This replaces the awk programs that repositories kept in their Makefiles, which had drifted into four variants.
+
+## v0.16.0 - 2026-08-30
+
+### Added
+
+- **`license` reads the notice in each file type's own comment marker.** `license.extensions` takes `.ts`, `.tsx`, `.js`, `.mjs`, `.rs`, `.java`, `.swift`, `.proto` and the other types the gate knows, and `license.names` checks files by their whole name, such as `Makefile` and `Dockerfile`, with `#` as the marker. A script keeps its shebang on line 1 and the notice moves below it. A file type the gate has no marker for is rejected when the config is read, so a repository cannot believe it is checking files it is not.
+
+### Changed
+
+- **The shared lint set adds the linters that catch bugs.** `bodyclose`, `errorlint`, `nilerr`, `sqlclosecheck`, `rowserrcheck`, `noctx`, `contextcheck`, `errchkjson`, `durationcheck`, `copyloopvar`, `unconvert` and `wastedassign` are now on for every repository, and tests are excluded from `errcheck`, `noctx` and `errchkjson`. Across six repositories that was about 105 findings. A repository that enabled some of them through `golangci.extra` can delete those lines. `gosec`, `misspell` and `revive`'s exported rule stay out, since they encode facts about one repository.
+
+## v0.15.0 - 2026-08-30
+
+### Added
+
+- **`golangci.extra` merges a repository's own lint policy over the shared set.** Maps merge key by key, so a repository adds one setting without restating the block it lives in; `linters.enable` appends, so adding a linter means "as well as"; any other list replaces. This replaces exempting the repository from the shared config. The rendered file no longer carries inline comments.
+
+## v0.14.0 - 2026-08-30
+
+### Added
+
+- **`license`: every source file carries the SPDX notice the repository declared.** `license.spdx` names the identifier and `license.holder` the copyright holder, matched literally. There is no default, because a guessed license would be printed into every file; with `license.spdx` unset the gate fails rather than passes. By default it reads Go files; `license.extensions` lists the file types a repository ships and `license.skip` names directories the scan does not enter, besides `.git` and `node_modules`. The notice is the first two lines of the file, then a blank line.
+
+## v0.13.1 - 2026-08-30
+
+### Changed
+
+- **`depguard` denies the subpackages of testify by name.** The rule named only the module path and left the subpackages to prefix matching. A repository that imports one of them now gets the finding that names it.
+
+## v0.13.0 - 2026-08-30
+
+### Added
+
+- **`golangci.sloglint` scopes `sloglint` to a repository's request paths.** `sloglint` requires the `*Context` variant of every `slog` call on a request path, so a trace and span id can be attached. `context` sets the rule, `request_paths` is a regexp for the packages that serve requests, and `exempt` lists paths inside them that do not. An unconfigured repository gets no `sloglint` and no empty exclusions block.
+
+## v0.12.0 - 2026-08-30
+
+### Added
+
+- **`golangci.own` declares that a repository keeps its own lint config.** The value is the reason. The gate prints it, leaves the committed file alone, and fails if the file is not there, since a declared exception pointing at nothing is a repository that lost its config.
+
+## v0.11.0 - 2026-08-30
+
+### Changed
+
+- **The shared lint set is the standard linters, not just `modernize`.** The standard linters, `errcheck`, `staticcheck` and `unused` among them, now run, and `depguard` denies any test framework but the standard library's `testing`. A repository moving to this release should expect new findings, mostly discarded errors; four real bugs surfaced across the first repositories that adopted it. Measure with `--max-issues-per-linter=0 --max-same-issues=0`, because golangci-lint caps its output at fifty issues per linter by default.
+
+## v0.10.0 - 2026-08-30
+
+### Changed
+
+- **`.golangci.yml` is generated on every run and never committed.** A hand edit does not survive the next run, so there is nothing to detect. A repository deletes its committed `.golangci.yml` and gitignores it; the gate refuses to write over a tracked file. After a fresh clone, run the gate once before running `golangci-lint` directly, or it falls back to its own defaults.
+
+## v0.9.0 - 2026-08-30
+
+### Added
+
+- **`lateregate golangci` renders the shared golangci-lint config.** golangci-lint v2 has no config inheritance, so the shared file is produced instead of copied into every repository. In this release the rendered file is committed, and the gate fails when the committed copy stops matching it.
+
+### Changed
+
+- **`modernize.disable` feeds both the `modernize` gate and the linter of the same name.** They run the same analyzers, and a repository that disabled one for one and not the other now has both.
+
+## v0.8.0 - 2026-08-30
+
+### Added
+
+- **`tempdir`: the suite leaves nothing behind under `TMPDIR`.** `lateregate tempdir -- <command>` runs the suite against an empty `TMPDIR` and fails on every entry that survives it. A test that makes a directory and does not remove it leaks it for the life of the machine and nothing else fails. An empty sandbox that nothing ever wrote to fails too, since a runner that resets the environment would otherwise score perfectly having measured nothing. A leak outranks a failing suite in the verdict. The `tempdir` section takes the `command` that runs the suite, so a suite written in another language is measured the same way, and `tempdir.allow` maps a path prefix to the reason it may stay; an allowance with an empty reason fails when the file is read.
+
+## v0.7.0 - 2026-08-30
+
+### Added
+
+- **`cgo-free`: no Go file imports `"C"`.** The gate reads source rather than trusting a build, because a file can import `"C"` behind a build tag the current platform does not select and still break the promise for another supported build. It understands import blocks and blank imports, ignores comments, and reports file and line. A scan that read no Go files fails.
+
+## v0.6.0 - 2026-08-30
+
+### Added
+
+- **`spec-lint` checks the outcome of a finished spec.** `spec.status_linked_from` requires that a status meaning "the outcome is recorded elsewhere" is linked from that file. `spec.status_marker` gates the paragraph that tells two statuses apart, in both directions: a spec at the finished status must not name open work, and one at the other must. Each takes `expect` and `reject` patterns as separate fields.
+
+## v0.5.0 - 2026-08-30
+
+### Added
+
+- **`spec-lint` keeps an id register honest.** A tree that numbers something, such as the rows of a conformance register, and cites those numbers elsewhere gets two checks from `spec.register`: the rows are numbered without gaps, and nothing in the tree cites a row that does not exist. A gap means a row was deleted and every later number now means something else; a dangling citation is the same drift one level up.
+
+## v0.4.0 - 2026-08-29
+
+### Added
+
+- **`depcheck`: no build reaches a dependency nobody admitted.** The list comes from `go list -deps` on the packages `depcheck.packages` names, not from `go.mod`, because a module graph says what could be reached and the claim being defended is about what is. `depcheck.allow` maps a dependency to the reason it is admitted, and `depcheck.platforms` sets the GOOS/GOARCH pairs to resolve, since a dependency reached only on darwin is invisible to a linux-only gate.
+- **`spec-lint` rules that a repository kept in its own code are now config.** `spec.vocabulary` adds a closed vocabulary beyond status, such as a layer; `spec.status_requires` ties a frontmatter key to a status and checks it against a pattern, in both directions, so the key cannot be left behind when the status moves on; `spec.require_section`, `spec.require_section_by_status` and `spec.section_exempt` require sections globally and per status; `spec.scoped_ids` requires ids to carry their own spec's number; and `spec.tables` requires table rows to match their header. A heading match strips section numbering.
+
+### Fixed
+
+- **Every gate honors `-C`.** The gates shelled out in the process's own working directory, so a check addressed at another repository read that repository's config and then reported on the tree it was run from.
+
+## v0.3.0 - 2026-08-29
+
+### Fixed
+
+- **`spec-lint` tells an index row from a legend row by column order.** An index row names the spec before its status; a legend row is about the status and cites a spec afterwards, as an example. Reading every table with a Status column as the index made a legend's examples into claims about the specs they cite, and reading only the largest table lost most of the index. A tree whose index is split across several tables, one for shipped specs and others for next and blocked, is now read whole, and a tree that failed on its legend passes.
+
+## v0.2.0 - 2026-08-29
+
+### Changed
+
+- Nothing changes for a repository that runs the bar. This release only moves this repository's own lint settings to the organization's linter set.
+
+## v0.1.0 - 2026-08-29
+
+### Added
+
+- **The shared per-push gates as one binary and one config.** `go get -tool latere.ai/x/ci-gate/cmd/lateregate` adds `lateregate`, and `go tool lateregate <gate>` runs one gate. The first five are `fmt-check` (no Go source is unformatted), `modernize` (no code that a standard library call already covers), `cover`, `hermetic` (the suite passes with only the toolchain on `PATH`, plus the directories `.lateregate.yaml` allows) and `spec-lint` (the spec tree agrees with itself and with its index). `fmt-check` and `modernize` need no configuration; the others read `.lateregate.yaml` at the repository root.
+- **`cover` gates every package against the floor, not the repository average.** A package that cannot clear the floor is exempted under `cover.exempt` with a reason, and an exemption with an empty reason fails when the file is read. So does a profile that covers no packages, and one where every package is exempt, since a gate that passed because it measured nothing would keep reporting green.
