@@ -41,8 +41,9 @@ const (
 // in a place no gate checks.
 //
 // Nothing staged is a pass: a commit that touches no Go file has nothing
-// for this hook to say. A file under testdata is held to gofmt, goimports,
-// and the license notice, and to nothing that reads it as a package.
+// for this hook to say. A file under testdata is held to goimports and
+// the license notice, and to nothing that reads it as a package. gofmt
+// leaves it out too, since a fixture there may be broken on purpose.
 func Hook(cfg *config.Config, root, module, goBin string, out io.Writer, run Exec) error {
 	staged, err := run(nil, false, "git", "diff", "--cached", "--name-only", "--diff-filter=ACM", "-z", "--", "*.go")
 	if err != nil {
@@ -54,15 +55,15 @@ func Hook(cfg *config.Config, root, module, goBin string, out io.Writer, run Exe
 		return nil
 	}
 
-	listed, err := run(nil, false, "gofmt", append([]string{"-l"}, files...)...)
+	unfmt, err := unformatted(files, run)
 	if err != nil {
-		return fmt.Errorf("gofmt: %w", err)
+		return err
 	}
-	if unformatted := nonEmptyLines(string(listed)); len(unformatted) > 0 {
-		for _, f := range unformatted {
+	if len(unfmt) > 0 {
+		for _, f := range unfmt {
 			_, _ = fmt.Fprintln(out, "  "+f)
 		}
-		return fmt.Errorf("%d staged file(s) are not gofmt-formatted; run gofmt -w on them and re-stage", len(unformatted))
+		return fmt.Errorf("%d staged file(s) are not gofmt-formatted; run gofmt -w on them and re-stage", len(unfmt))
 	}
 
 	args := []string{"run", GoimportsModule + "@" + GoimportsVersion}

@@ -11,6 +11,7 @@ package gates
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -47,18 +48,21 @@ func OSExec(dir string, out io.Writer) Exec {
 		if env != nil {
 			cmd.Env = env
 		}
-		var buf strings.Builder
+		var buf, errBuf strings.Builder
 		if stream {
 			cmd.Stdout = io.MultiWriter(safe, &buf)
 			cmd.Stderr = safe
 		} else {
 			cmd.Stdout = &buf
-			// A gate that reads a diff decides on the diff alone. `go fix`
-			// also exits non-zero when a package does not type-check, which
-			// is a build error rather than a finding.
-			cmd.Stderr = io.Discard
+			// A gate that reads a diff decides on the diff alone. What the
+			// command wrote to stderr rides on the error, for a gate that
+			// has to tell a build error from a tool that did not run.
+			cmd.Stderr = &errBuf
 		}
 		err := cmd.Run()
+		if err != nil && errBuf.Len() > 0 {
+			err = &StderrError{Err: err, Stderr: errBuf.String()}
+		}
 		return []byte(buf.String()), err
 	}
 }
@@ -127,6 +131,26 @@ func toolchainDir(goBin string) (string, error) {
 	return filepath.Dir(p), nil
 }
 
+// StderrError is a command's failure together with what it wrote to stderr.
+// Its message is the wrapped error's, so a caller that only prints the error
+// is unchanged; a gate that has to say why the command failed reads Stderr.
+type StderrError struct {
+	Err    error
+	Stderr string
+}
+
+func (e *StderrError) Error() string { return e.Err.Error() }
+func (e *StderrError) Unwrap() error { return e.Err }
+
+// stderrOf is the stderr a failed command wrote, trimmed, or "" when the
+// error carries none.
+func stderrOf(err error) string {
+	if se, ok := errors.AsType[*StderrError](err); ok {
+		return strings.TrimSpace(se.Stderr)
+	}
+	return ""
+}
+
 // FmtCheck fails if any Go source is not gofmt-formatted.
 func FmtCheck(out io.Writer, run Exec) error {
 	// The file list comes from git, not from walking the directory.
@@ -143,11 +167,10 @@ func FmtCheck(out io.Writer, run Exec) error {
 	if len(paths) == 0 {
 		return fmt.Errorf("no tracked Go files found; is this a git checkout?")
 	}
-	listed, err := run(nil, false, "gofmt", append([]string{"-l"}, paths...)...)
+	files, err := unformatted(paths, run)
 	if err != nil {
-		return fmt.Errorf("gofmt: %w", err)
+		return err
 	}
-	files := nonEmptyLines(string(listed))
 	if len(files) == 0 {
 		_, _ = fmt.Fprintln(out, "every Go source is gofmt-formatted")
 		return nil
@@ -156,6 +179,44 @@ func FmtCheck(out io.Writer, run Exec) error {
 		_, _ = fmt.Fprintln(out, "  "+f)
 	}
 	return fmt.Errorf("%d file(s) are not gofmt-formatted; run gofmt -w . to fix", len(files))
+}
+
+// unformatted returns the paths gofmt -l lists.
+//
+// A path under a testdata directory is left out: go build ignores it, and a
+// fixture there is often broken on purpose. A tracked file that is gone from
+// the working tree makes gofmt exit 2 without naming anything useful, so when
+// gofmt fails the deleted paths are dropped and it runs once more. A failure
+// that remains is reported with gofmt's own message, which names the file and
+// the reason.
+func unformatted(paths []string, run Exec) ([]string, error) {
+	paths = slices.DeleteFunc(slices.Clone(paths), func(p string) bool {
+		return slices.Contains(strings.Split(p, "/"), "testdata")
+	})
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	gofmt := "gofmt"
+	listed, err := run(nil, false, gofmt, append([]string{"-l"}, paths...)...)
+	if err != nil {
+		if gone, gerr := run(nil, false, "git", "ls-files", "-z", "--deleted", "*.go"); gerr == nil {
+			deleted := nulSeparated(string(gone))
+			kept := slices.DeleteFunc(slices.Clone(paths), func(p string) bool { return slices.Contains(deleted, p) })
+			if len(kept) < len(paths) {
+				if len(kept) == 0 {
+					return nil, nil
+				}
+				listed, err = run(nil, false, gofmt, append([]string{"-l"}, kept...)...)
+			}
+		}
+	}
+	if err != nil {
+		if msg := stderrOf(err); msg != "" {
+			return nil, fmt.Errorf("gofmt: %w\n%s", err, msg)
+		}
+		return nil, fmt.Errorf("gofmt: %w", err)
+	}
+	return nonEmptyLines(string(listed)), nil
 }
 
 // Modernize fails on code a standard library call already covers.
