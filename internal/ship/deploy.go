@@ -371,8 +371,8 @@ func Deploy(d Deps, tagArg string) (err error) {
 		return err
 	}
 	if err := step("live check", func() error {
-		// No token: no repository has smoke credentials, and none is
-		// inherited from the operator's shell.
+		// No repository has smoke credentials, so SERVICE_TOKEN is left out.
+		// The rest of the operator's environment is passed on as it is.
 		smokeEnv := withEnv(without(env, "SERVICE_TOKEN"),
 			"BASE_URL="+dep.URL, "TAG="+tag, "COMMIT="+commit,
 			"OUTPUT_MD="+filepath.Join(dir, "smoke.md"))
