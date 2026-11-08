@@ -186,8 +186,8 @@ func TestModernizePassesWhenGoFixCannotLoadThePackages(t *testing.T) {
 	}
 }
 
-// Real go fix against a tree that does not type-check and one given a flag it
-// does not know.
+// Real go fix against a tree that does not type-check: its stderr is what
+// tells the gate the failure is a build error.
 func TestModernizeAgainstTheRealToolchain(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("no go toolchain")
@@ -198,5 +198,93 @@ func TestModernizeAgainstTheRealToolchain(t *testing.T) {
 	})
 	if err := Modernize(config.Modernize{}, "go", io.Discard, OSExec(root, io.Discard)); err != nil {
 		t.Errorf("a tree that does not build is another gate's to report: %v", err)
+	}
+}
+
+// toolchainWith builds a fake GOROOT whose bin holds a gofmt and, when
+// gofmtPresent is false, no gofmt.
+func toolchainWith(t *testing.T, gofmtPresent bool) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if gofmtPresent {
+		if err := os.WriteFile(filepath.Join(root, "bin", "gofmt"), nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// scripted answers `go env GOROOT` with goroot and records the name each
+// gofmt run used.
+func scripted(goroot string, gofmts *[]string) Exec {
+	return func(env []string, stream bool, name string, args ...string) ([]byte, error) {
+		switch {
+		case name == "git":
+			return []byte("a.go\x00"), nil
+		case len(args) == 2 && args[0] == "env":
+			return []byte(goroot + "\n"), nil
+		default:
+			*gofmts = append(*gofmts, name)
+			return nil, nil
+		}
+	}
+}
+
+func TestFmtCheckUsesTheGofmtOfTheNamedToolchain(t *testing.T) {
+	root := toolchainWith(t, true)
+	var used []string
+	if err := FmtCheckWith("/opt/other/bin/go", io.Discard, scripted(root, &used)); err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "bin", "gofmt"); len(used) != 1 || used[0] != want {
+		t.Errorf("gofmt ran as %v, want %s", used, want)
+	}
+}
+
+func TestHookUsesTheGofmtOfTheNamedToolchain(t *testing.T) {
+	root := toolchainWith(t, true)
+	var used []string
+	if err := Hook(&config.Config{}, t.TempDir(), "", "/opt/other/bin/go", io.Discard, scripted(root, &used)); err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "bin", "gofmt"); len(used) == 0 || used[0] != want {
+		t.Errorf("gofmt ran as %v, want %s", used, want)
+	}
+}
+
+func TestFmtCheckFallsBackToGofmtOnPathWithoutOneInTheToolchain(t *testing.T) {
+	for name, goroot := range map[string]string{
+		"no gofmt in bin": toolchainWith(t, false),
+		"no GOROOT":       "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var used []string
+			if err := FmtCheckWith("go", io.Discard, scripted(goroot, &used)); err != nil {
+				t.Fatal(err)
+			}
+			if len(used) != 1 || used[0] != "gofmt" {
+				t.Errorf("gofmt ran as %v, want the one on PATH", used)
+			}
+		})
+	}
+}
+
+func TestFmtCheckFallsBackToGofmtOnPathWhenGoEnvFails(t *testing.T) {
+	var used []string
+	base := scripted("", &used)
+	run := func(env []string, stream bool, name string, args ...string) ([]byte, error) {
+		if len(args) == 2 && args[0] == "env" {
+			return nil, errors.New("go: not found")
+		}
+		return base(env, stream, name, args...)
+	}
+	if err := FmtCheckWith("go", io.Discard, run); err != nil {
+		t.Fatal(err)
+	}
+	if len(used) != 1 || used[0] != "gofmt" {
+		t.Errorf("gofmt ran as %v", used)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -152,8 +153,15 @@ func stderrOf(err error) string {
 	return ""
 }
 
-// FmtCheck fails if any Go source is not gofmt-formatted.
+// FmtCheck fails if any Go source is not gofmt-formatted, using the gofmt of
+// the go found on PATH.
 func FmtCheck(out io.Writer, run Exec) error {
+	return FmtCheckWith("go", out, run)
+}
+
+// FmtCheckWith is FmtCheck with the gofmt of the goBin toolchain, so the
+// formatting verdict agrees with the compiler the other gates run.
+func FmtCheckWith(goBin string, out io.Writer, run Exec) error {
 	// The file list comes from git, not from walking the directory.
 	//
 	// gofmt -l . descends into everything, including a nested git worktree
@@ -168,7 +176,7 @@ func FmtCheck(out io.Writer, run Exec) error {
 	if len(paths) == 0 {
 		return fmt.Errorf("no tracked Go files found; is this a git checkout?")
 	}
-	files, err := unformatted(paths, run)
+	files, err := unformatted(goBin, paths, run)
 	if err != nil {
 		return err
 	}
@@ -190,14 +198,14 @@ func FmtCheck(out io.Writer, run Exec) error {
 // gofmt fails the deleted paths are dropped and it runs once more. A failure
 // that remains is reported with gofmt's own message, which names the file and
 // the reason.
-func unformatted(paths []string, run Exec) ([]string, error) {
+func unformatted(goBin string, paths []string, run Exec) ([]string, error) {
 	paths = slices.DeleteFunc(slices.Clone(paths), func(p string) bool {
 		return slices.Contains(strings.Split(p, "/"), "testdata")
 	})
 	if len(paths) == 0 {
 		return nil, nil
 	}
-	gofmt := "gofmt"
+	gofmt := gofmtFor(goBin, run)
 	listed, err := run(nil, false, gofmt, append([]string{"-l"}, paths...)...)
 	if err != nil {
 		if gone, gerr := run(nil, false, "git", "ls-files", "-z", "--deleted", "*.go"); gerr == nil {
@@ -218,6 +226,29 @@ func unformatted(paths []string, run Exec) ([]string, error) {
 		return nil, fmt.Errorf("gofmt: %w", err)
 	}
 	return nonEmptyLines(string(listed)), nil
+}
+
+// gofmtFor is the gofmt in the bin directory of goBin's GOROOT, so -go picks
+// the formatter along with the compiler. It falls back to the gofmt on PATH
+// when the toolchain does not report a GOROOT or has no gofmt there.
+func gofmtFor(goBin string, run Exec) string {
+	out, err := run(nil, false, goBin, "env", "GOROOT")
+	if err != nil {
+		return "gofmt"
+	}
+	root := strings.TrimSpace(string(out))
+	if root == "" {
+		return "gofmt"
+	}
+	name := "gofmt"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	p := filepath.Join(root, "bin", name)
+	if _, err := os.Stat(p); err != nil {
+		return "gofmt"
+	}
+	return p
 }
 
 // Modernize fails on code a standard library call already covers.

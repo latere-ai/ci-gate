@@ -55,7 +55,7 @@ func Hook(cfg *config.Config, root, module, goBin string, out io.Writer, run Exe
 		return nil
 	}
 
-	unfmt, err := unformatted(files, run)
+	unfmt, err := unformatted(goBin, files, run)
 	if err != nil {
 		return err
 	}

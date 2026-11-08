@@ -27,6 +27,11 @@ func fake(t *testing.T, calls *[]call, outputs ...any) Exec {
 	t.Helper()
 	i := 0
 	return func(env []string, stream bool, name string, args ...string) ([]byte, error) {
+		// The formatter lookup is plumbing, not part of the sequence a case
+		// scripts: it reports no GOROOT, so gofmt comes from PATH.
+		if len(args) == 2 && args[0] == "env" && args[1] == "GOROOT" {
+			return nil, nil
+		}
 		*calls = append(*calls, call{env, stream, name, args})
 		if i >= len(outputs) {
 			return nil, nil
