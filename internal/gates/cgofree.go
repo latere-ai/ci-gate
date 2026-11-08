@@ -5,6 +5,8 @@ package gates
 
 import (
 	"fmt"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,6 +27,7 @@ import (
 func CgoFree(root string, out io.Writer, skip []string) error {
 	var found []string
 	scanned := 0
+	fset := token.NewFileSet()
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -42,15 +45,15 @@ func CgoFree(root string, out io.Writer, skip []string) error {
 			return nil
 		}
 		scanned++
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return err
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			rel = path
 		}
-		if line, ok := importsC(string(body)); ok {
-			rel, relErr := filepath.Rel(root, path)
-			if relErr != nil {
-				rel = path
-			}
+		line, ok, err := importsC(fset, path)
+		if err != nil {
+			return fmt.Errorf("%s: %w; the gate cannot tell whether it imports \"C\", so fix the syntax first", rel, err)
+		}
+		if ok {
 			found = append(found, fmt.Sprintf("%s:%d", rel, line))
 		}
 		return nil
@@ -72,25 +75,19 @@ func CgoFree(root string, out io.Writer, skip []string) error {
 	return nil
 }
 
-// importsC reports the line importing "C", either as a single import or
-// inside an import block. A comment mentioning C is not an import.
-func importsC(src string) (int, bool) {
-	inBlock := false
-	for i, line := range strings.Split(src, "\n") {
-		t := strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(t, "//"):
-			continue
-		case t == "import (":
-			inBlock = true
-			continue
-		case inBlock && t == ")":
-			inBlock = false
-			continue
-		}
-		if t == `import "C"` || (inBlock && (t == `"C"` || strings.HasPrefix(t, `_ "C"`))) {
-			return i + 1, true
+// importsC parses the import declarations of the file at path and reports the
+// line of the one importing "C", however it is written: alone, in a block,
+// blank, renamed, or followed by a comment. A comment mentioning C is not an
+// import. A file that does not parse is an error, not a pass.
+func importsC(fset *token.FileSet, path string) (int, bool, error) {
+	file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+	if err != nil {
+		return 0, false, err
+	}
+	for _, imp := range file.Imports {
+		if imp.Path != nil && imp.Path.Value == `"C"` {
+			return fset.Position(imp.Pos()).Line, true, nil
 		}
 	}
-	return 0, false
+	return 0, false, nil
 }
