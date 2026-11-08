@@ -167,6 +167,7 @@ func Run(cfg config.Identity, root string, out io.Writer, exec gates.Exec, now t
 		return err
 	}
 	applied := 0
+	held, skipped, waivedOpen := 0, 0, 0
 	var failed []string
 	for _, r := range rules {
 		if !slices.Contains(r.roles, cfg.Role) {
@@ -188,6 +189,9 @@ func Run(cfg config.Identity, root string, out io.Writer, exec gates.Exec, now t
 					"WAIV", r.name, w.Until, w.Reason, len(res.findings))
 				if len(res.findings) == 0 {
 					_, _ = fmt.Fprintf(out, "  the rule holds already; the waiver can go\n")
+					held++
+				} else {
+					waivedOpen++
 				}
 				continue
 			}
@@ -201,8 +205,10 @@ func Run(cfg config.Identity, root string, out io.Writer, exec gates.Exec, now t
 				_, _ = fmt.Fprintln(out, "  "+f.String())
 			}
 		case res.skip != "":
+			skipped++
 			_, _ = fmt.Fprintf(out, "%-4s %-17s %s\n", "SKIP", r.name, res.skip)
 		default:
+			held++
 			_, _ = fmt.Fprintf(out, "%-4s %-17s %s\n", "PASS", r.name, res.note)
 		}
 	}
@@ -210,7 +216,19 @@ func Run(cfg config.Identity, root string, out io.Writer, exec gates.Exec, now t
 		return fmt.Errorf("%d of %d identity rule(s) failed for role %s: %s",
 			len(failed), applied, string(cfg.Role), strings.Join(failed, ", "))
 	}
-	_, _ = fmt.Fprintf(out, "role %s holds %d rule(s) of the shape\n", string(cfg.Role), applied)
+	if held == 0 && waivedOpen == 0 {
+		_, _ = fmt.Fprintf(out, "role %s: all %d rule(s) were skipped, so nothing of the shape was checked\n",
+			string(cfg.Role), skipped)
+		return nil
+	}
+	line := fmt.Sprintf("role %s holds %d rule(s) of the shape", string(cfg.Role), held)
+	if skipped > 0 {
+		line += fmt.Sprintf("; %d skipped, not checked", skipped)
+	}
+	if waivedOpen > 0 {
+		line += fmt.Sprintf("; %d waived with findings", waivedOpen)
+	}
+	_, _ = fmt.Fprintln(out, line)
 	return nil
 }
 
