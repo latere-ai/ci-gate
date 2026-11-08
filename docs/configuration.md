@@ -60,8 +60,8 @@ Both fields are mandatory, and the date is the half that matters: a
 reason alone turns into a permanent exception. `until` is inclusive. After
 it, the gate runs and fails on its own terms, and the summary says the
 waiver ran out. A waiver keyed on a name that is not a gate fails the
-load, because a waiver for a gate nobody runs hides a typo in the name of
-a gate somebody does.
+load of every command, because a waiver for a gate nobody runs hides a
+typo in the name of a gate somebody does.
 
 A waiver on one of the six gates `suite` folds narrows the suite run
 rather than skipping it; see [`gates.md`](gates.md#suite-and-the-six-gates-it-folds).
