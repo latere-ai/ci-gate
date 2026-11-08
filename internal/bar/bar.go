@@ -87,7 +87,7 @@ type Gate struct {
 var Gates = []Gate{
 	{Name: "fmt-check", Doc: "no tracked Go source is unformatted",
 		Applies: tracksGo,
-		Run:     func(c Ctx) error { return gates.FmtCheck(c.Out, c.Exec) }},
+		Run:     func(c Ctx) error { return gates.FmtCheckWith(c.GoBin, c.Out, c.Exec) }},
 	{Name: "modernize", Doc: "no code a standard library call already covers",
 		Applies: tracksGo,
 		Run:     func(c Ctx) error { return gates.Modernize(c.Cfg.Modernize, c.GoBin, c.Out, c.Exec) }},

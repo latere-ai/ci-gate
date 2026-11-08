@@ -720,3 +720,33 @@ func TestPlanEnumTypescriptNeedsNodeAndBun(t *testing.T) {
 		t.Errorf("needs = %v", got)
 	}
 }
+
+// fmt-check formats with the gofmt of the toolchain -go names, so its verdict
+// agrees with the compiler the other gates run.
+func TestFmtCheckRunsTheGofmtOfTheNamedToolchain(t *testing.T) {
+	goroot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(goroot, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(goroot, "bin", "gofmt"), nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var gofmt string
+	c, _ := ctx(t, nil, func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if name == "/opt/other/bin/go" && len(args) == 2 && args[0] == "env" {
+			return []byte(goroot + "\n"), nil
+		}
+		if len(args) > 0 && args[0] == "-l" {
+			gofmt = name
+		}
+		return nil, nil
+	})
+	c.GoBin = "/opt/other/bin/go"
+	g, _ := Find("fmt-check")
+	if err := g.Run(c); err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(goroot, "bin", "gofmt"); gofmt != want {
+		t.Errorf("gofmt ran as %q, want %q", gofmt, want)
+	}
+}
