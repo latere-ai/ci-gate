@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -182,6 +183,12 @@ func Render(module string, disable []string, sl *config.Sloglint, extra map[stri
 			},
 		},
 	}
+	if removed := subtractions(doc, extra, ""); len(removed) > 0 {
+		return "", fmt.Errorf("golangci.extra removes or weakens the shared bar:\n\t%s\n"+
+			"extra adds to the shared set and never takes from it: delete these from golangci.extra, "+
+			"or keep a config of your own with golangci.own and say why",
+			strings.Join(removed, "\n\t"))
+	}
 	merge(doc, extra)
 
 	body, err := yaml.Marshal(doc)
@@ -283,6 +290,116 @@ func merge(dst, src map[string]any) {
 		}
 		dst[k] = v
 	}
+}
+
+// subtractions lists what extra would take from the shared document when
+// merged over it, each as a line that names the setting and what goes.
+//
+// A list that must keep every shared entry loses one when extra replaces the
+// list without it; a shared true switched to false turns a check off; and a
+// list of things switched off (a "disable" list, or a "-" entry such as
+// staticcheck's "-ST1000") weakens the bar when it gains an entry the shared
+// document did not carry. A list losing a "-" entry, or a disable entry,
+// makes the bar stricter and is not reported. Keys the shared document does
+// not carry are additions and always pass.
+func subtractions(shared, extra any, path string) []string {
+	var out []string
+	switch ev := extra.(type) {
+	case map[string]any:
+		sm, _ := shared.(map[string]any)
+		keys := make([]string, 0, len(ev))
+		for k := range ev {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			child := k
+			if path != "" {
+				child = path + "." + k
+			}
+			sv, ok := sm[k]
+			if !ok {
+				if k == "disable" && path == "linters" {
+					out = append(out, listLine(child, "turns off", entries(ev[k])))
+				}
+				continue
+			}
+			if k == "enable" {
+				// merge appends to linters.enable, so it cannot remove.
+				continue
+			}
+			out = append(out, subtractions(sv, ev[k], child)...)
+		}
+	case []any:
+		sl, ok := shared.([]any)
+		if !ok {
+			return nil
+		}
+		have := map[string]bool{}
+		for _, e := range ev {
+			have[fmt.Sprint(e)] = true
+		}
+		var missing []string
+		for _, e := range sl {
+			if str, isStr := e.(string); isStr && strings.HasPrefix(str, "-") {
+				continue
+			}
+			if !have[fmt.Sprint(e)] {
+				missing = append(missing, describe(e))
+			}
+		}
+		if len(missing) > 0 {
+			out = append(out, listLine(path, "drops", missing))
+		}
+		known := map[string]bool{}
+		for _, e := range sl {
+			known[fmt.Sprint(e)] = true
+		}
+		off := strings.HasSuffix(path, ".disable")
+		var added []string
+		for _, e := range ev {
+			str, isStr := e.(string)
+			if !known[fmt.Sprint(e)] && (off || (isStr && strings.HasPrefix(str, "-"))) {
+				added = append(added, describe(e))
+			}
+		}
+		if len(added) > 0 {
+			out = append(out, listLine(path, "turns off", added))
+		}
+	case bool:
+		if sb, ok := shared.(bool); ok && sb && !ev {
+			out = append(out, path+" sets true to false")
+		}
+	}
+	return out
+}
+
+func listLine(path, verb string, items []string) string {
+	return path + " " + verb + " " + strings.Join(items, ", ")
+}
+
+func entries(v any) []string {
+	l, _ := v.([]any)
+	out := make([]string, 0, len(l))
+	for _, e := range l {
+		out = append(out, describe(e))
+	}
+	return out
+}
+
+// describe names one list entry the way a person reads it: a package denial
+// by its package, a rule by its linters and path, anything else as written.
+func describe(e any) string {
+	m, ok := e.(map[string]any)
+	if !ok {
+		return fmt.Sprint(e)
+	}
+	for _, k := range []string{"pkg", "path", "path-except"} {
+		if v, ok := m[k]; ok {
+			return fmt.Sprint(v)
+		}
+	}
+	return fmt.Sprint(m)
 }
 
 // Own reports the reason a repository keeps its own configuration, having
