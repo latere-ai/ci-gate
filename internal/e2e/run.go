@@ -55,8 +55,12 @@ func NewRunner(root, goBin string, out io.Writer, run gates.Exec) *Runner {
 	return &Runner{
 		Root: root, GoBin: goBin, Out: out, Env: os.Environ(), Start: OSStart, Exec: run,
 		LookPath: lookPath, Tools: NewFetcher(out),
-		NewHost: func(engine, suite string, out io.Writer) *Host { return NewHost(engine, suite, out, run) },
-		Grace:   30 * time.Second,
+		NewHost: func(engine, suite string, out io.Writer) *Host {
+			h := NewHost(engine, suite, out, run)
+			h.RunCapturing = OSCapturing
+			return h
+		},
+		Grace: 30 * time.Second,
 	}
 }
 

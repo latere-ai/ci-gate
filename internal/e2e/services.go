@@ -7,6 +7,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -17,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"slices"
 	"strings"
 	"time"
@@ -80,6 +82,11 @@ type Host struct {
 	// container.
 	Dial  func(ctx context.Context, addr string) error
 	Ready func(ctx context.Context, url string) error
+
+	// RunCapturing, when set, runs the command that starts a container and
+	// returns its standard error as well, so the reason a start was refused
+	// reaches the person running the bar. Run does not return it.
+	RunCapturing func(name string, args ...string) (stdout, stderr []byte, err error)
 
 	// started holds the id of each container a successful run printed, and
 	// nothing else: Stop removes exactly these.
@@ -161,6 +168,43 @@ func (h *Host) Stop() error {
 	return errors.Join(errs...)
 }
 
+// runCapturing runs the engine with args through RunCapturing when it is set.
+func (h *Host) runCapturing(args []string) (stdout, stderr []byte, err error) {
+	if h.RunCapturing != nil {
+		return h.RunCapturing(h.Engine, args...)
+	}
+	stdout, err = h.Run(nil, false, h.Engine, args...)
+	return stdout, nil, err
+}
+
+// OSCapturing runs a command for real and returns its standard output and
+// its standard error apart.
+func OSCapturing(name string, args ...string) (stdout, stderr []byte, err error) {
+	var out, errOut bytes.Buffer
+	cmd := exec.CommandContext(context.Background(), name, args...)
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	err = cmd.Run()
+	return out.Bytes(), errOut.Bytes(), err
+}
+
+// firstLines is the first n non-empty lines of b, as ": a; b", or "" when b
+// has none.
+func firstLines(b []byte, n int) string {
+	var lines []string
+	for line := range strings.Lines(string(b)) {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+			if len(lines) == n {
+				break
+			}
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return ": " + strings.Join(lines, "; ")
+}
+
 // lastLine is the last non-empty line of b, trimmed: the container id, after
 // any warning an engine printed before it.
 func lastLine(b []byte) string {
@@ -201,12 +245,12 @@ func (h *Host) launch(svc, image, port string, env []string, args ...string) (na
 	}
 	run = append(append(run, image), args...)
 	_, _ = fmt.Fprintf(h.Out, "starting %s from %s\n", svc, image)
-	printed, err := h.Run(nil, false, h.Engine, run...)
+	printed, stderr, err := h.runCapturing(run)
 	if err != nil {
 		// Only the id a successful run printed is ours to remove. A start
 		// that failed after the container was made carries the run's label,
 		// so the run's check names and removes it.
-		return "", "", fmt.Errorf("the container does not start: %w", err)
+		return "", "", fmt.Errorf("the container does not start: %w%s", err, firstLines(stderr, 5))
 	}
 	id := lastLine(printed)
 	if id == "" {

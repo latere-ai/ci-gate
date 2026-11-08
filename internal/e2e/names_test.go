@@ -5,9 +5,11 @@ package e2e
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 
 	"latere.ai/x/ci-gate/internal/config"
@@ -52,9 +54,33 @@ func TestStopRemovesTheIDTheEnginePrinted(t *testing.T) {
 	}
 }
 
-func TestLastLineIsTheIDAfterAnyWarning(t *testing.T) {
-	if got := lastLine([]byte("warn\nabc\n")); got != "abc" {
-		t.Errorf("lastLine = %q", got)
+// The refusal an engine prints on standard error reaches the error the
+// person running the bar reads, a few lines of it.
+func TestAStartThatFailsSaysWhyTheEngineRefused(t *testing.T) {
+	e := scripted()
+	h := testHost(e, io.Discard)
+	h.RunCapturing = func(string, ...string) ([]byte, []byte, error) {
+		return nil, []byte("\nError: name in use\nsecond\nthird\nfourth\nfifth\nsixth\n"), errors.New("exit status 125")
+	}
+	_, _, err := h.launch("postgres", "img", "5432", nil)
+	if err == nil {
+		t.Fatal("started")
+	}
+	want := "the container does not start: exit status 125: Error: name in use; second; third; fourth; fifth"
+	if err.Error() != want {
+		t.Fatalf("err = %q, want %q", err, want)
+	}
+}
+
+func TestOSCapturingKeepsStandardErrorApart(t *testing.T) {
+	// /bin/sh by its path: the bar runs this test with a PATH stripped to the
+	// Go toolchain.
+	out, errOut, err := OSCapturing("/bin/sh", "-c", "echo id; echo refused >&2; exit 3")
+	if err == nil || string(out) != "id\n" || string(errOut) != "refused\n" {
+		t.Fatalf("out %q, stderr %q, err %v", out, errOut, err)
+	}
+	if got := firstLines(nil, 5); got != "" {
+		t.Errorf("firstLines(nil) = %q", got)
 	}
 	if got := lastLine([]byte(" \n")); got != "" {
 		t.Errorf("lastLine of blanks = %q", got)
@@ -83,9 +109,13 @@ func TestStopLeavesAContainerItDidNotStart(t *testing.T) {
 	h := NewHost("podman", suite, io.Discard, gates.OSExec(t.TempDir(), io.Discard))
 	h.PID = pid
 	h.Rand = bytes.NewReader([]byte{1, 2, 3, 4})
+	h.RunCapturing = OSCapturing
 	_, _, err := h.launch("postgres", "alpine:3.22", "5432", nil, "sleep", "300")
 	if err == nil {
 		t.Fatal("the name is taken, so the start must fail")
+	}
+	if !strings.Contains(err.Error(), "exit status 125: ") {
+		t.Errorf("err = %q, want the engine's reason after the exit status", err)
 	}
 	if err := h.Stop(); err != nil {
 		t.Fatal(err)
