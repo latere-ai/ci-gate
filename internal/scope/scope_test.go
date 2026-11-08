@@ -73,7 +73,7 @@ func (r *repo) exec(_ []string, _ bool, name string, args ...string) ([]byte, er
 		return []byte(strings.Join(r.others, "\x00")), r.untracked
 	case cmd == "go list -m":
 		return []byte(r.modulePath + "\n"), r.mod
-	case cmd == "go list -e -json=ImportPath,Deps,TestImports,XTestImports,EmbedFiles,TestEmbedFiles,XTestEmbedFiles ./...":
+	case cmd == "go list -e -json=ImportPath,Deps,TestImports,XTestImports,EmbedFiles,TestEmbedFiles,XTestEmbedFiles,IgnoredGoFiles ./...":
 		if r.listOut != "" {
 			return []byte(r.listOut), r.list
 		}

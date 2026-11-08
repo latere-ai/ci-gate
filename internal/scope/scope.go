@@ -19,11 +19,14 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"latere.ai/x/ci-gate/internal/config"
@@ -256,7 +259,16 @@ type listed struct {
 	EmbedFiles      []string
 	TestEmbedFiles  []string
 	XTestEmbedFiles []string
-	dir             string
+	// IgnoredGoFiles are the Go files the build leaves out on this machine,
+	// for another GOOS, GOARCH or a build tag, relative to the directory.
+	IgnoredGoFiles []string
+	dir            string
+
+	// What the ignored files import, split by whether they are test files.
+	// Another platform or tag builds them, so a package they import is
+	// reached through this one.
+	ignoredImports     []string
+	ignoredTestImports []string
 }
 
 // embeds reports whether the package or its tests embed f, a slash path
@@ -286,7 +298,7 @@ func list(root, goBin string, run gates.Exec) (string, []listed, error) {
 	if prefix == "" || prefix == "command-line-arguments" || strings.Contains(prefix, "\n") {
 		return "", nil, fmt.Errorf("%s is not one Go module, so its packages cannot be scoped", root)
 	}
-	out, err := run(nil, false, goBin, "list", "-e", "-json=ImportPath,Deps,TestImports,XTestImports,EmbedFiles,TestEmbedFiles,XTestEmbedFiles", "./...")
+	out, err := run(nil, false, goBin, "list", "-e", "-json=ImportPath,Deps,TestImports,XTestImports,EmbedFiles,TestEmbedFiles,XTestEmbedFiles,IgnoredGoFiles", "./...")
 	if err != nil {
 		return "", nil, fmt.Errorf("go list cannot list the module's packages: %w", err)
 	}
@@ -303,12 +315,42 @@ func list(root, goBin string, run gates.Exec) (string, []listed, error) {
 		if p.dir, ok = dirOf(prefix, p.ImportPath); !ok {
 			continue
 		}
+		if err := p.readIgnoredImports(root); err != nil {
+			return "", nil, err
+		}
 		pkgs = append(pkgs, p)
 	}
 	if len(pkgs) == 0 {
 		return "", nil, errors.New("go list found no package in the module, so nothing can be scoped")
 	}
 	return prefix, pkgs, nil
+}
+
+// readIgnoredImports fills in what the package's ignored Go files import.
+// Only their import lines are read; a file whose imports do not parse is an
+// error, since what it imports cannot be known.
+func (p *listed) readIgnoredImports(root string) error {
+	fset := token.NewFileSet()
+	for _, name := range p.IgnoredGoFiles {
+		file := filepath.Join(root, filepath.FromSlash(p.dir), name)
+		f, err := parser.ParseFile(fset, file, nil, parser.ImportsOnly)
+		if err != nil {
+			return fmt.Errorf("%s is built only on another platform or under a build tag, and its imports cannot be read, "+
+				"so what it imports is outside the graph: %w", path.Join(p.dir, name), err)
+		}
+		for _, spec := range f.Imports {
+			imp, err := strconv.Unquote(spec.Path.Value)
+			if err != nil {
+				return fmt.Errorf("%s imports %s, which is not a path: %w", path.Join(p.dir, name), spec.Path.Value, err)
+			}
+			if strings.HasSuffix(name, "_test.go") {
+				p.ignoredTestImports = append(p.ignoredTestImports, imp)
+			} else {
+				p.ignoredImports = append(p.ignoredImports, imp)
+			}
+		}
+	}
+	return nil
 }
 
 // dirOf is a package's directory, its import path below the module's, and
@@ -380,27 +422,37 @@ func nearest(f string, pkgs []listed) int {
 }
 
 // importers is changed and every package whose build or tests reach one of
-// them: through its own imports, or through what its tests import.
+// them: through its own imports, or through what its tests import. The
+// files the build leaves out on this machine count too, since another
+// platform or tag builds them.
 func importers(changed []Package, pkgs []listed) []Package {
 	hit := map[string]bool{}
 	for _, c := range changed {
 		hit[c.ImportPath] = true
 	}
-	deps := map[string][]string{}
-	for _, p := range pkgs {
-		deps[p.ImportPath] = p.Deps
-	}
-	reaches := func(imp string) bool {
-		if hit[imp] {
-			return true
+	// A package reaches the change when its build does, and a package that
+	// imports it reaches the change in turn. Deps already holds the
+	// transitive imports of the files built here, so only the ignored
+	// files' imports need the walk to a fixed point.
+	for grew := true; grew; {
+		grew = false
+		for _, p := range pkgs {
+			if hit[p.ImportPath] {
+				continue
+			}
+			if slices.ContainsFunc(p.Deps, func(d string) bool { return hit[d] }) ||
+				slices.ContainsFunc(p.ignoredImports, func(d string) bool { return hit[d] }) {
+				hit[p.ImportPath] = true
+				grew = true
+			}
 		}
-		return slices.ContainsFunc(deps[imp], func(d string) bool { return hit[d] })
 	}
 	var reached []Package
 	for _, p := range pkgs {
-		if reaches(p.ImportPath) ||
-			slices.ContainsFunc(p.TestImports, reaches) ||
-			slices.ContainsFunc(p.XTestImports, reaches) {
+		if hit[p.ImportPath] ||
+			slices.ContainsFunc(p.TestImports, func(d string) bool { return hit[d] }) ||
+			slices.ContainsFunc(p.XTestImports, func(d string) bool { return hit[d] }) ||
+			slices.ContainsFunc(p.ignoredTestImports, func(d string) bool { return hit[d] }) {
 			reached = append(reached, Package{ImportPath: p.ImportPath, Dir: p.dir})
 		}
 	}
