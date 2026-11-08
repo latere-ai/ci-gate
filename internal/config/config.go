@@ -848,6 +848,23 @@ func defaults(c *Config, dir string) *Config {
 	if c.Identity.Registry == DefaultRegistry {
 		c.Restated = append(c.Restated, "identity.registry")
 	}
+	if c.Identity.ReachedBy == "clients" {
+		c.Restated = append(c.Restated, "identity.reached_by")
+	}
+	if len(c.License.Names) == 0 && slices.Equal(c.License.Extensions, []string{".go"}) {
+		c.Restated = append(c.Restated, "license.extensions")
+	}
+	if slices.Equal(c.TempDir.Command, []string{"go", "test", "./..."}) {
+		c.Restated = append(c.Restated, "tempdir.command")
+	}
+	for _, e := range c.E2E {
+		if e.Timeout != "" && e.TimeoutOr() == DefaultE2ETimeout {
+			c.Restated = append(c.Restated, "e2e."+e.Name+".timeout")
+		}
+		if slices.Equal(e.On, []string{OnPush}) {
+			c.Restated = append(c.Restated, "e2e."+e.Name+".on")
+		}
+	}
 	if c.Identity.Role == RoleIssuer && c.Identity.Registry == "" {
 		c.Identity.Registry = DefaultRegistry
 	}

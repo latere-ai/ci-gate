@@ -6,6 +6,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -94,5 +95,53 @@ func TestAWaiverEndsAtTheSameInstantInEveryZone(t *testing.T) {
 		if w.Live(last.Add(time.Second).In(zone)) {
 			t.Errorf("waiver through 2026-11-15 is still live at 2026-11-16T00:00:00Z, read in %s", zone)
 		}
+	}
+}
+
+func TestEveryKeyThatRestatesItsDefaultIsReported(t *testing.T) {
+	c, err := loadBody(t, `identity:
+  role: service
+  audience: api
+  image: api
+  reached_by: clients
+license:
+  spdx: MIT
+  holder: Latere AI
+  extensions: ['.go']
+tempdir:
+  command: [go, test, ./...]
+e2e:
+  - name: api
+    why: runs against a real server
+    test: {packages: [./e2e]}
+    timeout: 20m
+    on: [push]
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"identity.reached_by", "license.extensions", "tempdir.command", "e2e.api.timeout", "e2e.api.on"} {
+		if !slices.Contains(c.Restated, want) {
+			t.Errorf("%s restates its default and is not reported: %v", want, c.Restated)
+		}
+	}
+}
+
+func TestADecisionOtherThanTheDefaultIsNotReportedAsRestated(t *testing.T) {
+	c, err := loadBody(t, `identity:
+  role: none
+license:
+  spdx: MIT
+  holder: Latere AI
+  extensions: ['.go']
+  names: [Makefile]
+tempdir:
+  command: [go, test, -race, ./...]
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Restated) != 0 {
+		t.Errorf("restated = %v, want none", c.Restated)
 	}
 }
