@@ -78,7 +78,7 @@ waive: {}                  # gate -> {reason, until: YYYY-MM-DD}; the only way a
 cover:
   threshold: 90.0          # the per-package floor
   trim_prefix: ""          # dropped from package paths in the report; default the module path
-  exempt: {}               # package suffix -> the reason it is exempt
+  exempt: {}               # package path, whole elements -> the reason it is exempt
 
 spec:                      # applies when git tracks the spec directory
   dir: specs               # empty disables spec-lint
@@ -320,9 +320,12 @@ failing module does not stop the next, and the gate fails if any module
 failed. A waiver on the suite, race, hermetic, tempdir or cover applies to
 every module.
 
-`cover.exempt` keys are matched against each module's import paths as
-suffixes, so a key written for a package of the root also matches a package
-of the same name in a module. A key can instead name a module's package by
+`cover.exempt` keys are matched against each module's import paths by
+whole path elements: a key matches a package whose import path equals it
+or ends in `/` followed by the key, so a key written for a package of the
+root also matches a package of the same name in a module, and `api` does
+not match `grapi`. An empty key, here or in `tempdir.allow`, is refused
+when the file is read. A key can instead name a module's package by
 its place below the repository root, `tools/specindex/cmd/gen`, which
 matches whatever the module is called.
 

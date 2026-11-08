@@ -31,15 +31,17 @@ In order, it:
 
 1. reads CI through the GitHub API and refuses while it is red (below);
 2. checks that the release can land as one fast-forward of origin's
-   default branch (below), and refuses a version that is not
-   `vMAJOR.MINOR.PATCH` (with an optional prerelease or build suffix), a
-   dirty working tree, and an empty `## Unreleased`;
+   default branch (below), and refuses a version that is not valid
+   semantic versioning (`vMAJOR.MINOR.PATCH` with no leading zeros, and an
+   optional prerelease or build suffix), a version `CHANGELOG.md` already
+   has a section for, a dirty working tree, and an empty `## Unreleased`;
 3. runs the whole bar on the tree about to be tagged;
 4. checks step 2 again, because the bar takes minutes and another
    checkout can push in that time;
 5. writes `## v1.4.0 - <today>` under a fresh `## Unreleased`, and
    rewrites each `release.stamp` file's version marker to `v1.4.0`, or to
-   `1.4.0` where the marker holds the version without a `v`;
+   `1.4.0` where the marker holds the version without a `v`, replacing a
+   prerelease or build suffix the old version carried along with it;
 6. commits `changelog: v1.4.0`, creates an annotated tag, and pushes the
    commit to the default branch and the tag in one atomic push, so the
    release workflow runs once and either both land or neither does. The
@@ -183,13 +185,20 @@ refuses on three things:
   release tag, the latest such run must have ended on an answer.
   `failure`, `cancelled`, `timed_out`, `startup_failure` and
   `action_required` are not answers. A run canceled because a newer run
-  of the same workflow replaced it is read past, the way the newer run is
-  while it is still in progress, so a concurrency group that cancels
-  superseded runs changes nothing here.
-- **A red release run on the previous tag.** The run the last tag started.
-- **A previous tag with no release to show for it.** If that run went
-  green, a GitHub Release must exist for the tag. A workflow can finish and
-  publish nothing, and this is the check that catches it.
+  of the same workflow replaced it is read past, so a concurrency group
+  that cancels superseded runs changes nothing here.
+- **A run at `HEAD` that has not finished.** A workflow whose run at
+  `HEAD` is queued, in progress, waiting, pending or requested refuses the
+  cut with `ci has not finished at HEAD`: wait for it, or cut with
+  `-force-red`. An older green run does not stand in for it.
+- **A previous tag with no release to show for it.** If the release run
+  the last tag started went green, a GitHub Release must exist for the
+  tag. A workflow can finish and publish nothing, and this is the check
+  that catches it.
+
+A red release run on the previous tag is printed as a warning and does
+not refuse the cut. That run belongs to a release that already happened,
+and the tag being cut is often what repairs it.
 
 A window where nothing has completed yet is not green either. It is
 unknown, and the guard says so rather than passing. The guard runs before

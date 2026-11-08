@@ -16,7 +16,7 @@ another. `go tool lateregate <gate>` runs one.
 | `otel-client` | no outbound HTTP client is built without a tracing transport | git tracks a Go file |
 | `container-labels` | every package that imports testcontainers-go imports `reap`, which labels its containers | a package imports testcontainers-go |
 | `license` | every source file carries the SPDX notice the repository declared | git tracks a file of a type the gate checks (`.go` unless `license.extensions` or `license.names` say otherwise); needs `license.spdx` |
-| `spec-lint` | the spec tree agrees with itself and with its index | git tracks `specs/` |
+| `spec-lint` | the spec tree agrees with itself and with its index | git tracks the spec directory (`spec.dir`, default `specs`) |
 | `depcheck` | no build reaches a dependency nobody admitted | `depcheck.packages` names one |
 | `registers` | no developer sentence in a string handed to a user-surface function | `registers.user_surfaces` names one |
 | `platform-via-sdk` | no platform route outside the Go SDK, `latere.ai/x/sdk-go` | `platform_via_sdk.enabled` is true |
@@ -381,8 +381,8 @@ none, from the declaration and nothing else, and leaves a file whose notice
 disagrees with the declaration to a person. Adoption is the declaration,
 one run of `-w`, and one commit.
 
-`spdx` has no default, and a repository that runs the gate without one
-gets an error rather than a pass. That is the opposite of every other gate
+`spdx` and `holder` have no default, and a repository that runs the gate
+without them gets an error rather than a pass. That is the opposite of every other gate
 here: an identifier guessed on your behalf and printed into every file is
 worse than none. For the same reason the gate does not infer the
 identifier from `LICENSE`. It does read the file: the declaration is
@@ -395,7 +395,11 @@ Two details the check enforces. The blank third line is part of it: in Go
 a comment block touching `package` is the package documentation, so an
 unseparated notice puts the license at the top of every page on
 pkg.go.dev. And the year is a pattern, `2026` or `2024-2026`, not a fixed
-value, so the gate does not go red every 1 January.
+value, so the gate does not go red every 1 January; a year before 1970 or
+after next year, or a range that runs backward, fails.
+
+The gate checks the files git tracks, outside `node_modules`, `vendor` and
+the `skip` list, so a git-ignored build output is never read.
 
 A file type the gate has no comment marker for is rejected when the config
 loads, not skipped during the scan. The Go marker is a legal comment in
@@ -420,7 +424,9 @@ spec:
 It checks that frontmatter parses, required keys are present and
 non-empty, each status comes from your vocabulary, `depends_on` edges
 resolve, the graph is acyclic, every spec appears in the index with the
-status it claims, and `[[wikilinks]]` point at something.
+status it claims (compared exactly when `spec.status` is set, ignoring
+case when it is not), and `[[wikilinks]]` point at something, an alias
+(`[[002-b|text]]`) or a heading (`[[002-b#design]]`) included.
 
 Two rules are off unless you ask for them, because both encode a
 convention rather than plain hygiene:
@@ -542,7 +548,9 @@ packages that serve requests, `exempt` removes paths inside those, and
 
 A repository adds to the set through `golangci.extra`, which merges over
 the shared document. `linters.enable` appends, so adding a linter means "as
-well as", never "instead of". Layering rules, which are facts about one
+well as", never "instead of". An `extra` that removes or weakens anything
+in the shared document (a `linters.disable` entry, a shorter deny list or
+exclusion list, a check switched off) is refused, naming what it removes. Layering rules, which are facts about one
 service's directories, belong there:
 
 ```yaml
@@ -590,7 +598,9 @@ compile or that half-applies. `go fix` rejects an unknown `-name=false`, so
 if the toolchain drops a fixer you named, the flag would be refused and
 the check would report green over a gate that never ran. `lateregate`
 verifies each fixer still exists before trusting the flag, and fails if
-one is gone.
+one is gone. When `go fix` exits with an error and no patch, the gate
+passes only if its error is a build or type-check error, which the `suite`
+reports; any other failure of `go fix` fails the gate with its message.
 
 ## `cgo-free`: no `import "C"`
 
@@ -1287,7 +1297,11 @@ Bun.
 
 ## `fmt-check` and `vuln`
 
-`fmt-check` fails on any tracked Go file `gofmt` would change. `vuln` runs
+`fmt-check` fails on any tracked Go file `gofmt` would change, using the
+`gofmt` of the toolchain `-go` names. Files under a `testdata` directory,
+which the build ignores and which may be invalid Go on purpose, and
+tracked files deleted from the working tree are left out; when `gofmt`
+itself fails, its own message is shown. `vuln` runs
 govulncheck at the version pinned in this repository and fails on a
 vulnerability reachable from the module's code. `vuln` needs the network
 and can change verdict with no commit, which is why neither hook runs it.

@@ -77,8 +77,10 @@ The whole tree is checked, with the reason on the first line, when
 repository-owned `.golangci.yml` changed, when anything under `vendor/`
 changed, when a directory holds changed Go files but no package `go list`
 reports (a package removed or moved, or one a build constraint excludes
-on this machine), or when the change cannot be measured: no default
-branch, no merge base, or a module `go list` cannot list. `-all` checks
+on this machine), when a changed file is inside a nested module the root
+module reaches through a local `replace` or a `go.work` `use` line, or when
+the change cannot be measured: no default branch, no merge base, or a
+module `go list` cannot list. `-all` checks
 the whole tree on request. A runner (`CI` set), `release`, a gate run by
 name and `list` always read the whole tree, unless `-since` names a base.
 
@@ -280,8 +282,11 @@ image with `--platform` set to `ship.image.platform`. The image stays in the loc
 is accepted, a `+` build suffix is not, since an image tag cannot hold one)
 and the working tree is clean. It runs no bar: the release that cut the tag
 ran it on this tree. It runs `prepare`, builds with the tag as the version,
-tags the image `<name>:<tag>`, `<name>:sha-<short sha>` and `<name>:latest`
-(not `latest` for a prerelease), pushes each, and prints the pushed digest. When the
+tags the image `<name>:<tag>`, `<name>:sha-<short sha>` and `<name>:latest`,
+pushes each, and prints the pushed digest. `latest` moves only when the tag
+is the newest stable release tag on origin: a prerelease, or an older
+release pushed again, is published under its own tags and `push` says why
+`latest` stayed where it is. When the
 registry refuses the push, the error says so and that the engine needs a
 login with a token that has `write:packages`, for example `podman login
 ghcr.io`. The command reads and prints no token.
@@ -305,7 +310,8 @@ when it fails:
 4. `kubectl rollout status` with `ship.deploy.rollout_timeout`
 5. `ship.deploy.after_roll`
 6. the live check, `ship.deploy.smoke`, with `BASE_URL`, `TAG`, `COMMIT` and
-   `OUTPUT_MD` in its environment and no token. Right after the rollout an
+   `OUTPUT_MD` in its environment, and without `SERVICE_TOKEN`; the rest
+   of your shell's environment is passed on. Right after the rollout an
    old pod or a cache can still answer, so a failing check runs again every
    5 seconds until it passes or 2 minutes have passed since the first
    attempt. Every attempt prints as it runs, and the final failure names how
@@ -338,7 +344,8 @@ reference.
 ## The pre-commit: `hook`
 
 `hook` runs every gate that is a file scan, over the staged Go files, then
-the modernizers over the packages holding them. In order: gofmt;
+the modernizers over the packages holding them. In order: gofmt, which
+leaves out files under `testdata`;
 goimports grouping with the module path as the local prefix; the license
 notice, when `license.spdx` is declared; the outbound HTTP instrumentation
 rule, leaving out the directories `otel_client.skip` names as the gate
