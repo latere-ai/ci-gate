@@ -70,10 +70,12 @@ func untracked(db string) gates.Exec {
 
 // withModules answers the listing of tracked go.mod files with mods and
 // leaves every other question to exec.
+// withModules answers git's list of tracked go.mod files with mods, written
+// one per line here and handed over NUL separated, as git ls-files -z does.
 func withModules(mods string, exec gates.Exec) gates.Exec {
 	return func(env []string, stream bool, name string, args ...string) ([]byte, error) {
 		if name == "git" && slices.Contains(args, "go.mod") {
-			return []byte(mods), nil
+			return []byte(strings.ReplaceAll(mods, "\n", "\x00")), nil
 		}
 		return exec(env, stream, name, args...)
 	}
@@ -813,6 +815,14 @@ func TestThePinningModuleIsFoundWithoutAGateModule(t *testing.T) {
 	_, err = check(t, dir, withModules("go.mod\n", untracked("")))
 	if err == nil || !strings.Contains(err.Error(), "does not pin the tool") {
 		t.Fatalf("an untracked module does not count: %v", err)
+	}
+
+	// A directory name with a space is one path, not two.
+	write(t, dir, "other/go.mod", "module o\n\ngo 1.27\n")
+	write(t, dir, "my gate/go.mod", "module g2\n\ntool latere.ai/x/ci-gate/cmd/lateregate\n")
+	out, err = check(t, dir, withModules("go.mod\nmy gate/go.mod\nother/go.mod\n", untracked("")))
+	if err != nil || !strings.Contains(out, "my gate/go.mod pins the tool") {
+		t.Fatalf("a module under a directory with a space: %v\n%s", err, out)
 	}
 
 	failing := func(_ []string, _ bool, _ string, _ ...string) ([]byte, error) {

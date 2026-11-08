@@ -234,12 +234,17 @@ func findPin(root string, exec gates.Exec) (string, string) {
 	if pins(".") {
 		return ".", ""
 	}
-	out, err := exec(nil, false, "git", "ls-files", "--", "go.mod", ":(glob)**/go.mod")
+	// NUL separated, so a directory with a space or a byte outside ASCII in
+	// its name comes back as it is rather than split or quoted.
+	out, err := exec(nil, false, "git", "ls-files", "-z", "--", "go.mod", ":(glob)**/go.mod")
 	if err != nil {
 		return ".", "go.mod does not pin the tool, and git could not list the other modules: " + err.Error()
 	}
 	var found []string
-	for f := range strings.FieldsSeq(string(out)) {
+	for f := range strings.SplitSeq(string(out), "\x00") {
+		if f == "" {
+			continue
+		}
 		dir := path.Dir(f)
 		if dir != "." && pins(dir) {
 			found = append(found, f)
