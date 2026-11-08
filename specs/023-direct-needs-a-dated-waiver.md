@@ -96,20 +96,19 @@ So the gate takes the waiver as an argument. `bar` hands it
 `Cfg.WaiverFor("postgres")` and the day, the way it hands `identity` the
 day.
 
-```
-                     .lateregate.yaml
-                            |
-              +-------------+--------------+
-              |                            |
-        postgres.role: direct        waive.postgres
-              |                            |
-              +-------------+--------------+
-                            |
-     bar.Plan  <------------+------------>  postgres.Run
-        |                                        |
-   live -> WAIV, gate not run             live -> PASS, date and reason
-   expired -> gate runs ------------------> expired -> FAIL, the rule's sentence
-   absent -> gate runs --------------------> absent -> FAIL, the rule's sentence
+```mermaid
+flowchart TD
+    Y[".lateregate.yaml"] --> R["postgres.role: direct"]
+    Y --> W["waive.postgres"]
+    R --> P["bar.Plan"]
+    W --> P
+    R --> G["postgres.Run"]
+    W --> G
+    P -->|live| PW["WAIV, the gate does not run"]
+    P -->|expired or absent| PR["the gate runs"]
+    PR --> G
+    G -->|live| GP["PASS, with the date and the reason"]
+    G -->|expired or absent| GF["FAIL, with the rule's sentence"]
 ```
 
 `Waiver.Live(now)` is the one definition of live, and both sides call it.

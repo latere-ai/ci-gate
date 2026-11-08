@@ -60,19 +60,17 @@ gate cannot tell one run's containers from another's on a machine where
 several suites share the engine, unless each container says whose it is.
 So the helper labels and sweeps, and the gate names the run and checks it.
 
-```
-test helper, in the test binary            lateregate, around go test
-───────────────────────────────            ──────────────────────────
-                                           sweep: remove what exited owners left
-                                           LATEREGATE_RUN=<id>  go test ./...
-reap.Sweep()                     ◄────────
-start the container, labelled:
-  ai.latere.ci-gate.owner = <pid>@<host>
-  ai.latere.ci-gate.run   = <id>
-a failed start: Terminate
-TestMain: Terminate
-                                           every container labelled run=<id>:
-                                           remove it and fail the gate
+```mermaid
+sequenceDiagram
+    participant L as lateregate, around go test
+    participant H as test helper, in the test binary
+    L->>L: sweep: remove what exited owners left
+    L->>H: LATEREGATE_RUN=id go test ./...
+    H->>H: reap.Sweep()
+    H->>H: start the container, labeled with owner pid@host and run id
+    Note over H: a failed start: Terminate<br/>TestMain: Terminate
+    H-->>L: go test exits
+    L->>L: every container labeled run=id: remove it and fail the gate
 ```
 
 | How a test binary ends | What removes its container |
@@ -96,7 +94,7 @@ if err != nil && ctr != nil {
 Every repository that runs the gate already requires this module, so the
 helper half adds no module to anyone's graph.
 
-## D1 — a container is judged by its owner, never by its age
+## D1: a container is judged by its owner, never by its age
 
 A sweep removes a container only when its owner label names this host and
 a process that no longer exists. Age is no evidence: a suite on this
@@ -108,7 +106,7 @@ A pid can be reused. A reused pid makes a dead owner look alive, and the
 sweep then keeps a container it could have removed; it never makes a live
 owner look dead. The failure is a later sweep, not a lost database.
 
-## D2 — the run label is read past the test cache
+## D2: the run label is read past the test cache
 
 The go command keys a package's cached result on each environment
 variable the test reads through package `os`. The run label changes on
@@ -119,7 +117,7 @@ label decides nothing about a test's outcome, so replaying a result
 without it is correct, and a replayed package starts no container to
 label.
 
-## D3 — the standard library, not a container client
+## D3: the standard library, not a container client
 
 The gate and the helper half speak the Docker Engine API over a unix
 socket, which Docker and Podman both serve: one listing filtered by label
@@ -134,7 +132,7 @@ socket, and rootless Podman's. A `DOCKER_HOST` over TCP names an engine
 this package does not reach, so it finds nothing rather than falling back
 to a default socket that may be another engine.
 
-## D4 — no engine is not a failure, and is not reported as a pass
+## D4: no engine is not a failure, and is not reported as a pass
 
 With no engine socket, nothing the suite runs can have started a
 container, so there is nothing to leak. The property does not apply, the
@@ -146,7 +144,7 @@ An engine that does not answer before the run is the same case: it started
 nothing either. One that answered before and does not answer after fails
 the gate, because the check the run owed did not happen.
 
-## D5 — the leak is reported beside the suite's failure, and removed
+## D5: the leak is reported beside the suite's failure, and removed
 
 As in [[003-tempdir-leaks]]: a red suite gets re-run, and a leak shown
 only on a green one is never seen. Whatever carries the run's label is
@@ -166,7 +164,7 @@ A helper that puts its containers on a network of its own makes the network
 with the same labels, `network.WithLabels(reap.Labels())`, and the sweep
 and the run's check treat it as they treat a container. Containers go
 first, so a network is free by its turn; one still in use after them holds
-a container nothing labelled, and its removal fails with the engine's
+a container nothing labeled, and its removal fails with the engine's
 reason. Added after the first release, once a helper that makes networks
 adopted the contract and the networks of killed runs were found on the
 engine with nothing attached.
@@ -210,7 +208,7 @@ adopted the contract and nothing stopped the next one from skipping it.
 ## Acceptance
 
 - [x] `reap.Labels` names the owner as pid@host and, under a run, the run.
-- [x] `reap.Sweep` removes a labelled container whose owner exited on this
+- [x] `reap.Sweep` removes a labeled container whose owner exited on this
       host, and leaves one whose owner is alive or ran on another host.
 - [x] The suite names its run in `LATEREGATE_RUN`, and a container still
       carrying that label after `go test` exits is named, removed, and
@@ -223,7 +221,7 @@ adopted the contract and nothing stopped the next one from skipping it.
       line.
 - [x] A package that starts a container keeps replaying from the test
       cache while the run label changes.
-- [x] A labelled network is swept after the containers when its owner has
+- [x] A labeled network is swept after the containers when its owner has
       exited, and a network the run left is named, removed, and fails the
       suite beside its containers.
 - [x] Verified on a consumer: a package with no `TestMain` fails the
@@ -231,7 +229,7 @@ adopted the contract and nothing stopped the next one from skipping it.
       a Podman machine: a one-package module whose test starts Postgres
       and never stops it failed `lateregate containers` with "the suite
       left 1 container behind", and passed once a `TestMain` stopped it;
-      a repository's package with no `TestMain` left one labelled
+      a repository's package with no `TestMain` left one labeled
       container, and the next start's sweep removed it after its owner
       exited.
 - [x] `container-labels` names each package, test files included, that

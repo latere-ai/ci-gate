@@ -63,8 +63,8 @@ waiver ran out. A waiver keyed on a name that is not a gate fails the
 load, because a waiver for a gate nobody runs hides a typo in the name of
 a gate somebody does.
 
-A waiver on one of the five gates `suite` folds narrows the suite run
-rather than skipping it; see [`gates.md`](gates.md#suite-and-the-five-gates-it-folds).
+A waiver on one of the six gates `suite` folds narrows the suite run
+rather than skipping it; see [`gates.md`](gates.md#suite-and-the-six-gates-it-folds).
 The `identity` block takes waivers per rule, with the same two fields.
 
 ## Reference
