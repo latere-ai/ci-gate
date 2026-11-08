@@ -29,6 +29,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/mod/modfile"
+
 	"latere.ai/x/ci-gate/internal/config"
 	"latere.ai/x/ci-gate/internal/gates"
 )
@@ -181,6 +183,10 @@ func measure(s *Scope, root, goBin string, run gates.Exec) *Scope {
 		return s
 	}
 
+	if reason := nestedReached(root, files); reason != "" {
+		s.Whole = reason
+		return s
+	}
 	module, pkgs, err := list(root, goBin, run)
 	if err != nil {
 		s.Whole = err.Error()
@@ -496,6 +502,98 @@ func nested(root, dir string) bool {
 		dir = path.Dir(dir)
 	}
 	return false
+}
+
+// nestedModule is the directory of the module that holds dir, a slash path
+// relative to root: the nearest ancestor with a go.mod of its own, or ""
+// when dir belongs to the root module.
+func nestedModule(root, dir string) string {
+	for dir != "." && dir != "" && dir != "/" {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(dir), "go.mod")); err == nil {
+			return dir
+		}
+		dir = path.Dir(dir)
+	}
+	return ""
+}
+
+// nestedReached returns why the whole tree is checked when a changed file
+// sits in a nested module the root module reaches through a replace
+// directive in go.mod or a use line in go.work, both pointing at a local
+// directory. Root packages build against that directory, but their import
+// graph ends at the module boundary. A nested module the root does not
+// reach is not part of this tree's build and stays out.
+func nestedReached(root string, files []string) string {
+	var modules []string
+	for _, f := range files {
+		if m := nestedModule(root, path.Dir(f)); m != "" && !slices.Contains(modules, m) {
+			modules = append(modules, m)
+		}
+	}
+	if len(modules) == 0 {
+		return ""
+	}
+	targets, err := localTargets(root)
+	if err != nil {
+		return fmt.Sprintf("%s changed in a nested module, and whether the root module reaches it cannot be told: %v", modules[0], err)
+	}
+	for _, m := range modules {
+		if how, ok := targets[m]; ok {
+			return fmt.Sprintf("%s is a nested module the root module reaches through %s, so what imports it is outside the graph",
+				m, how)
+		}
+	}
+	return ""
+}
+
+// localTargets maps each local directory the root module's go.mod replaces
+// to, and each one go.work uses, to the directive that names it.
+func localTargets(root string) (map[string]string, error) {
+	targets := map[string]string{}
+	rel := func(p string) (string, bool) {
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(root, filepath.FromSlash(p))
+		}
+		r, err := filepath.Rel(root, p)
+		if err != nil || r == "." || strings.HasPrefix(r, "..") {
+			return "", false
+		}
+		return filepath.ToSlash(r), true
+	}
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if err == nil {
+		mod, err := modfile.Parse("go.mod", data, nil)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range mod.Replace {
+			if r.New.Version == "" {
+				if d, ok := rel(r.New.Path); ok {
+					targets[d] = "a replace directive in go.mod (=> " + r.New.Path + ")"
+				}
+			}
+		}
+	}
+	data, err = os.ReadFile(filepath.Join(root, "go.work"))
+	if errors.Is(err, os.ErrNotExist) {
+		return targets, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	work, err := modfile.ParseWork("go.work", data, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, u := range work.Use {
+		if d, ok := rel(u.Path); ok {
+			targets[d] = "a use line in go.work (" + u.Path + ")"
+		}
+	}
+	return targets, nil
 }
 
 // short is a commit as a reader sees it.
