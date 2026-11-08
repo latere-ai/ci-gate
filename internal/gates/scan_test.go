@@ -33,3 +33,12 @@ func TestCgoFreeFailsOnAFileItCannotParse(t *testing.T) {
 		t.Fatalf("err = %v, want the unparsable file named", err)
 	}
 }
+func TestCgoFreeLeavesNodeModulesOut(t *testing.T) {
+	root := repo(t, map[string]string{
+		"ok.go":                     "package a\n",
+		"web/node_modules/dep/x.go": "package x\n\nimport \"C\"\n",
+	})
+	if err := CgoFree(root, io.Discard, nil); err != nil {
+		t.Fatalf("cgo-free read a dependency's Go source under node_modules: %v", err)
+	}
+}

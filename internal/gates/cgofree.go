@@ -36,7 +36,7 @@ func CgoFree(root string, out io.Writer, skip []string) error {
 		if d.IsDir() {
 			// Skip the repository's own plumbing and anything the caller
 			// named, but never silently skip a source directory.
-			if name == ".git" || name == "testdata" || slices.Contains(skip, name) {
+			if name == ".git" || name == "testdata" || name == "node_modules" || slices.Contains(skip, name) {
 				return filepath.SkipDir
 			}
 			return nil
