@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.72.0 - 2026-11-16
+
 ### Added
 
 - **A `tla` gate model-checks TLA+ specifications with TLC.** A tracked
