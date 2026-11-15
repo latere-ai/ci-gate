@@ -33,6 +33,7 @@ another. `go tool lateregate <gate>` runs one.
 | `frontend` | every named Bun package installs from its lockfile, then typechecks, tests, builds and runs its `e2e` script | `frontend.projects` names a package |
 | `image` | every named container image builds, reports its version, stays under its size cap, holds no shell, and starts read-only and answers its probe | `image.images` names an image |
 | `lean` | every Lake project builds with `lake build --wfail`, so no proof uses `sorry` | git tracks a `lakefile.toml` or `lakefile.lean` |
+| `tla` | every TLA+ model passes TLC, and a model written to show a violation still shows it | git tracks a `.cfg` file beside the `.tla` it checks |
 | `lint` | golangci-lint at the pinned version, against the shared config it renders first | git tracks a Go file |
 | `vuln` | govulncheck at the pinned version finds no reachable vulnerability | git tracks a Go file |
 | `suite` | `go vet`, then one run of the suite that holds the six properties below | git tracks a Go file; a waived `test` waives it |
@@ -1639,3 +1640,41 @@ next run on the machine reuses both. A Lean toolchain is a few gigabytes
 unpacked, so a runner that starts empty spends about a minute on it.
 Darwin and Linux on arm64 and amd64 are pinned; elsewhere, put lake on
 `PATH`.
+
+## `tla`: the models still check
+
+A repository that keeps TLA+ models of its design next to the code is
+gated on them the day it tracks one. A model is a `.cfg` file whose
+directory also holds the specification it configures: `X.cfg` checks
+`X.tla`, and so does `X.stale.cfg`, a second configuration of the same
+specification under a label. A `.cfg` with no tracked `.tla` beside it
+belongs to some other tool and is not a model, and nothing under `.lake`
+is.
+
+The gate runs TLC on each model in turn, sorted by path, in the model's
+own directory, with a fresh metadirectory it removes afterwards. A model
+passes when TLC exits 0. A configuration that exists to show a violation,
+such as a stale device the design must still catch, says so with a line
+that is a TLA+ comment:
+
+```
+\* expect violation: Follows
+```
+
+Such a model passes only when TLC exits non-zero and reports `Error:
+Invariant Follows is violated.` or `Error: Action property Follows is
+violated.`. A model that TLC now passes fails the gate, because it no
+longer finds the violation it exists to show. Each model prints one line,
+and a failure prints the last 30 lines of TLC's output, so the
+counterexample is in the log.
+
+TLC needs a Java runtime and the gate does not download one. It uses
+`$JAVA_HOME/bin/java`; then a `java` on `PATH` that runs, since macOS ships
+a `/usr/bin/java` that fails until a JDK is installed; then the Homebrew
+openjdk. With none, the gate fails and says so: run `brew install
+openjdk`, or set `JAVA_HOME`. The jar is `tla2tools.jar` at the version
+this tool pins, checked against its SHA-256 before it is used and kept in
+the same cache directory as the elan install, under a lock so two runs on
+one machine do not write it at once. Later runs reuse it.
+
+The gate is not change-scoped: it runs whenever it applies, as `lean` does.

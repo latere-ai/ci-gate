@@ -248,6 +248,15 @@ var Gates = []Gate{
 				return gates.OSExec(filepath.Join(c.Root, dir), c.Out)
 			})
 		}},
+	{Name: "tla", Doc: "every TLA+ model git tracks passes TLC, and a model written to show a violation still shows it",
+		// Not change-scoped, as lean is not: a model checks a design, and it
+		// is the whole set that stays true.
+		Applies: tracksTLA,
+		Run: func(c Ctx) error {
+			return gates.TLA(gates.DefaultTLAToolchain(), c.Root, c.Out, c.Exec, func(dir string) gates.Exec {
+				return gates.OSExec(filepath.Join(c.Root, dir), c.Out)
+			})
+		}},
 	{Name: "lint", Doc: "golangci-lint " + golangci.Version + " against the shared config",
 		Applies: tracksGo,
 		Run: func(c Ctx) error {
@@ -464,6 +473,19 @@ func tracksLake(c Ctx) (bool, string, error) {
 	}
 	if len(dirs) == 0 {
 		return false, "tracks no Lake project (lakefile.toml or lakefile.lean)", nil
+	}
+	return true, "", nil
+}
+
+// tracksTLA asks git for TLA+ models, as tracksLake asks it for Lake projects.
+func tracksTLA(c Ctx) (bool, string, error) {
+	models, err := gates.TLAModels(c.Exec)
+	if err != nil {
+		return false, "", fmt.Errorf("%w\nwhether a repository has models to check is asked of git, "+
+			"so this needs to run inside a git repository", err)
+	}
+	if len(models) == 0 {
+		return false, "tracks no TLA+ model (a .cfg beside the .tla it checks)", nil
 	}
 	return true, "", nil
 }

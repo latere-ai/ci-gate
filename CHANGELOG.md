@@ -10,6 +10,16 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Added
+
+- **A `tla` gate model-checks TLA+ specifications with TLC.** A tracked
+  `.cfg` beside the `.tla` it configures (`X.cfg` or `X.label.cfg` for
+  `X.tla`) is a model, and each one must pass TLC at the pinned version,
+  which the gate downloads into the cache directory and checks against its
+  SHA-256. A configuration with a `\* expect violation: Name` line passes only
+  when TLC reports that violation. TLC needs a Java runtime, which the gate
+  finds through `JAVA_HOME`, `PATH` or Homebrew and does not install.
+
 ### Changed
 
 - **`scripts/bump-private.sh` moves the pin in the checkouts you already

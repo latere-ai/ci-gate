@@ -176,6 +176,43 @@ func TestPlanRunsLeanForATrackedLakeProject(t *testing.T) {
 	}
 }
 
+// A tracked cfg beside its spec is a subject for tla, and a cfg alone is not.
+func TestPlanRunsTLAForATrackedModel(t *testing.T) {
+	listing := func(files string) gates.Exec {
+		return func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+			if name == "git" && slices.Contains(args, "*.cfg") {
+				return []byte(files), nil
+			}
+			return withSpecs(nil, false, name, args...)
+		}
+	}
+	c, _ := ctx(t, nil, listing("spec/Device.tla\x00spec/Device.cfg\x00"))
+	plan, err := Plan(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, "tla"); e.Status != Run {
+		t.Errorf("tla with a tracked model: %+v", e)
+	}
+	c, _ = ctx(t, nil, listing("conf/app.cfg\x00"))
+	if plan, err = Plan(c); err != nil {
+		t.Fatal(err)
+	}
+	if e := entry(plan, "tla"); e.Status != Skip || !strings.Contains(e.Reason, "tracks no TLA+ model") {
+		t.Errorf("tla with a lone cfg: %+v", e)
+	}
+	broken := func(_ []string, _ bool, name string, args ...string) ([]byte, error) {
+		if slices.Contains(args, "*.cfg") {
+			return nil, errors.New("not a git repository")
+		}
+		return withSpecs(nil, false, name, args...)
+	}
+	c, _ = ctx(t, nil, broken)
+	if _, err := Plan(c); err == nil || !strings.Contains(err.Error(), "models to check is asked of git") {
+		t.Fatalf("a git that cannot list models: %v", err)
+	}
+}
+
 // Applicability that cannot be determined must not resolve to "does not
 // apply": that is the vacuous pass this package refuses.
 func TestPlanFailsWhenGitCannotAnswer(t *testing.T) {
