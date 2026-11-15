@@ -330,11 +330,16 @@ scripts/bump-private.sh my-repo  # one repository
 scripts/bump-private.sh -x demo   # every one but demo, whose pin is held
 ```
 
-Run from a checkout of this repository. For each private repository it
-clones a fresh copy, moves the pin with `go get -tool` and `go mod tidy`,
-runs the whole bar on it (`lateregate check -all`), and pushes
-`gate: ci-gate vX.Y.Z` to the default branch only when every gate passes.
-A repository whose bar fails is not pushed: its clone and log are kept and
-named in the summary, and the script exits non-zero after trying the rest.
+Run from a checkout of this repository. It works in the checkouts the
+workstation already has, one folder per repository beside this one (`-d`
+names another folder), and never clones. For each private repository it
+fast-forwards the checkout to its default branch, moves the pin with `go
+get -tool` and `go mod tidy`, runs the whole bar (`lateregate check -all`),
+and commits and pushes `gate: ci-gate vX.Y.Z` on the default branch only
+when every gate passes. A checkout on another branch, with uncommitted
+changes to tracked files, or with commits origin lacks is someone's work in
+progress: it is skipped and named, never touched. A repository whose bar
+fails is put back as it was found, its log is kept and named in the
+summary, and the script exits non-zero after trying the rest.
 A move that would raise the `go` or `toolchain` line is refused, since a
 newer Go is a change of its own.

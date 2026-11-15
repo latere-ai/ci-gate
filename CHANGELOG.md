@@ -10,6 +10,15 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Changed
+
+- **`scripts/bump-private.sh` moves the pin in the checkouts you already
+  have, not in clones.** It works in one folder per repository beside this
+  checkout (`-d` names another), fast-forwards each to its default branch,
+  and commits there. A checkout on another branch, with uncommitted
+  changes, or with unpushed commits is skipped and named; a repository
+  whose bar fails or whose push is refused is put back as it was found.
+
 ### Fixed
 
 - **`scripts/bump-private.sh` finds a release made minutes before.** It
