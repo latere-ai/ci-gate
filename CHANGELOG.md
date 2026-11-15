@@ -10,6 +10,8 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+## v0.71.0 - 2026-11-15
+
 ### Added
 
 - **`deploy` can read the rollout kubeconfig without the 1Password app.**
