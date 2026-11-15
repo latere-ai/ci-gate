@@ -204,16 +204,19 @@ func (v *visitor) composite(n *ast.CompositeLit) {
 		}
 		switch t := typ.(type) {
 		case *types.Struct:
-			index := i
+			// A key names its field through Uses, which also resolves a
+			// field promoted from an embedded struct, as a literal may name
+			// one since Go 1.27. An element without a key is the field at
+			// its position.
+			var field *types.Var
 			if ident, ok := key.(*ast.Ident); ok {
-				for j := range t.NumFields() {
-					if t.Field(j).Name() == ident.Name {
-						index = j
-						break
-					}
-				}
+				field, _ = v.pkg.TypesInfo.Uses[ident].(*types.Var)
+			} else if key == nil && i < t.NumFields() {
+				field = t.Field(i)
 			}
-			v.checkType(expr, t.Field(index).Type())
+			if field != nil {
+				v.checkType(expr, field.Type())
+			}
 		case *types.Map:
 			v.checkType(key, t.Key())
 			v.checkType(expr, t.Elem())

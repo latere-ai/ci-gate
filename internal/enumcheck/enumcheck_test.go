@@ -25,6 +25,7 @@ type Count int
 const (Zero Count = iota; One)
 type Record struct { Status Status; Optional *Alias; Count Count; Name string }
 type Wrong struct { Status string }
+type Outer struct { Record; Note string }
 type EmptyDomain string
 type Float float64
 const Half Float = 0.5
@@ -153,6 +154,8 @@ func main() {
  _ = [...]s.Status{0: "running"} // want named
  _ = s.Record{Status: "running"} // want named
  _ = s.Record{"running", nil, s.Zero, "free"} // want named
+ _ = s.Outer{Note: "free", Status: "running"} // want named
+ _ = s.Outer{Note: "free", Status: s.Running, Name: "free"}
  _ = map[s.Status]string{"running": "free"} // want named
  _ = map[string]s.Status{"free": "running"} // want named
  m := map[s.Status]s.Status{}
