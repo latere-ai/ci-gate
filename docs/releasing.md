@@ -301,7 +301,18 @@ go tool lateregate deploy-credential -context ADMIN_CONTEXT
 run by an operator with their own administrator kubeconfig, once per
 repository, before the first `deploy`. It stores the Document that
 `ship.deploy.kubeconfig` names; running it again stores the identity's
-current token over it. What each command does is in
+current token over it.
+
+`deploy` reads that Document with `op read`, which asks the 1Password app
+to approve, and the app's approval lapses after a few idle minutes. To
+deploy while nobody is at the workstation, give `deploy` a 1Password
+service account that can read only the vault holding the rollout
+kubeconfigs, and put its token in
+`~/.config/lateregate/op-service-account-token` with mode `0600`. `deploy`
+then reads with that token; `deploy-credential` still writes through the
+app, since the account only reads. Anyone who can read the file can read
+every rollout kubeconfig in that vault, so give the account no other
+vault. What each command does is in
 [`commands.md`](commands.md#shipping-from-a-workstation-build-push-deploy).
 
 ### Moving the pin

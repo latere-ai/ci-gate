@@ -316,7 +316,12 @@ change what deploys. It resolves the digest of `<name>:<tag>` in the
 registry, and refuses when the image is not there, naming `push` as the fix.
 It then reads the rollout identity's kubeconfig from the 1Password Document
 `ship.deploy.kubeconfig` names into a file only its owner can read, which is
-removed on every exit path, including an interrupt. Every `kubectl` call
+removed on every exit path, including an interrupt. When
+`~/.config/lateregate/op-service-account-token` (or the same path under
+`$XDG_CONFIG_HOME`) exists, `op read` runs with that 1Password service
+account token in `OP_SERVICE_ACCOUNT_TOKEN` and asks nobody; the file must
+be readable by its owner only, and an empty one is refused. No other
+command sees the token. Every `kubectl` call
 passes that file with `--kubeconfig`, and the environment of every step has
 `KUBECONFIG` set to it. The steps, each stopping the deploy and naming itself
 when it fails:

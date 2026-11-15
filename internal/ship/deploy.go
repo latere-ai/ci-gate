@@ -247,13 +247,21 @@ func (d Deps) guard(s *secrets) func() {
 }
 
 // readKubeconfig writes the secret the reference names to path with 1Password's
-// own file output, so the content never passes through this process.
+// own file output, so the content never passes through this process. With a
+// DeployTokenFile, `op` reads as that service account and asks nobody.
 func (d Deps) readKubeconfig(ref, path string) error {
 	if _, err := d.LookPath("op"); err != nil {
 		return fmt.Errorf("the 1Password CLI (op) is not on PATH; deploy reads the rollout kubeconfig at %s with it", ref)
 	}
-	out, err := combined(d.Exec, nil, "op", "read", "--out-file", path, "--file-mode", "0600", ref)
+	env, token, err := d.opEnv()
 	if err != nil {
+		return err
+	}
+	out, err := combined(d.Exec, env, "op", "read", "--out-file", path, "--file-mode", "0600", ref)
+	if err != nil {
+		if token != "" {
+			return fmt.Errorf("`op read` with the service account token in %s could not read %s: %w: %s (the account needs read access to that vault; remove the file to approve the read in the 1Password app instead)", token, ref, err, firstLine(string(out)))
+		}
 		return fmt.Errorf("`op read` could not read %s: %w: %s", ref, err, firstLine(string(out)))
 	}
 	if err := os.Chmod(path, 0o600); err != nil {

@@ -12,6 +12,15 @@ committed: the commit log already holds that.
 
 ### Added
 
+- **`deploy` can read the rollout kubeconfig without the 1Password app.**
+  When `~/.config/lateregate/op-service-account-token` (or the same path
+  under `$XDG_CONFIG_HOME`) holds a 1Password service account token, `op
+  read` authenticates with it, so a deploy started while nobody is at the
+  workstation no longer stops on an expired approval. Only `op read` gets
+  the token; no step, hook or `kubectl` call sees it. The file must be
+  readable by its owner only, and the account should read only the vault
+  that holds rollout kubeconfigs. Without the file, `op` asks the app as
+  before ([releasing guide](docs/releasing.md#shipping-from-a-workstation)).
 - **`scripts/bump-private.sh` moves a private repository's pin from a
   workstation.** It clones each private repository, moves the
   `lateregate` pin to the latest release, runs the whole bar and pushes
