@@ -262,6 +262,32 @@ func TestTLACheckModelsWithTheDownloadedJar(t *testing.T) {
 	}
 }
 
+// A cached jar that no longer matches the pin is replaced before TLC runs.
+func TestTLAReplacesACachedJarThatChanged(t *testing.T) {
+	jar := []byte("jar bytes")
+	m := &tlaMachine{t: t, jar: jar, list: "A.tla\x00A.cfg\x00"}
+	tc := m.toolchain(sum(jar))
+	root := repoWith(t, map[string]string{"A.cfg": ""})
+	if err := TLA(tc, root, &strings.Builder{}, m.exec, m.in); err != nil {
+		t.Fatal(err)
+	}
+	cache, _ := tc.Cache()
+	cached := filepath.Join(cache, "lateregate", "tla2tools-"+TLAVersion+".jar")
+	if err := os.WriteFile(cached, []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	again := &tlaMachine{t: t, jar: jar, list: m.list}
+	if err := TLA(tc, root, &strings.Builder{}, again.exec, again.in); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(again.calls, func(c call) bool { return c.name == "curl" }) {
+		t.Fatal("a cached jar that changed was used without a fresh download")
+	}
+	if err := checkSHA256(cached, sum(jar)); err != nil {
+		t.Fatalf("cached jar after the replacement: %v", err)
+	}
+}
+
 func TestTLARefusesAJarWithTheWrongDigest(t *testing.T) {
 	m := &tlaMachine{t: t, jar: []byte("tampered"), list: "A.tla\x00A.cfg\x00"}
 	tc := m.toolchain(sum([]byte("the real jar")))

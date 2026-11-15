@@ -242,8 +242,8 @@ func (tc TLAToolchain) java(run Exec) (string, error) {
 
 // jar returns the tla2tools.jar to run and a release for the lock it holds.
 // The gate downloads TLAVersion's jar into the cache directory, beside the
-// elan the lean gate installs, checks it against its pinned digest before it
-// is used, and reuses it on later runs. The lock keeps two runs on one machine
+// elan the lean gate installs, checks it against its pinned digest before
+// every use, and reuses it on later runs while it still matches. The lock keeps two runs on one machine
 // from writing the file at once.
 func (tc TLAToolchain) jar(out io.Writer, run Exec) (string, func(), error) {
 	cache, err := tc.Cache()
@@ -260,7 +260,15 @@ func (tc TLAToolchain) jar(out io.Writer, run Exec) (string, func(), error) {
 		return "", nil, err
 	}
 	if _, err := os.Stat(jar); err == nil {
-		return jar, unlock, nil
+		if checkSHA256(jar, tc.SHA256) == nil {
+			return jar, unlock, nil
+		}
+		// A cached jar that no longer matches its digest was changed after
+		// the check that installed it; fetch the pinned one again.
+		if err := os.Remove(jar); err != nil {
+			unlock()
+			return "", nil, err
+		}
 	}
 	if err := tc.download(dir, jar, out, run); err != nil {
 		unlock()

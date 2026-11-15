@@ -1654,8 +1654,8 @@ is.
 The gate runs TLC on each model in turn, sorted by path, in the model's
 own directory, with a fresh metadirectory it removes afterwards. A model
 passes when TLC exits 0. A configuration that exists to show a violation,
-such as a stale device the design must still catch, says so with a line
-that is a TLA+ comment:
+such as writers that check a state read earlier, which the model must still
+catch leaving the table, says so with a line that is a TLA+ comment:
 
 ```
 \* expect violation: Follows
@@ -1673,8 +1673,14 @@ TLC needs a Java runtime and the gate does not download one. It uses
 a `/usr/bin/java` that fails until a JDK is installed; then the Homebrew
 openjdk. With none, the gate fails and says so: run `brew install
 openjdk`, or set `JAVA_HOME`. The jar is `tla2tools.jar` at the version
-this tool pins, checked against its SHA-256 before it is used and kept in
+this tool pins, checked against its SHA-256 before every use and kept in
 the same cache directory as the elan install, under a lock so two runs on
-one machine do not write it at once. Later runs reuse it.
+one machine do not write it at once. Later runs reuse it while it matches,
+and fetch it again when it does not.
+
+The models a repository renders from its transition tables with
+`latere.ai/x/pkg/statemachine/statemachinetest` are of this kind: each
+table gets `X.cfg`, which TLC must pass, and, where the table allows it,
+`X.stale.cfg`, which TLC must fail on `Follows`.
 
 The gate is not change-scoped: it runs whenever it applies, as `lean` does.
