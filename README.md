@@ -35,7 +35,7 @@ says what it protects and the test that checks each property.
 | The gates in [the bar](#the-bar) | Work. CI runs them on Linux, and the maintainers also run them on macOS. Not tested on Windows |
 | `init`, `contract` and the two git hooks | Work in a git repository |
 | `release`, `release-notes` and the guard that reads CI before a cut | Work with GitHub and GitHub Actions only |
-| `build`, `push`, `deploy` and `deploy-credential`, for a repository that releases from a workstation | Work with Podman or Docker, a container registry, a Kubernetes cluster, and a rollout credential kept in 1Password |
+| `build`, `push` and `deploy`, for a repository that releases from a workstation | Work with Podman or Docker, a container registry, a Kubernetes cluster, and a rollout credential kept in 1Password |
 | `reap`, the one package other modules import | Works with Docker and with Podman, through the engine's Unix socket |
 | `identity`, `platform-via-sdk` and `words` | Hold Latere's own rules: the identity shape, the platform's routes, and the organization's do-not-use words. Every repository declares an identity role, and the role `none` holds nothing; the other two run only where a repository turns them on |
 | `lateregate identity family`, the check across repositories | Works; adding it to every repository is not finished |

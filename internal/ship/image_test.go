@@ -221,7 +221,7 @@ func TestPushWithNoImageRefuses(t *testing.T) {
 	}
 }
 
-func TestDeployAndCredentialWithNoDeployRefuse(t *testing.T) {
+func TestDeployWithNoDeployRefuses(t *testing.T) {
 	for name, yaml := range map[string]string{
 		"empty":      emptyShip,
 		"image only": "ship:\n  image:\n    name: ghcr.io/example/auth\n",
@@ -230,9 +230,6 @@ func TestDeployAndCredentialWithNoDeployRefuse(t *testing.T) {
 			r := newRig(t, yaml)
 			if err := Deploy(r.d, "v1.2.3"); err == nil || !strings.Contains(err.Error(), "deploys nothing") {
 				t.Errorf("deploy: %v", err)
-			}
-			if err := DeployCredential(r.d, "admin"); err == nil || !strings.Contains(err.Error(), "deploys nothing") {
-				t.Errorf("deploy-credential: %v", err)
 			}
 			if len(r.calls) != 0 {
 				t.Errorf("a refused command ran commands: %v", r.calls)

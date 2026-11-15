@@ -368,8 +368,8 @@ is refused. Its presence changes three things:
   `lateregate.yml`, and `init` does not write one. Everything else it
   checks stays, and a scheduled workflow such as the gate bump is
   unaffected;
-- `build`, `push`, `deploy` and `deploy-credential` have something to act on:
-  `push` needs `image`, and `deploy` and `deploy-credential` need `deploy`;
+- `build`, `push` and `deploy` have something to act on: `push` needs
+  `image`, and `deploy` needs `deploy`;
   [`commands.md`](commands.md#shipping-from-a-workstation-build-push-deploy)
   describes them.
 

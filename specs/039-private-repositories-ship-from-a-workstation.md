@@ -50,7 +50,7 @@ and ships no image. A `deploy` block needs an `image`, since there is nothing
 to deploy without one. `ship:` with no value is refused instead of read as
 absent, because absent means GitHub Actions. `build` always runs the whole bar
 and builds the image only when one is declared; `push` refuses without an
-image, and `deploy` and `deploy-credential` refuse without a deploy.
+image, and `deploy` refuses without a deploy.
 
 **Four commands, each the whole of one step.** `build` runs the same bar a
 release runs over the whole tree, then builds the image tagged
@@ -75,10 +75,9 @@ on every exit path including an interrupt. When
 authenticates with the 1Password service account token it holds, and no
 other command sees that token. Every `kubectl` call passes
 `--kubeconfig` and every step's environment sets `KUBECONFIG`, so the
-operator's own context is never used. `deploy-credential` makes the
-Document once: it builds the kubeconfig from the repository's
-`rollout-identity.yaml` and the cluster, proves the identity with a
-server-side dry run of `deploy/prod`, stores it, and reads it back to compare.
+operator's own context is never used. lateregate never writes the
+Document: an operator makes it from the identity's token Secret and replaces
+it when the token changes.
 
 **The steps follow the shared pipeline.** Preflight, a server-side dry run
 of the apply, apply (`-k` when `deploy/prod` holds a `kustomization.yaml`,
@@ -118,8 +117,8 @@ and signing a private image would publish a record of it to a public log.
   missing name, namespace, deployment, URL or kubeconfig, a kubeconfig that
   is not an `op://` reference, and a platform that is not Linux are refused.
 - `ship: {}` parses and ships; `ship:` with no value, and a `deploy` with no
-  `image`, are refused. `build` runs the bar and builds no image, and `push`,
-  `deploy` and `deploy-credential` refuse with a message saying what the
+  `image`, are refused. `build` runs the bar and builds no image, and `push`
+  and `deploy` refuse with a message saying what the
   repository does not do. `release` and `contract` treat `ship: {}` as any
   ship block.
 - `release` of a ship repository reads no CI and creates the GitHub release;
@@ -131,7 +130,3 @@ and signing a private image would publish a record of it to a public log.
   live check and a missing `op`, passes `--kubeconfig` on every `kubectl`
   call, runs the steps in order, and leaves no kubeconfig behind after a
   success, a failed step or a signal.
-- `deploy-credential` refuses an empty context, finds the account and its
-  token Secret in the repository's file, passes `--context` on every call
-  made with the administrator's kubeconfig, never prints or passes the
-  token on a command line, and compares what it stored with what it reads.

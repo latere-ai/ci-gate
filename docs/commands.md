@@ -21,7 +21,6 @@ is the one `go.mod` names.
 | `lateregate build` | for a [`ship`](configuration.md#ship-a-repository-that-releases-from-a-workstation) repository: runs the whole bar, then builds the deploy image for the cluster's platform when `ship.image` is set |
 | `lateregate push` | builds the image from the release tag HEAD sits on and publishes it; refuses without `ship.image` |
 | `lateregate deploy [vX.Y.Z]` | rolls the newest stable tag, or the one named, out to the cluster and runs the live check; refuses without `ship.deploy` |
-| `lateregate deploy-credential -context NAME` | the one-time step that stores the rollout identity's kubeconfig where `deploy` reads it; refuses without `ship.deploy` |
 | `lateregate release [-force-red] vX.Y.Z` | refuses while CI is red or the checkout is not origin's default branch at its tip, runs the bar, moves the notes into the tag's section, commits, tags and pushes both in one atomic push; see [`releasing.md`](releasing.md) |
 
 A command comes before its flags. `lateregate -C DIR release v1.2.3` is
@@ -42,7 +41,6 @@ Flags every command accepts:
 | `-since green\|REV` | `check`, `list` and `base`: measure the change from the newest commit on the default branch that the calling workflow passed on a push and HEAD contains (`green`), or from a git revision, instead of the merge base with the default branch |
 | `-all` | `check` only: read the whole tree rather than what changed since the default branch |
 | `-force-red` | `release` only: cut over a red CI, printing every finding it overrides |
-| `-context NAME` | `deploy-credential` only: the kubeconfig context of a cluster administrator; required |
 
 `tempdir` takes the command to watch after `--`:
 
@@ -286,8 +284,8 @@ The cluster is reached only through the kubeconfig `deploy` reads from
 `ship.image` and `ship.deploy` are each optional. A repository with `ship: {}`
 publishes no image and deploys nothing: `build` still runs the whole bar and
 prints `this repository builds no image`, `push` stops with `this repository
-publishes no image`, and `deploy` and `deploy-credential` stop with `this
-repository deploys nothing`. `release` and `contract` treat it as any other
+publishes no image`, and `deploy` stops with `this repository deploys
+nothing`. `release` and `contract` treat it as any other
 `ship` block.
 
 **`build`** runs the whole bar over the whole tree, the same call `release`
@@ -349,24 +347,6 @@ live check passed. Then, if the tag has no GitHub release, it creates one
 with the changelog section as its notes. A failure there is reported as an
 error after a deploy that stands. Image signing and an SBOM are not part of
 this path.
-
-**`deploy-credential -context NAME`** is the one-time operator step that
-makes the Document `deploy` reads, run before a repository's first `deploy`.
-`-context` is required and names a context of an administrator's kubeconfig;
-every call it makes with that kubeconfig passes `--context NAME`. It reads
-`deploy/bootstrap/rollout-identity.yaml` for the ServiceAccount and the
-`kubernetes.io/service-account-token` Secret annotated for it, and fails if
-either is missing. It reads the cluster's server address from the context
-and the Secret's `ca.crt` and token, writes a kubeconfig of one cluster, one
-user and one context to a file only its owner can read (the token is never
-on a command line, and never printed), and proves the identity with `kubectl
-apply --dry-run=server` over `deploy/prod`, so a Role that lacks a kind fails
-here. It stores the file with `op document create`, or `op document edit` when
-the item exists; any other failure to look the item up is an error. It reads
-the Document back the way `deploy` does and compares the bytes, so a wrong
-reference shows now. The temporary file is removed on every exit path, and it
-prints one line saying which account's kubeconfig is stored at which
-reference.
 
 ## The pre-commit: `hook`
 

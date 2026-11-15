@@ -74,8 +74,6 @@ Usage:
 	lateregate push            build the image from the release tag HEAD sits on and publish it (a ship repository)
 	lateregate deploy [VERSION]
 	                           roll the newest stable tag, or VERSION, out to the cluster and run the live check (a ship repository)
-	lateregate deploy-credential -context NAME
-	                           store the rollout identity's kubeconfig as the 1Password Document deploy reads; once per repository
 
 Gates, in the order check runs them:
 GATES
@@ -154,7 +152,6 @@ func run(argv []string, out io.Writer) error {
 		"measure the change from `green`, the last green commit of the calling workflow, or from a git revision (check, list, base)")
 	forceRed := fs.Bool("force-red", false,
 		"cut over a red CI, printing what it overrides (release); the maintainer's escape hatch, and in no pipeline")
-	kubeContext := fs.String("context", "", "kubeconfig context of a cluster administrator (deploy-credential)")
 	only := fs.String("only", "", "run the one e2e suite of this name, whatever it runs on (e2e)")
 	on := fs.String("on", "", "run the e2e suites that run on this event, push or tag (e2e); push when unset")
 	var profiles profileList
@@ -363,8 +360,6 @@ func run(argv []string, out io.Writer) error {
 			version = fs.Args()[0]
 		}
 		return ship.Deploy(shipDeps(*root, cfg, out), version)
-	case "deploy-credential":
-		return ship.DeployCredential(shipDeps(*root, cfg, out), *kubeContext)
 	case "golangci":
 		if reason, err := golangci.Own(*root, cfg); err != nil {
 			return err

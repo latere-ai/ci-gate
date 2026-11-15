@@ -19,6 +19,15 @@ committed: the commit log already holds that.
   changes, or with unpushed commits is skipped and named; a repository
   whose bar fails or whose push is refused is put back as it was found.
 
+### Removed
+
+- **`lateregate deploy-credential` is gone.** It wrote the rollout
+  kubeconfig into 1Password, a step each repository ran once, and the only
+  ship command that wrote a credential. `deploy` still reads the Document
+  `ship.deploy.kubeconfig` names; an operator now makes and replaces it by
+  hand, as [`releasing.md`](docs/releasing.md#shipping-from-a-workstation)
+  describes.
+
 ### Fixed
 
 - **`scripts/bump-private.sh` finds a release made minutes before.** It

@@ -23,10 +23,6 @@ func TestEveryCommandFailureStopsTheCommand(t *testing.T) {
 		r.d.Cfg.Ship.Image.Prepare = []string{"make bin"}
 		return r
 	}
-	cred := func(t *testing.T) *rig {
-		r, _ := credRig(t)
-		return r
-	}
 	cases := []struct {
 		name  string
 		setup func(*testing.T) *rig
@@ -36,7 +32,6 @@ func TestEveryCommandFailureStopsTheCommand(t *testing.T) {
 		{"push", plain, func(r *rig) error { return Push(r.d) }},
 		{"deploy newest", plain, func(r *rig) error { return Deploy(r.d, "") }},
 		{"deploy tag", plain, func(r *rig) error { return Deploy(r.d, "v1.2.3") }},
-		{"credential", cred, func(r *rig) error { return DeployCredential(r.d, "admin") }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -91,16 +86,12 @@ func TestNewWiresTheRealMachine(t *testing.T) {
 
 func TestCommandsFailWhereTheyCannotMakeADirectory(t *testing.T) {
 	r := newRig(t, "")
-	rc, _ := credRig(t)
 	t.Setenv("TMPDIR", "/nonexistent/for/lateregate")
 	if err := Deploy(r.d, "v1.2.3"); err == nil || !strings.Contains(err.Error(), "deploy directory") {
 		t.Errorf("deploy: %v", err)
 	}
 	if err := Push(r.d); err == nil {
 		t.Error("push needs a directory for the digest")
-	}
-	if err := DeployCredential(rc.d, "admin"); err == nil || !strings.Contains(err.Error(), "directory") {
-		t.Errorf("credential: %v", err)
 	}
 	if err := PublishRelease(r.d, "v1.2.3"); err == nil {
 		t.Error("the notes need a file")

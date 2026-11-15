@@ -130,7 +130,7 @@ func TestShipCommandsNeedAShipBlock(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, config.Name), []byte("identity:\n  role: none\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, argv := range [][]string{{"build"}, {"push"}, {"deploy"}, {"deploy-credential", "-context", "x"}} {
+	for _, argv := range [][]string{{"build"}, {"push"}, {"deploy"}} {
 		_, err := out(t, append(append([]string{}, argv[0]), append([]string{"-C", dir}, argv[1:]...)...)...)
 		if err == nil || !strings.Contains(err.Error(), "no ship block") {
 			t.Errorf("%v: %v", argv, err)
@@ -176,7 +176,7 @@ func TestShipCommandsReachTheirImplementation(t *testing.T) {
 		d.Exec = func([]string, bool, string, ...string) ([]byte, error) { return nil, os.ErrNotExist }
 		return d
 	}
-	for _, argv := range [][]string{{"push"}, {"deploy"}, {"deploy", "v1.0.0"}, {"deploy-credential", "-context", ""}} {
+	for _, argv := range [][]string{{"push"}, {"deploy"}, {"deploy", "v1.0.0"}} {
 		if _, err := out(t, append([]string{argv[0], "-C", dir}, argv[1:]...)...); err == nil {
 			t.Errorf("%v succeeded", argv)
 		}
@@ -201,15 +201,10 @@ func TestEmptyShipBlockBuildsNoImageAndRefusesPushAndDeploy(t *testing.T) {
 		t.Errorf("build does not say it builds nothing:\n%s", s)
 	}
 	for argv, want := range map[string]string{
-		"push":              "publishes no image",
-		"deploy":            "deploys nothing",
-		"deploy-credential": "deploys nothing",
+		"push":   "publishes no image",
+		"deploy": "deploys nothing",
 	} {
-		args := []string{argv, "-C", dir}
-		if argv == "deploy-credential" {
-			args = append(args, "-context", "x")
-		}
-		_, err := out(t, args...)
+		_, err := out(t, argv, "-C", dir)
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v, want it to say %q", argv, err, want)
 		}
