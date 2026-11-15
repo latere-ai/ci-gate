@@ -45,7 +45,8 @@ exit 0
 		"go": `#!/bin/bash
 echo "go $*" >> "$STUB_LOG"
 case "$*" in
-*"list -m -f"*"@latest"*) echo v0.2.0 ;;
+# The proxy's cache lags a new release; only the repository has it.
+*"list -m -f"*"@latest"*) if [ "$GOPROXY" = direct ]; then echo v0.2.0; else echo v0.1.0; fi ;;
 *"list -m -f"*) echo v0.1.0 ;;
 *"mod edit -json"*) [ "$FAIL_ON" = mod-edit ] && [[ $* == *repoA* ]] && { echo "go: no go.mod" >&2; exit 1; }
   echo '{}' ;;

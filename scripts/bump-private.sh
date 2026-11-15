@@ -127,8 +127,11 @@ for repo in "${repos[@]}"; do
   fi
   mod="$dir/$module"
 
+  # The latest release comes from the repository, not the module proxy: the
+  # proxy answers @latest from a cache that lags a release this script runs
+  # right after.
   if ! current=$(go -C "$mod" list -m -f '{{.Version}}' latere.ai/x/ci-gate 2>> "$log") ||
-    ! latest=$(go -C "$mod" list -m -f '{{.Version}}' latere.ai/x/ci-gate@latest 2>> "$log"); then
+    ! latest=$(GOPROXY=direct go -C "$mod" list -m -f '{{.Version}}' latere.ai/x/ci-gate@latest 2>> "$log"); then
     fail "$repo" "go list could not read the pin ($log)"
     continue
   fi

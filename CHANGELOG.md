@@ -10,6 +10,13 @@ committed: the commit log already holds that.
 
 ## Unreleased
 
+### Fixed
+
+- **`scripts/bump-private.sh` finds a release made minutes before.** It
+  asked the module proxy for the latest version, which answers from a cache
+  that lags a new tag, so a run right after a release moved nothing. It now
+  asks the repository.
+
 ## v0.71.0 - 2026-11-15
 
 ### Added
