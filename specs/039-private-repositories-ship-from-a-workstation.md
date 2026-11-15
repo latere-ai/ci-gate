@@ -16,7 +16,7 @@ affects:
 effort: large
 trigger: a repository whose push CI and tag releases do not run on GitHub Actions has no way to build, publish and deploy its release, and `release` waits for a CI that never reports
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-15
 author: changkun
 dispatched_task_id: null
 ---
@@ -70,15 +70,19 @@ neither needs another tool.
 **The rollout identity is a file that exists only for the deploy.** `op read
 --out-file` writes the kubeconfig into a directory only its owner can enter,
 the content never passes through this process, and the directory is removed
-on every exit path including an interrupt. Every `kubectl` call passes
+on every exit path including an interrupt. When
+`~/.config/lateregate/op-service-account-token` exists, `op read`
+authenticates with the 1Password service account token it holds, and no
+other command sees that token. Every `kubectl` call passes
 `--kubeconfig` and every step's environment sets `KUBECONFIG`, so the
 operator's own context is never used. `deploy-credential` makes the
 Document once: it builds the kubeconfig from the repository's
 `rollout-identity.yaml` and the cluster, proves the identity with a
 server-side dry run of `deploy/prod`, stores it, and reads it back to compare.
 
-**The steps follow the shared pipeline.** Preflight, apply (`-k` when
-`deploy/prod` holds a `kustomization.yaml`, `-f` otherwise), set image,
+**The steps follow the shared pipeline.** Preflight, a server-side dry run
+of the apply, apply (`-k` when `deploy/prod` holds a `kustomization.yaml`,
+`-f` otherwise), set image,
 rollout status, `after_roll`, then the live check with `BASE_URL`, `TAG`,
 `COMMIT` and `OUTPUT_MD` and no token. A missing live-check script is an
 error. Any failure stops the deploy naming the step.
