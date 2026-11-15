@@ -44,6 +44,10 @@ committed: the commit log already holds that.
   asked the module proxy for the latest version, which answers from a cache
   that lags a new tag, so a run right after a release moved nothing. It now
   asks the repository.
+- **`enum-go` no longer crashes on a struct literal that names a promoted
+  field**, which Go 1.27 allows (`Job{DeployID: id}` where `DeployID` comes
+  from an embedded struct). It indexed the outer struct's own fields by the
+  element's position and panicked; it now resolves each key to its field.
 
 ## v0.71.0 - 2026-11-15
 
