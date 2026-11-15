@@ -49,6 +49,7 @@ func TestDeployRunsEveryStepInOrderAsTheRolloutIdentity(t *testing.T) {
 	}
 	want := []string{
 		"bash ./tools/check.sh",
+		"kubectl apply --dry-run=server",
 		"kubectl apply -f",
 		"kubectl set image",
 		"kubectl rollout status",
@@ -134,12 +135,14 @@ func TestDeployAppliesAKustomizationWithDashK(t *testing.T) {
 	if err := Deploy(r.d, "v1.2.3"); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.steps()[0]; got != "kubectl apply -k" {
-		t.Errorf("first step %q", got)
+	if got := r.steps()[:2]; !slices.Equal(got, []string{"kubectl apply --dry-run=server", "kubectl apply -k"}) {
+		t.Errorf("first steps %q", got)
 	}
-	c, _ := r.find("kubectl --kubeconfig " + r.kube + " apply")
-	if c.args[len(c.args)-1] != "deploy/prod/" {
-		t.Errorf("apply: %s", c)
+	for _, prefix := range []string{" apply --dry-run=server -k", " apply -k"} {
+		c, ok := r.find("kubectl --kubeconfig " + r.kube + prefix)
+		if !ok || c.args[len(c.args)-1] != "deploy/prod/" {
+			t.Errorf("apply%s: %s", prefix, c)
+		}
 	}
 }
 
@@ -148,7 +151,8 @@ func TestDeployAppliesAKustomizationWithDashK(t *testing.T) {
 func TestDeployStopsAtTheFailingStep(t *testing.T) {
 	steps := []struct{ name, fails, stopsBefore string }{
 		{"preflight", "bash ./pre", "kubectl apply"},
-		{"apply deploy/prod", "kubectl apply", "kubectl set"},
+		{"check deploy/prod", "kubectl apply --dry-run=server", "kubectl apply -f"},
+		{"apply deploy/prod", "kubectl apply -f", "kubectl set"},
 		{"set image", "kubectl set", "kubectl rollout"},
 		{"rollout status", "kubectl rollout", "bash after"},
 		{"after_roll", "bash after", "./tools"},

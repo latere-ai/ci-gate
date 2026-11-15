@@ -322,12 +322,16 @@ passes that file with `--kubeconfig`, and the environment of every step has
 when it fails:
 
 1. `ship.deploy.preflight`
-2. `kubectl apply -k deploy/prod/` when it holds a `kustomization.yaml`,
+2. the same apply as the next step with `--dry-run=server`, so every
+   admission webhook and policy sees deploy/prod first; a refusal stops the
+   deploy before anything in the cluster changes, instead of halfway through
+   the apply with the deployment left on its manifest's image
+3. `kubectl apply -k deploy/prod/` when it holds a `kustomization.yaml`,
    `kubectl apply -f deploy/prod/` otherwise
-3. `kubectl set image` on the deployment's container, to `<name>@sha256:...`
-4. `kubectl rollout status` with `ship.deploy.rollout_timeout`
-5. `ship.deploy.after_roll`
-6. the live check, `ship.deploy.smoke`, with `BASE_URL`, `TAG`, `COMMIT` and
+4. `kubectl set image` on the deployment's container, to `<name>@sha256:...`
+5. `kubectl rollout status` with `ship.deploy.rollout_timeout`
+6. `ship.deploy.after_roll`
+7. the live check, `ship.deploy.smoke`, with `BASE_URL`, `TAG`, `COMMIT` and
    `OUTPUT_MD` in its environment, and without `SERVICE_TOKEN`; the rest
    of your shell's environment is passed on. Right after the rollout an
    old pod or a cache can still answer, so a failing check runs again every

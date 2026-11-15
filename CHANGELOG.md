@@ -21,6 +21,11 @@ committed: the commit log already holds that.
 ### Changed
 
 - Built with Go 1.27.4, which fixes GO-2026-6859.
+- **`deploy` checks deploy/prod with the server before it applies it.** A
+  `kubectl apply --dry-run=server` runs first, so an admission webhook or
+  policy that refuses an object stops the deploy before anything changes.
+  Before, a refusal halfway through the apply left the deployment on its
+  manifest's image, which the next step would have replaced.
 
 - **`hermetic` and the suite's stripped `PATH` hold only `go` and `gofmt`.**
   The stripped `PATH` used to hold the whole directory `go` was found in,

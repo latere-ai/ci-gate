@@ -348,11 +348,20 @@ func Deploy(d Deps, tagArg string) (err error) {
 	if err := step("preflight", func() error { return script(run, env, "ship.deploy.preflight", dep.Preflight) }); err != nil {
 		return err
 	}
+	flag := "-f"
+	if _, err := os.Stat(filepath.Join(tree, "deploy", "prod", "kustomization.yaml")); err == nil {
+		flag = "-k"
+	}
+	// The apply below leaves each Deployment on its manifest's image until
+	// set image runs, so an object the cluster refuses halfway through would
+	// strand it there. The server's dry run asks every admission webhook and
+	// policy first, and a refusal stops the deploy before anything changes.
+	if err := step("check deploy/prod", func() error {
+		return kubectl("apply", "--dry-run=server", flag, "deploy/prod/")
+	}); err != nil {
+		return err
+	}
 	if err := step("apply deploy/prod", func() error {
-		flag := "-f"
-		if _, err := os.Stat(filepath.Join(tree, "deploy", "prod", "kustomization.yaml")); err == nil {
-			flag = "-k"
-		}
 		return kubectl("apply", flag, "deploy/prod/")
 	}); err != nil {
 		return err
